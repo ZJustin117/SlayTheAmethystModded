@@ -208,8 +208,7 @@ internal class GameSessionCoordinator(
         return CallbackBridge.windowWidth > 0 && CallbackBridge.windowHeight > 0
     }
 
-    fun handleAndroidBackPressed(source: String = "unknown") {
-        logAndroidBackHandling(source, "pressed")
+    fun handleAndroidBackPressed() {
         when (config.backBehavior) {
             BackBehavior.EXIT_TO_LAUNCHER -> requestBackExitToLauncher()
             BackBehavior.SEND_ESCAPE -> sendEscapeKeyToGame()
@@ -217,41 +216,17 @@ internal class GameSessionCoordinator(
         }
     }
 
-    fun handleAndroidBackKeyEvent(event: KeyEvent, source: String = "dispatch_key_event"): Boolean {
+    fun handleAndroidBackKeyEvent(event: KeyEvent): Boolean {
         when (event.action) {
-            KeyEvent.ACTION_DOWN -> {
-                logAndroidBackHandling(source, "key_down_consumed")
-                return true
-            }
+            KeyEvent.ACTION_DOWN -> return true
             KeyEvent.ACTION_UP -> {
                 if (!event.isCanceled) {
-                    handleAndroidBackPressed(source)
-                } else {
-                    logAndroidBackHandling(source, "key_up_canceled")
+                    handleAndroidBackPressed()
                 }
                 return true
             }
-            else -> {
-                logAndroidBackHandling(source, "key_other_consumed")
-                return true
-            }
+            else -> return true
         }
-    }
-
-    private fun logAndroidBackHandling(source: String, stage: String) {
-        MemoryDiagnosticsLogger.logEvent(
-            activity,
-            "game_session_android_back_handling",
-            mapOf(
-                "launchMode" to config.launchMode,
-                "source" to source,
-                "stage" to stage,
-                "backBehavior" to config.backBehavior.persistedValue,
-                "backExitRequested" to backExitRequested,
-                "inputDispatchReady" to isInputDispatchReady()
-            ),
-            includeMemorySnapshot = false
-        )
     }
 
     private fun tryStartJvmWhenSurfaceReady() {
@@ -389,6 +364,7 @@ internal class GameSessionCoordinator(
             }
 
             if (exitCode == 0) {
+                BackExitNotice.markLauncherReturnHandledInProcess()
                 if (heapPressureNotice != null) {
                     activity.startActivity(
                         LauncherReturnCoordinator.createHeapPressureIntent(activity, heapPressureNotice)

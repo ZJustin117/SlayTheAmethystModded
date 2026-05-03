@@ -29,6 +29,31 @@ class GameInputHandler(
     private val getTargetWindowWidth: () -> Int,
     private val getTargetWindowHeight: () -> Int
 ) {
+    companion object {
+        internal fun isGamepadKeyEventSource(
+            keyCode: Int,
+            eventSource: Int,
+            deviceSources: Int?
+        ): Boolean {
+            if (!AndroidGamepadGlfwMapper.isGamepadKeyCode(keyCode)) return false
+            if (hasKeyboardSource(eventSource)) return false
+            if (hasGamepadSource(eventSource)) return true
+            return deviceSources != null &&
+                hasGamepadSource(deviceSources) &&
+                !hasKeyboardSource(deviceSources)
+        }
+
+        private fun hasKeyboardSource(source: Int): Boolean {
+            return (source and InputDevice.SOURCE_KEYBOARD) == InputDevice.SOURCE_KEYBOARD
+        }
+
+        private fun hasGamepadSource(source: Int): Boolean {
+            return (source and InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD ||
+                (source and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK ||
+                (source and InputDevice.SOURCE_DPAD) == InputDevice.SOURCE_DPAD
+        }
+    }
+
     private var activePointerId = MotionEvent.INVALID_POINTER_ID
     private var gamepadDirectInputEnableAttempted = false
 
@@ -241,15 +266,11 @@ class GameInputHandler(
 
     fun isGamepadKeyEvent(event: KeyEvent?): Boolean {
         if (event == null) return false
-
-        val source = event.source
-        if ((source and InputDevice.SOURCE_GAMEPAD) != 0 || (source and InputDevice.SOURCE_JOYSTICK) != 0) {
-            return true
-        }
-        val device = event.device ?: return false
-        val deviceSources = device.sources
-        return (deviceSources and InputDevice.SOURCE_GAMEPAD) != 0 ||
-            (deviceSources and InputDevice.SOURCE_JOYSTICK) != 0
+        return isGamepadKeyEventSource(
+            keyCode = event.keyCode,
+            eventSource = event.source,
+            deviceSources = event.device?.sources
+        )
     }
 
     private fun isGamepadMotionEvent(event: MotionEvent?): Boolean {
@@ -260,14 +281,13 @@ class GameInputHandler(
     }
 
     fun handleGamepadKeyEvent(event: KeyEvent): Boolean {
+        val action = event.action
+        if (action != KeyEvent.ACTION_DOWN && action != KeyEvent.ACTION_UP) return false
+        if (!AndroidGamepadGlfwMapper.isGamepadKeyCode(event.keyCode)) return false
         if (!isInputDispatchReady()) return true
 
         ensureGamepadDirectInputEnabled()
-        val action = event.action
-        if (action != KeyEvent.ACTION_DOWN && action != KeyEvent.ACTION_UP) return true
-
-        AndroidGamepadGlfwMapper.writeKeyEvent(event.keyCode, action == KeyEvent.ACTION_DOWN)
-        return true
+        return AndroidGamepadGlfwMapper.writeKeyEvent(event.keyCode, action == KeyEvent.ACTION_DOWN)
     }
 
     private fun handleGamepadMotionEvent(event: MotionEvent): Boolean {

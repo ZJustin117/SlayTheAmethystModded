@@ -6,7 +6,6 @@ import android.content.Intent
 import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
-import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.WindowManager
@@ -61,15 +60,12 @@ class StsGameActivity : AppCompatActivity() {
     private lateinit var gameAudioController: GameAudioController
     private var onBackInvokedCallback: OnBackInvokedCallback? = null
     private var bootOverlayKeepScreenOn = false
-    private var lastAndroidBackSignalSource: String? = null
-    private var lastAndroidBackSignalAtMs: Long = -1L
     private val launchGuardToken: String = UUID.randomUUID().toString()
     private var launchGuardAcquired = false
 
     private val gameBackPressedCallback = object : OnBackPressedCallback(true) {
         override fun handleOnBackPressed() {
-            recordAndroidBackSignal("on_back_pressed_dispatcher")
-            sessionCoordinator.handleAndroidBackPressed("on_back_pressed_dispatcher")
+            sessionCoordinator.handleAndroidBackPressed()
         }
     }
 
@@ -315,19 +311,8 @@ class StsGameActivity : AppCompatActivity() {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val keyCode = event.keyCode
-        if (keyCode == KeyEvent.KEYCODE_BACK) {
-            recordAndroidBackSignal(
-                source = "dispatch_key_event",
-                extras = mapOf(
-                    "keyAction" to keyActionName(event.action),
-                    "repeatCount" to event.repeatCount,
-                    "isCanceled" to event.isCanceled,
-                    "flags" to event.flags
-                )
-            )
-            if (sessionCoordinator.handleAndroidBackKeyEvent(event, "dispatch_key_event")) {
-                return true
-            }
+        if (keyCode == KeyEvent.KEYCODE_BACK && sessionCoordinator.handleAndroidBackKeyEvent(event)) {
+            return true
         }
         if (keyCode == KeyEvent.KEYCODE_VOLUME_UP ||
             keyCode == KeyEvent.KEYCODE_VOLUME_DOWN ||
@@ -335,8 +320,8 @@ class StsGameActivity : AppCompatActivity() {
         ) {
             return inputHandler.handleVolumeKeyEvent(event)
         }
-        if (inputHandler.isGamepadKeyEvent(event)) {
-            return inputHandler.handleGamepadKeyEvent(event)
+        if (inputHandler.isGamepadKeyEvent(event) && inputHandler.handleGamepadKeyEvent(event)) {
+            return true
         }
         if (inputHandler.dispatchKeyboardEventToGame(event)) {
             return true
@@ -352,8 +337,7 @@ class StsGameActivity : AppCompatActivity() {
             return
         }
         val callback = OnBackInvokedCallback {
-            recordAndroidBackSignal("on_back_invoked_callback")
-            sessionCoordinator.handleAndroidBackPressed("on_back_invoked_callback")
+            sessionCoordinator.handleAndroidBackPressed()
         }
         try {
             onBackInvokedDispatcher.registerOnBackInvokedCallback(
@@ -377,29 +361,6 @@ class StsGameActivity : AppCompatActivity() {
         onBackInvokedCallback = null
     }
 
-    private fun recordAndroidBackSignal(
-        source: String,
-        extras: Map<String, Any?> = emptyMap()
-    ) {
-        lastAndroidBackSignalSource = source
-        lastAndroidBackSignalAtMs = SystemClock.uptimeMillis()
-        MemoryDiagnosticsLogger.logEvent(
-            this,
-            "game_activity_android_back_signal",
-            buildMemoryEventExtras() + extras + mapOf("source" to source),
-            includeMemorySnapshot = false
-        )
-    }
-
-    private fun keyActionName(action: Int): String {
-        return when (action) {
-            KeyEvent.ACTION_DOWN -> "DOWN"
-            KeyEvent.ACTION_UP -> "UP"
-            KeyEvent.ACTION_MULTIPLE -> "MULTIPLE"
-            else -> action.toString()
-        }
-    }
-
     private fun buildMemoryEventExtras(): Map<String, Any?> {
         val launchMode = if (::sessionConfig.isInitialized) {
             sessionConfig.launchMode
@@ -410,16 +371,7 @@ class StsGameActivity : AppCompatActivity() {
             "sessionToken" to launchGuardToken,
             "launchMode" to launchMode,
             "manualDismissBootOverlay" to intent?.getBooleanExtra(EXTRA_MANUAL_DISMISS_BOOT_OVERLAY, false),
-            "forceJvmCrash" to intent?.getBooleanExtra(EXTRA_FORCE_JVM_CRASH, false),
-            "lastAndroidBackSignalSource" to lastAndroidBackSignalSource,
-            "lastAndroidBackSignalAgeMs" to lastAndroidBackSignalAgeMs()
+            "forceJvmCrash" to intent?.getBooleanExtra(EXTRA_FORCE_JVM_CRASH, false)
         )
-    }
-
-    private fun lastAndroidBackSignalAgeMs(): Long? {
-        if (lastAndroidBackSignalAtMs < 0L) {
-            return null
-        }
-        return SystemClock.uptimeMillis() - lastAndroidBackSignalAtMs
     }
 }

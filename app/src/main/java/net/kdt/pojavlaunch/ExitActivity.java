@@ -55,11 +55,6 @@ public class ExitActivity extends AppCompatActivity {
         if (LatestLogCleanShutdownDetector.shouldSuppressCrashReport(
                 LatestLogCleanShutdownDetector.detect(context)
         )) {
-            LauncherReturnCoordinator.scheduleLauncherRestart(
-                    context,
-                    LAUNCHER_RESTART_DELAY_MS,
-                    false
-            );
             return;
         }
         LatestLogCrashSummary logCrash = LatestLogCrashDetector.detect(context);
