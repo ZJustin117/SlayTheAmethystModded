@@ -428,10 +428,10 @@ private fun LauncherMainScreenContent(
                     busyMessage = uiState.busyMessage?.resolve(),
                     onOpenRecoverySettings = onOpenSettings,
                     onOpenFeedback = onOpenFeedback,
-                    onRetryLaunch = actions.onRetryLaunchAfterCrash,
+                    onAskAi = actions.onAskAiAfterCrash,
                     onCopyReport = actions.onCopyCrashReport,
                     onShareLogs = actions.onShareCrashRecoveryReport,
-                    onCloseApp = actions.onCloseApp
+                    onReturnToMainMenu = actions.onReturnToMainMenu
                 )
             } else {
                 Column(
@@ -662,10 +662,10 @@ private fun CrashRecoveryScreen(
     busyMessage: String?,
     onOpenRecoverySettings: () -> Unit,
     onOpenFeedback: () -> Unit,
-    onRetryLaunch: () -> Unit,
+    onAskAi: () -> Unit,
     onCopyReport: () -> Unit,
     onShareLogs: () -> Unit,
-    onCloseApp: () -> Unit,
+    onReturnToMainMenu: () -> Unit,
 ) {
     val context = LocalContext.current
     val resources = LocalResources.current
@@ -823,11 +823,11 @@ private fun CrashRecoveryScreen(
                         Text(stringResource(R.string.sts_crash_page_action_recovery))
                     }
                     OutlinedButton(
-                        onClick = onRetryLaunch,
+                        onClick = onAskAi,
                         shape = RoundedCornerShape(18.dp),
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text(stringResource(R.string.sts_crash_page_action_retry))
+                        Text(stringResource(R.string.sts_crash_page_action_ask_ai))
                     }
                 }
                 Row(
@@ -861,15 +861,11 @@ private fun CrashRecoveryScreen(
                         Text(stringResource(R.string.sts_crash_page_action_feedback))
                     }
                     Button(
-                        onClick = onCloseApp,
+                        onClick = onReturnToMainMenu,
                         shape = RoundedCornerShape(18.dp),
                         modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.error,
-                            contentColor = MaterialTheme.colorScheme.onError
-                        )
                     ) {
-                        Text(stringResource(R.string.sts_crash_page_action_close))
+                        Text(stringResource(R.string.sts_crash_page_action_return_main_menu))
                     }
                 }
             }

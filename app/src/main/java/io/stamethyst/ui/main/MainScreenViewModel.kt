@@ -1305,6 +1305,23 @@ class MainScreenViewModel : ViewModel() {
         )
     }
 
+    fun copyCrashRecoveryAiPrompt(host: Activity) {
+        val crashRecovery = uiState.crashRecovery ?: return
+        val clipboard = host.getSystemService(ClipboardManager::class.java) ?: return
+        clipboard.setPrimaryClip(
+            ClipData.newPlainText(
+                "sts-crash-ai-prompt",
+                host.getString(R.string.sts_crash_page_ai_prompt_format, crashRecovery.reportText)
+            )
+        )
+        _effects.tryEmit(
+            Effect.ShowSnackbar(
+                message = UiText.StringResource(R.string.sts_crash_page_ai_prompt_copy_success),
+                duration = LauncherTransientNoticeDuration.SHORT
+            )
+        )
+    }
+
     private fun tryBeginLaunchRequest(): Boolean {
         if (uiState.busy || launchInFlight) {
             return false

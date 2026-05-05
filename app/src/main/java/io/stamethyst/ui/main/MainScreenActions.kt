@@ -40,12 +40,12 @@ internal data class MainScreenActions(
     val onRevealFolderToken: (String) -> Unit = {},
     val onRetryStorageCheck: () -> Unit = {},
     val onDismissCrashRecovery: () -> Unit = {},
-    val onRetryLaunchAfterCrash: () -> Unit = {},
+    val onAskAiAfterCrash: () -> Unit = {},
     val onConfirmLaunchWithUnreadSuggestions: () -> Unit = {},
     val onCancelLaunchWithUnreadSuggestions: () -> Unit = {},
     val onCopyCrashReport: () -> Unit = {},
     val onShareCrashRecoveryReport: () -> Unit = {},
-    val onCloseApp: () -> Unit = {},
+    val onReturnToMainMenu: () -> Unit = {},
     val onImportMods: () -> Unit = {},
     val onLaunch: () -> LaunchRequestAction = { LaunchRequestAction.NONE },
     val onLaunchAfterSteamCloudError: () -> Unit = {},
@@ -100,7 +100,7 @@ internal fun rememberMainScreenActions(
                 onRevealFolderToken = { folderTokenId -> viewModel.revealFolderToken(activity, folderTokenId) },
                 onRetryStorageCheck = { viewModel.refresh(activity) },
                 onDismissCrashRecovery = { viewModel.dismissCrashRecovery() },
-                onRetryLaunchAfterCrash = { viewModel.retryLaunchAfterCrash(activity) },
+                onAskAiAfterCrash = { viewModel.copyCrashRecoveryAiPrompt(activity) },
                 onConfirmLaunchWithUnreadSuggestions = {
                     viewModel.confirmLaunchWithUnreadSuggestions(activity)
                 },
@@ -109,7 +109,7 @@ internal fun rememberMainScreenActions(
                 },
                 onCopyCrashReport = { viewModel.copyCrashRecoveryReport(activity) },
                 onShareCrashRecoveryReport = { viewModel.shareCrashRecoveryReport(activity) },
-                onCloseApp = { activity.finishAffinity() },
+                onReturnToMainMenu = { viewModel.dismissCrashRecovery() },
                 onImportMods = {
                     importModsLauncher.launch(
                         arrayOf("application/java-archive", "application/octet-stream", "*/*")
