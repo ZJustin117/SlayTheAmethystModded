@@ -13,6 +13,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -341,6 +344,7 @@ private fun LauncherMainScreenContent(
     val steamCloudIndicator = uiState.steamCloudIndicator
     val steamCloudBottomSheetVisible = showSteamCloudBottomSheet && steamCloudIndicator.visible
     val steamCloudBottomSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var batchEditBarState by remember { mutableStateOf<BatchEditBarState?>(null) }
 
     LaunchedEffect(steamCloudIndicator.visible) {
         if (!steamCloudIndicator.visible) {
@@ -455,6 +459,7 @@ private fun LauncherMainScreenContent(
                         uiState = uiState,
                         showInitializing = showInitializing,
                         actionBarBottomPadding = 156.dp,
+                        onBatchEditBarStateChange = { batchEditBarState = it },
                         actions = actions
                     )
                 }
@@ -485,8 +490,9 @@ private fun LauncherMainScreenContent(
                         }
                     }
                 )
-                MainBottomFixedActions(
+                MainBottomBarSwitcher(
                     modifier = Modifier.align(Alignment.BottomCenter),
+                    batchEditBarState = batchEditBarState,
                     hazeState = hazeState,
                     importEnabled = !uiState.busy && uiState.storageIssue == null,
                     launchEnabled = !uiState.busy &&
@@ -577,6 +583,8 @@ private fun LauncherMainScreenContent(
         )
     }
 }
+
+private const val BOTTOM_BAR_SWITCH_ANIMATION_MS = 220
 
 @Composable
 private fun SteamCloudConflictConfirmationDialog(
@@ -1704,6 +1712,67 @@ private fun NotificationBadge(
 }
 
 @Composable
+private fun MainBottomBarSwitcher(
+    modifier: Modifier = Modifier,
+    batchEditBarState: BatchEditBarState?,
+    hazeState: HazeState,
+    importEnabled: Boolean,
+    launchEnabled: Boolean,
+    onImportMods: () -> Unit,
+    onLaunch: () -> Unit,
+    enabledCount: Int,
+    totalCount: Int,
+    gameRunning: Boolean,
+    hasStorageIssue: Boolean
+) {
+    AnimatedContent(
+        targetState = batchEditBarState != null,
+        modifier = modifier.fillMaxWidth(),
+        transitionSpec = {
+            val slideIn = slideInVertically(
+                initialOffsetY = { fullHeight -> fullHeight / 2 },
+                animationSpec = tween(durationMillis = BOTTOM_BAR_SWITCH_ANIMATION_MS)
+            ) + fadeIn(animationSpec = tween(durationMillis = BOTTOM_BAR_SWITCH_ANIMATION_MS))
+            val slideOut = slideOutVertically(
+                targetOffsetY = { fullHeight -> fullHeight / 2 },
+                animationSpec = tween(durationMillis = BOTTOM_BAR_SWITCH_ANIMATION_MS)
+            ) + fadeOut(animationSpec = tween(durationMillis = BOTTOM_BAR_SWITCH_ANIMATION_MS))
+            slideIn togetherWith slideOut using SizeTransform(clip = false)
+        },
+        label = "mainBottomBarSwitcher"
+    ) { showingBatchBar ->
+        if (showingBatchBar) {
+            val state = batchEditBarState
+            if (state != null) {
+                BatchEditToolbar(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    selectedCount = state.selectedCount,
+                    controlsEnabled = state.controlsEnabled,
+                    onMove = state.onMove,
+                    onDelete = state.onDelete,
+                    onEnable = state.onEnable,
+                    onDisable = state.onDisable,
+                    onCancel = state.onCancel
+                )
+            }
+        } else {
+            MainBottomFixedActions(
+                modifier = Modifier,
+                hazeState = hazeState,
+                importEnabled = importEnabled,
+                launchEnabled = launchEnabled,
+                onImportMods = onImportMods,
+                onLaunch = onLaunch,
+                enabledCount = enabledCount,
+                totalCount = totalCount,
+                gameRunning = gameRunning,
+                hasStorageIssue = hasStorageIssue
+            )
+        }
+    }
+}
+
+@Composable
 private fun MainBottomFixedActions(
     modifier: Modifier = Modifier,
     hazeState: HazeState,
@@ -1840,8 +1909,12 @@ private fun ColumnScope.MainContentSwitcher(
     uiState: MainScreenViewModel.UiState,
     showInitializing: Boolean,
     actionBarBottomPadding: Dp,
+    onBatchEditBarStateChange: (BatchEditBarState?) -> Unit,
     actions: MainScreenActions
 ) {
+    DisposableEffect(Unit) {
+        onDispose { onBatchEditBarStateChange(null) }
+    }
     AnimatedContent(
         targetState = showInitializing,
         transitionSpec = {
@@ -1898,6 +1971,7 @@ private fun ColumnScope.MainContentSwitcher(
                     uiState = uiState,
                     contentBottomInset = actionBarBottomPadding,
                     hostAvailable = actions.isHostAvailable,
+                    onBatchEditBarStateChange = onBatchEditBarStateChange,
                     callbacks = ModFolderSectionCallbacks(
                         onToggleMod = actions.onToggleMod,
                         onSetPriority = actions.onSetPriority,

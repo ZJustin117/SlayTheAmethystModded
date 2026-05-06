@@ -34,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -61,6 +62,10 @@ internal data class ModCardDragStartInfo(
     val overlayAnchor: ModDragOverlayAnchor,
     val pointerIdValue: Long
 )
+
+private val MOD_DRAG_HANDLE_SLOT_WIDTH = 28.dp
+private val MOD_BATCH_CHECKBOX_SLOT_WIDTH = 48.dp
+private val MOD_ENABLE_CHECKBOX_SLOT_WIDTH = 48.dp
 
 @Stable
 internal data class ModCardCallbacks(
@@ -93,6 +98,7 @@ internal fun ModCard(
     dragEnabledState: State<Boolean>? = null,
     showDragHandle: Boolean = true,
     dragAffordanceAlpha: State<Float>? = null,
+    batchSelectionProgress: State<Float>? = null,
     batchSelectionMode: Boolean = false,
     batchSelected: Boolean = false,
     batchSelectionEnabled: Boolean = false,
@@ -111,7 +117,18 @@ internal fun ModCard(
     var showSuggestionDialog by remember(mod.storagePath, suggestionText) { mutableStateOf(false) }
     var showImportPatchDialog by remember(mod.storagePath, mod.importPatchDetails) { mutableStateOf(false) }
     val cardShape = RoundedCornerShape(10.dp)
+    val batchSelectionAnimationProgress = if (batchSelectionMode) {
+        batchSelectionProgress?.value ?: 1f
+    } else {
+        batchSelectionProgress?.value ?: 0f
+    }.coerceIn(0f, 1f)
+    val normalControlProgress = 1f - batchSelectionAnimationProgress
     val dragAffordanceVisible = showDragHandle && !batchSelectionMode
+    val dragAffordanceProgress = if (dragAffordanceVisible) {
+        (dragAffordanceAlpha?.value ?: 1f) * normalControlProgress
+    } else {
+        if (showDragHandle) normalControlProgress else 0f
+    }.coerceIn(0f, 1f)
     val dragVisualOffsetFromPointer = remember(density) {
 //        Offset(x = 0f, y = with(density) { MOD_DRAG_VISUAL_OFFSET_Y_DP.dp.toPx() })
         Offset(x = 0f, y = 0f)
@@ -262,7 +279,12 @@ internal fun ModCard(
             importPatchBadgeEnabled = true,
             onImportPatchClick = { showImportPatchDialog = true },
             headerLeading = {
-                if (batchSelectionMode) {
+                Box(
+                    modifier = Modifier
+                        .width(MOD_BATCH_CHECKBOX_SLOT_WIDTH * batchSelectionAnimationProgress)
+                        .clipToBounds(),
+                    contentAlignment = Alignment.Center
+                ) {
                     Checkbox(
                         checked = batchSelected,
                         onCheckedChange = { checked ->
@@ -270,39 +292,51 @@ internal fun ModCard(
                                 onBatchSelectionChange(checked)
                             }
                         },
-                        enabled = batchSelectionEnabled
+                        enabled = batchSelectionEnabled && batchSelectionMode,
+                        modifier = Modifier.graphicsLayer {
+                            alpha = batchSelectionAnimationProgress
+                            scaleX = 0.86f + alpha * 0.14f
+                            scaleY = 0.86f + alpha * 0.14f
+                        }
                     )
                 }
             },
             headerTrailing = {
-                if (!batchSelectionMode && selectionEnabled) {
+                Box(
+                    modifier = Modifier
+                        .width(MOD_ENABLE_CHECKBOX_SLOT_WIDTH * normalControlProgress)
+                        .clipToBounds(),
+                    contentAlignment = Alignment.Center
+                ) {
                     Checkbox(
                         checked = mod.enabled,
                         onCheckedChange = { checked ->
-                            if (checked != mod.enabled) {
-                                LauncherHaptics.vibrateToggle(context)
+                            if (!batchSelectionMode && selectionEnabled) {
+                                if (checked != mod.enabled) {
+                                    LauncherHaptics.vibrateToggle(context)
+                                }
+                                callbacks.onToggleMod(mod, checked)
                             }
-                            callbacks.onToggleMod(mod, checked)
+                        },
+                        enabled = !batchSelectionMode && selectionEnabled,
+                        modifier = Modifier.graphicsLayer {
+                            alpha = normalControlProgress
+                            scaleX = 0.86f + alpha * 0.14f
+                            scaleY = 0.86f + alpha * 0.14f
                         }
-                    )
-                } else if (!batchSelectionMode) {
-                    Checkbox(
-                        checked = mod.enabled,
-                        onCheckedChange = null,
-                        enabled = false
                     )
                 }
                 if (showDragHandle) {
                     Box(
-                        modifier = handleModifier.graphicsLayer {
-                            alpha = if (dragAffordanceVisible) {
-                                dragAffordanceAlpha?.value ?: 1f
-                            } else {
-                                0f
-                            }
-                            scaleX = 0.92f + alpha * 0.08f
-                            scaleY = 0.92f + alpha * 0.08f
-                        },
+                        modifier = Modifier
+                            .width(MOD_DRAG_HANDLE_SLOT_WIDTH * dragAffordanceProgress)
+                            .clipToBounds()
+                            .then(handleModifier)
+                            .graphicsLayer {
+                                alpha = dragAffordanceProgress
+                                scaleX = 0.92f + alpha * 0.08f
+                                scaleY = 0.92f + alpha * 0.08f
+                            },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(

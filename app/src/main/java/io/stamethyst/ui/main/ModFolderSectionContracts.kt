@@ -32,6 +32,16 @@ internal data class ModFolderSectionCallbacks(
     val onRevealFolderToken: (String) -> Unit = {}
 )
 
+internal data class BatchEditBarState(
+    val selectedCount: Int,
+    val controlsEnabled: Boolean,
+    val onMove: () -> Unit,
+    val onDelete: () -> Unit,
+    val onEnable: () -> Unit,
+    val onDisable: () -> Unit,
+    val onCancel: () -> Unit
+)
+
 internal data class FolderUiModel(
     val key: String,
     val folderTokenId: String,

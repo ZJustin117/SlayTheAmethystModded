@@ -1,5 +1,6 @@
 package io.stamethyst.ui.main
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -15,12 +16,15 @@ import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,6 +39,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -43,6 +48,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TriStateCheckbox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
@@ -88,6 +94,7 @@ internal fun ModFolderSection(
     uiState: MainScreenViewModel.UiState,
     contentBottomInset: Dp = 0.dp,
     hostAvailable: Boolean,
+    onBatchEditBarStateChange: (BatchEditBarState?) -> Unit = {},
     callbacks: ModFolderSectionCallbacks
 ) {
     val dependencyMods = uiState.dependencyMods
@@ -162,6 +169,46 @@ internal fun ModFolderSection(
         batchMoveDialogVisible = false
         batchDeleteDialogVisible = false
     }
+    val latestSelectedBatchMods = rememberUpdatedState(selectedBatchMods)
+    val latestBatchSelectionControlsEnabled = rememberUpdatedState(batchSelectionControlsEnabled)
+    val latestExitBatchSelection = rememberUpdatedState(::exitBatchSelection)
+    val batchEditBarState = remember(batchSelectionMode) {
+        if (!batchSelectionMode) {
+            null
+        } else {
+            BatchEditBarState(
+                selectedCount = 0,
+                controlsEnabled = false,
+                onMove = { batchMoveDialogVisible = true },
+                onDelete = { batchDeleteDialogVisible = true },
+                onEnable = {
+                    val selectedMods = latestSelectedBatchMods.value
+                    latestExitBatchSelection.value()
+                    callbacks.onSetModsSelected(selectedMods, true)
+                },
+                onDisable = {
+                    val selectedMods = latestSelectedBatchMods.value
+                    latestExitBatchSelection.value()
+                    callbacks.onSetModsSelected(selectedMods, false)
+                },
+                onCancel = { latestExitBatchSelection.value() }
+            )
+        }
+    }?.copy(
+        selectedCount = selectedBatchMods.size,
+        controlsEnabled = latestBatchSelectionControlsEnabled.value
+    )
+    LaunchedEffect(batchEditBarState) {
+        onBatchEditBarStateChange(batchEditBarState)
+    }
+    DisposableEffect(Unit) {
+        onDispose { onBatchEditBarStateChange(null) }
+    }
+    BackHandler(
+        enabled = batchSelectionMode && !batchMoveDialogVisible && !batchDeleteDialogVisible
+    ) {
+        exitBatchSelection()
+    }
     val modDragState = interactionState.modDragState
     val activeModDragSession = modDragState.session
     val shouldCollapseFolders = interactionState.activeDragFolderId != null || modDragState.collapseFoldersDuringDrag
@@ -208,6 +255,7 @@ internal fun ModFolderSection(
         )
     }
     val folderBodyExitingTokens = remember { mutableStateOf<Set<String>>(emptySet()) }
+    var collapseToggleLockedTokens by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     LaunchedEffect(folderBodyVisibilityByToken) {
         val previous = latestFolderBodyVisibilityByToken.toMap()
@@ -240,6 +288,14 @@ internal fun ModFolderSection(
         if (removableTokens.isNotEmpty()) {
             folderBodyExitingTokens.value = folderBodyExitingTokens.value - removableTokens
         }
+    }
+    LaunchedEffect(collapseToggleLockedTokens) {
+        val lockedSnapshot = collapseToggleLockedTokens
+        if (lockedSnapshot.isEmpty()) {
+            return@LaunchedEffect
+        }
+        delay(FOLDER_TOGGLE_THROTTLE_MS)
+        collapseToggleLockedTokens = collapseToggleLockedTokens - lockedSnapshot
     }
     val lazyListItems = remember(
         dependencyMods.isNotEmpty(),
@@ -396,6 +452,16 @@ internal fun ModFolderSection(
         animationSpec = tween(durationMillis = 160, easing = LinearEasing),
         label = "dragAffordanceAlpha"
     )
+    val batchSelectionProgress = animateFloatAsState(
+        targetValue = if (batchSelectionMode) 1f else 0f,
+        animationSpec = tween(durationMillis = 180, easing = LinearEasing),
+        label = "batchSelectionProgress"
+    )
+    val effectiveContentBottomInset = if (batchSelectionMode) {
+        BATCH_EDIT_BOTTOM_INSET
+    } else {
+        contentBottomInset
+    }
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -522,7 +588,7 @@ internal fun ModFolderSection(
                 modifier = Modifier
                     .fillMaxSize()
                     .onGloballyPositioned { interactionState.listViewportInWindow = it.boundsInWindow() },
-                contentPadding = PaddingValues(bottom = contentBottomInset)
+                contentPadding = PaddingValues(bottom = effectiveContentBottomInset)
             ) {
                 items(
                     items = lazyListItems,
@@ -568,6 +634,7 @@ internal fun ModFolderSection(
                         }
 
                         ModFolderLazyItem.DependencyFolder -> {
+                            val dependencyToggleLocked = collapseToggleLockedTokens.contains(DEPENDENCY_FOLDER_KEY)
                             Box(
                                 modifier = folderPlacementAnimation(
                                     Modifier.fillMaxWidth()
@@ -582,8 +649,13 @@ internal fun ModFolderSection(
                                     showModFileName = showModFileName,
                                     dragAffordanceAlpha = dragAffordanceAlpha,
                                     interactionState = interactionState,
-                                    collapseEnabled = uiState.controlsEnabled,
-                                    onToggleCollapsed = callbacks.onToggleDependencyFolderCollapsed,
+                                    collapseEnabled = uiState.controlsEnabled && !dependencyToggleLocked,
+                                    onToggleCollapsed = {
+                                        if (!dependencyToggleLocked) {
+                                            collapseToggleLockedTokens = collapseToggleLockedTokens + DEPENDENCY_FOLDER_KEY
+                                            callbacks.onToggleDependencyFolderCollapsed()
+                                        }
+                                    },
                                     onMarkModSuggestionRead = callbacks.onMarkModSuggestionRead
                                 )
                             }
@@ -592,6 +664,7 @@ internal fun ModFolderSection(
                         is ModFolderLazyItem.FolderHeader -> {
                             val folderUiModel = lazyItem.folderUiModel
                             val folderTokenId = folderUiModel.folderTokenId
+                            val collapseToggleLocked = collapseToggleLockedTokens.contains(folderTokenId)
                             val isHovering =
                                 activeModDragSession?.hoveredFolderTokenId == folderTokenId &&
                                     interactionState.activeDragFolderId == null
@@ -692,6 +765,7 @@ internal fun ModFolderSection(
                                                 reorderScope = reorderableItemScope,
                                                 enabled = organizationDragEnabled,
                                                 folderId = folderTokenId,
+                                                dragAffordanceProgress = dragAffordanceAlpha.value,
                                                 modifier = Modifier.graphicsLayer {
                                                     alpha = dragAffordanceAlpha.value
                                                     scaleX = 0.92f + alpha * 0.08f
@@ -757,9 +831,13 @@ internal fun ModFolderSection(
                                                 color = MaterialTheme.colorScheme.primary
                                             )
                                             IconButton(
-                                                enabled = uiState.controlsEnabled,
+                                                enabled = uiState.controlsEnabled && !collapseToggleLocked,
                                                 modifier = Modifier.testTag(FOLDER_TOGGLE_BUTTON_TAG),
                                                 onClick = {
+                                                    if (collapseToggleLocked) {
+                                                        return@IconButton
+                                                    }
+                                                    collapseToggleLockedTokens = collapseToggleLockedTokens + folderTokenId
                                                     if (folderUiModel.isUnassigned) {
                                                         callbacks.onToggleUnassignedCollapsed()
                                                     } else {
@@ -979,6 +1057,7 @@ internal fun ModFolderSection(
                                         dragEnabledState = latestOrganizationDragEnabled,
                                         showDragHandle = !batchSelectionMode,
                                         dragAffordanceAlpha = dragAffordanceAlpha,
+                                        batchSelectionProgress = batchSelectionProgress,
                                         batchSelectionMode = batchSelectionMode,
                                         batchSelected = selectedBatchStoragePaths.contains(mod.storagePath),
                                         batchSelectionEnabled = organizationControlsEnabled && mod.installed,
@@ -992,30 +1071,6 @@ internal fun ModFolderSection(
                     }
                 }
             }
-
-        if (batchSelectionMode) {
-            BatchEditToolbar(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = MOD_LIST_TOP_PLACEHOLDER_HEIGHT)
-                    .zIndex(DRAGGED_FOLDER_Z_INDEX + 100f),
-                selectedCount = selectedBatchMods.size,
-                controlsEnabled = batchSelectionControlsEnabled,
-                onMove = { batchMoveDialogVisible = true },
-                onDelete = { batchDeleteDialogVisible = true },
-                onEnable = {
-                    val selectedMods = selectedBatchMods
-                    exitBatchSelection()
-                    callbacks.onSetModsSelected(selectedMods, true)
-                },
-                onDisable = {
-                    val selectedMods = selectedBatchMods
-                    exitBatchSelection()
-                    callbacks.onSetModsSelected(selectedMods, false)
-                },
-                onCancel = ::exitBatchSelection
-            )
-        }
     }
     }
 
@@ -1198,6 +1253,7 @@ private fun DependencyFolderListItem(
                             dragEnabled = false,
                             showDragHandle = true,
                             dragAffordanceAlpha = dragAffordanceAlpha,
+                            batchSelectionProgress = null,
                             batchSelectionMode = false,
                             batchSelectionEnabled = false,
                             onSuggestionRead = onSuggestionRead,
@@ -1272,7 +1328,7 @@ private fun AlertDeleteSelectedModsDialog(
 }
 
 @Composable
-private fun BatchEditToolbar(
+internal fun BatchEditToolbar(
     modifier: Modifier = Modifier,
     selectedCount: Int,
     controlsEnabled: Boolean,
@@ -1285,64 +1341,74 @@ private fun BatchEditToolbar(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 10.dp),
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            .navigationBarsPadding(),
+        shape = RoundedCornerShape(26.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f),
         contentColor = MaterialTheme.colorScheme.onSurface,
-        tonalElevation = 6.dp,
-        shadowElevation = 8.dp,
+        tonalElevation = 10.dp,
+        shadowElevation = 14.dp,
         border = BorderStroke(
             width = 1.dp,
-            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
+            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.32f)
         )
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = stringResource(R.string.main_batch_edit_selected_format, selectedCount),
-                    color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.22f))
+                ) {
+                    Text(
+                        text = stringResource(R.string.main_batch_edit_selected_format, selectedCount),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
                 Spacer(modifier = Modifier.weight(1f))
-                TextButton(onClick = onCancel) {
+                TextButton(
+                    onClick = onCancel,
+                    shape = RoundedCornerShape(999.dp)
+                ) {
                     Text(stringResource(R.string.main_batch_action_cancel))
                 }
             }
-            Row(
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 BatchActionChip(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).height(42.dp),
                     iconResId = R.drawable.ic_move_folder,
                     text = stringResource(R.string.main_batch_action_move),
                     enabled = controlsEnabled,
                     onClick = onMove
                 )
                 BatchActionChip(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).height(42.dp),
                     iconResId = R.drawable.ic_check_circle,
                     text = stringResource(R.string.main_batch_action_enable),
                     enabled = controlsEnabled,
                     onClick = onEnable
                 )
                 BatchActionChip(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).height(42.dp),
                     iconResId = R.drawable.ic_remove_circle,
                     text = stringResource(R.string.main_batch_action_disable),
                     enabled = controlsEnabled,
                     onClick = onDisable
                 )
                 BatchActionChip(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).height(42.dp),
                     iconResId = R.drawable.ic_delete,
                     text = stringResource(R.string.main_batch_action_delete),
                     enabled = controlsEnabled,
@@ -1364,38 +1430,51 @@ private fun BatchActionChip(
     onClick: () -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
+    val containerColor = if (destructive) {
+        colorScheme.errorContainer.copy(alpha = 0.9f)
+    } else {
+        colorScheme.primaryContainer.copy(alpha = 0.88f)
+    }
+    val contentColor = if (destructive) {
+        colorScheme.onErrorContainer
+    } else {
+        colorScheme.onPrimaryContainer
+    }
+    val disabledContentColor = colorScheme.onSurface.copy(alpha = 0.38f)
     AssistChip(
-        modifier = modifier,
+        modifier = modifier.defaultMinSize(minHeight = 0.dp),
         onClick = onClick,
         enabled = enabled,
-        leadingIcon = {
-            Icon(
-                painter = painterResource(iconResId),
-                contentDescription = null,
-                modifier = Modifier.size(18.dp)
-            )
-        },
         label = {
-            Text(
-                text = text,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val currentContentColor = LocalContentColor.current
+                Icon(
+                    painter = painterResource(iconResId),
+                    contentDescription = null,
+                    tint = if (enabled) contentColor else disabledContentColor,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.size(6.dp))
+                Text(
+                    text = text,
+                    color = if (enabled) contentColor else currentContentColor,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
         },
         shape = RoundedCornerShape(999.dp),
         colors = AssistChipDefaults.assistChipColors(
-            containerColor = if (destructive) {
-                colorScheme.errorContainer.copy(alpha = 0.84f)
-            } else {
-                colorScheme.primaryContainer.copy(alpha = 0.88f)
-            },
-            labelColor = if (destructive) {
-                colorScheme.onErrorContainer
-            } else {
-                colorScheme.onPrimaryContainer
-            },
+            containerColor = containerColor,
+            labelColor = contentColor,
+            leadingIconContentColor = contentColor,
             disabledContainerColor = colorScheme.surfaceContainerHighest.copy(alpha = 0.58f),
-            disabledLabelColor = colorScheme.onSurface.copy(alpha = 0.38f)
+            disabledLabelColor = disabledContentColor,
+            disabledLeadingIconContentColor = disabledContentColor
         ),
         border = AssistChipDefaults.assistChipBorder(
             enabled = enabled,
@@ -1578,5 +1657,7 @@ private const val FOLDER_TOGGLE_BUTTON_TAG = "mod_folder_toggle_button"
 private const val FOLDER_BODY_ENTER_DELAY_MS = 16L
 private const val FOLDER_BODY_LAYER_ANIMATION_MS = 140
 private const val FOLDER_PLACEMENT_ANIMATION_MS = 220
+private const val FOLDER_TOGGLE_THROTTLE_MS = 260L
 private val FOLDER_BODY_ANIMATION_OFFSET = 10.dp
+private val BATCH_EDIT_BOTTOM_INSET = 148.dp
 private val MOD_LIST_TOP_PLACEHOLDER_HEIGHT = 84.dp

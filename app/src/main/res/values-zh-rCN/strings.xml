@@ -325,7 +325,7 @@
     <string name="main_batch_edit_selected_format">已选择 %1$d 个</string>
     <string name="main_batch_action_move">移动</string>
     <string name="main_batch_action_enable">启用</string>
-    <string name="main_batch_action_disable">关闭</string>
+    <string name="main_batch_action_disable">禁用</string>
     <string name="main_batch_action_delete">删除</string>
     <string name="main_batch_action_cancel">取消</string>
     <string name="main_batch_delete_title">删除已选模组</string>

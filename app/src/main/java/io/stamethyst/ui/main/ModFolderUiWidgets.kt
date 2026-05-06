@@ -2,6 +2,7 @@ package io.stamethyst.ui.main
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -18,6 +19,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -26,12 +29,15 @@ import androidx.compose.ui.unit.sp
 import io.stamethyst.R
 import sh.calvin.reorderable.ReorderableCollectionItemScope
 
+private val FOLDER_HANDLE_SLOT_WIDTH = 48.dp
+
 @Composable
 internal fun FolderOrderHandle(
     reorderScope: ReorderableCollectionItemScope,
     enabled: Boolean,
     folderId: String,
     modifier: Modifier = Modifier,
+    dragAffordanceProgress: Float = 1f,
     canMoveUp: Boolean,
     canMoveDown: Boolean,
     onMoveUp: () -> Unit,
@@ -52,7 +58,14 @@ internal fun FolderOrderHandle(
             }
         )
     }
-    Box(modifier = modifier.then(handleModifier)) {
+    val progress = dragAffordanceProgress.coerceIn(0f, 1f)
+    Box(
+        modifier = modifier
+            .width(FOLDER_HANDLE_SLOT_WIDTH * progress)
+            .clipToBounds()
+            .then(handleModifier),
+        contentAlignment = Alignment.Center
+    ) {
         IconButton(
             enabled = enabled,
             onClick = { menuExpanded = true }
