@@ -81,4 +81,5 @@ public class GLFrameBufferOwnerSummaryTest {
 			"com.megacrit.cardcrawl.screens.mainMenu.MainMenuScreen#render:123"
 		));
 	}
+
 }
