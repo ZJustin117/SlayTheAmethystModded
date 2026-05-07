@@ -3180,6 +3180,10 @@ class SettingsScreenViewModel : ViewModel() {
             toggleStateText(host, compatibility.runtimeTextureCompatEnabled)
         )
         lines += host.getString(
+            R.string.settings_status_relic_touchscreen_obtain_compat,
+            toggleStateText(host, compatibility.relicTouchscreenObtainCompatEnabled)
+        )
+        lines += host.getString(
             R.string.settings_status_texture_pressure_downscale_divisor,
             compatibility.texturePressureDownscaleDivisor
         )

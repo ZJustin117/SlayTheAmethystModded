@@ -90,6 +90,16 @@ object CompatibilitySettings {
     }
 
     @JvmStatic
+    fun isRelicTouchscreenObtainCompatEnabled(context: Context): Boolean {
+        return LauncherConfig.isRelicTouchscreenObtainCompatEnabled(context)
+    }
+
+    @JvmStatic
+    fun setRelicTouchscreenObtainCompatEnabled(context: Context, enabled: Boolean) {
+        LauncherConfig.setRelicTouchscreenObtainCompatEnabled(context, enabled)
+    }
+
+    @JvmStatic
     fun isLargeTextureDownscaleCompatEnabled(context: Context): Boolean {
         return LauncherConfig.isLargeTextureDownscaleCompatEnabled(context)
     }

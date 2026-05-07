@@ -95,6 +95,8 @@ object LauncherConfig {
     private const val PREF_KEY_RUNTIME_TEXTURE_COMPAT = "compat_runtime_texture_compat"
     private const val PREF_KEY_MAIN_MENU_PREVIEW_REUSE_COMPAT =
         "compat_main_menu_preview_reuse"
+    private const val PREF_KEY_RELIC_TOUCHSCREEN_OBTAIN_COMPAT =
+        "compat_relic_touchscreen_obtain"
     private const val PREF_KEY_LARGE_TEXTURE_DOWNSCALE_COMPAT =
         "compat_large_texture_downscale"
     private const val PREF_KEY_TEXTURE_RESIDENCY_MANAGER_COMPAT =
@@ -203,6 +205,7 @@ object LauncherConfig {
     const val DEFAULT_JVM_STRING_DEDUPLICATION_ENABLED = false
     const val DEFAULT_FRAGMENT_SHADER_PRECISION_COMPAT_ENABLED = true
     const val DEFAULT_MAIN_MENU_PREVIEW_REUSE_COMPAT_ENABLED = true
+    const val DEFAULT_RELIC_TOUCHSCREEN_OBTAIN_COMPAT_ENABLED = true
     const val DEFAULT_LARGE_TEXTURE_DOWNSCALE_COMPAT_ENABLED = true
     const val DEFAULT_TEXTURE_RESIDENCY_MANAGER_COMPAT_ENABLED = true
     const val DEFAULT_TEXTURE_PRESSURE_DOWNSCALE_DIVISOR = 2
@@ -855,6 +858,19 @@ object LauncherConfig {
     fun setMainMenuPreviewReuseCompatEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit {
             putBoolean(PREF_KEY_MAIN_MENU_PREVIEW_REUSE_COMPAT, enabled)
+        }
+    }
+
+    fun isRelicTouchscreenObtainCompatEnabled(context: Context): Boolean {
+        return prefs(context).getBoolean(
+            PREF_KEY_RELIC_TOUCHSCREEN_OBTAIN_COMPAT,
+            DEFAULT_RELIC_TOUCHSCREEN_OBTAIN_COMPAT_ENABLED
+        )
+    }
+
+    fun setRelicTouchscreenObtainCompatEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit {
+            putBoolean(PREF_KEY_RELIC_TOUCHSCREEN_OBTAIN_COMPAT, enabled)
         }
     }
 

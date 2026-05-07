@@ -272,6 +272,14 @@ object StsLaunchSpec {
                 }
         )
         args.add(
+            "-Damethyst.runtime_compat.relic_touchscreen_obtain=" +
+                if (CompatibilitySettings.isRelicTouchscreenObtainCompatEnabled(context)) {
+                    "true"
+                } else {
+                    "false"
+                }
+        )
+        args.add(
             "-Damethyst.gdx.texture_pressure_downscale=" +
                 if (CompatibilitySettings.isLargeTextureDownscaleCompatEnabled(context)) "true" else "false"
         )

@@ -220,6 +220,9 @@ internal object LauncherSettingsDiagnosticsFormatter {
                         "mainMenuPreviewReuseCompat" to formatBoolean(
                             CompatibilitySettings.isMainMenuPreviewReuseCompatEnabled(context)
                         ),
+                        "relicTouchscreenObtainCompat" to formatBoolean(
+                            CompatibilitySettings.isRelicTouchscreenObtainCompatEnabled(context)
+                        ),
                         "largeTextureDownscaleCompat" to formatBoolean(
                             CompatibilitySettings.isLargeTextureDownscaleCompatEnabled(context)
                         ),

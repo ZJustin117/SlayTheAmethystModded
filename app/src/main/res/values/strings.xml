@@ -79,6 +79,8 @@
     <string name="compat_runtime_texture_compat_desc">Used to fix black blocks caused by dynamically created runtime textures. If you see missing materials/textures, consider enabling it. Pros: continues fixing black blocks not covered during import-time patching. Cons: increases startup CPU/GPU overhead from managed texture scanning, and runtime Linear/Clamp fallback may make some textures blurrier. Default is OFF to prioritize performance.</string>
     <string name="compat_main_menu_preview_reuse_title">Main-menu character preview reuse</string>
     <string name="compat_main_menu_preview_reuse_desc">When enabled, repeated main-menu preview rebuilds reuse already-instantiated character previews when safe, and modded character-option textures are cached instead of being reloaded every cycle. This reduces repeated return-to-menu churn and makes the related diagnostics easier to read. Disable it if you want behavior closer to the original mod stack while investigating character-select regressions. This takes effect on the next launch.</string>
+    <string name="compat_relic_touchscreen_obtain_title">Relic touchscreen direct pick</string>
+    <string name="compat_relic_touchscreen_obtain_desc">When enabled, relic clicks use the same direct-pick path as mouse mode instead of the original touchscreen confirm-button path. This fixes modded relic choice screens that reuse boss relic click logic but do not render the original boss relic confirm button. This is a runtime compatibility switch and takes effect on the next launch.</string>
     <string name="compat_large_texture_downscale_title">Large texture fallback downscale</string>
     <string name="compat_large_texture_downscale_desc">When enabled, the runtime applies a generic fallback for oversized texture uploads: large external-mod atlas pages, loose textures, portraits, card art, and other runtime-loaded images can be downscaled automatically, while especially large textures can also be reduced after GPU memory pressure crosses the soft budget. This lowers HarmonyOS/Android compatibility-layer GPU leak kills, but some affected assets may look softer. Default is ON.</string>
     <string name="compat_texture_residency_manager_title">Global texture leak watchdog</string>
@@ -1457,6 +1459,7 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="settings_status_import_atlas_downscale_level">Import atlas pre-downscale level: max edge %1$dpx</string>
     <string name="settings_status_mod_manifest_root_compat">Mod manifest root compat: %1$s</string>
     <string name="settings_status_runtime_texture_compat">Runtime texture compat: %1$s</string>
+    <string name="settings_status_relic_touchscreen_obtain_compat">Relic touchscreen direct pick: %1$s</string>
     <string name="settings_status_texture_pressure_downscale_divisor">Texture pressure downscale divisor: x%1$d</string>
     <string name="settings_status_force_linear_mipmap_filter">Force linear mipmap filter: %1$s</string>
     <string name="settings_status_bundled_jre_path">Bundled JRE path: %1$s</string>
