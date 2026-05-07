@@ -369,7 +369,6 @@ public class LwjglApplication implements Application {
 	private void finishScaledRenderFrame (ScaledRenderPipeline pipeline, int screenWidth, int screenHeight) {
 		if (pipeline == null) return;
 		try {
-			bindDefaultFramebufferForSwap();
 			pipeline.finishFrame(screenWidth, screenHeight);
 		} catch (Throwable t) {
 			scaledRenderPipelineDisabled = true;
