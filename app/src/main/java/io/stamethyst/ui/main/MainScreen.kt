@@ -334,6 +334,7 @@ private fun LauncherMainScreenContent(
     var showCreateFolderDialog by remember { mutableStateOf(false) }
     var showSteamCloudBottomSheet by remember { mutableStateOf(false) }
     var showSteamCloudLaunchWarning by remember { mutableStateOf(false) }
+    var showEnabledModsDialog by remember { mutableStateOf(false) }
     var pendingSteamCloudConflictChoice by remember {
         mutableStateOf<SteamCloudConflictResolutionChoice?>(null)
     }
@@ -341,6 +342,9 @@ private fun LauncherMainScreenContent(
     val hazeState = rememberHazeState()
     val crashRecovery = uiState.crashRecovery
     val pendingLaunchUnreadSuggestionModNames = uiState.pendingLaunchUnreadSuggestionModNames
+    val enabledModNames = uiState.optionalMods
+        .filter { it.enabled }
+        .map { mod -> mod.name.ifBlank { mod.modId } }
     val steamCloudIndicator = uiState.steamCloudIndicator
     val steamCloudBottomSheetVisible = showSteamCloudBottomSheet && steamCloudIndicator.visible
     val steamCloudBottomSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -506,6 +510,7 @@ private fun LauncherMainScreenContent(
                     },
                     enabledCount = uiState.optionalMods.count { it.enabled },
                     totalCount = uiState.optionalMods.size,
+                    onEnabledModsClick = { showEnabledModsDialog = true },
                     gameRunning = uiState.gameProcessRunning,
                     hasStorageIssue = uiState.storageIssue != null
                 )
@@ -559,6 +564,13 @@ private fun LauncherMainScreenContent(
         )
     }
 
+    if (showEnabledModsDialog) {
+        EnabledModsDialog(
+            modNames = enabledModNames,
+            onDismiss = { showEnabledModsDialog = false }
+        )
+    }
+
     if (showSteamCloudLaunchWarning) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { showSteamCloudLaunchWarning = false },
@@ -582,6 +594,46 @@ private fun LauncherMainScreenContent(
             }
         )
     }
+}
+
+@Composable
+private fun EnabledModsDialog(
+    modNames: List<String>,
+    onDismiss: () -> Unit,
+) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = stringResource(R.string.main_enabled_mods_dialog_title)) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 320.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (modNames.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.main_enabled_mods_dialog_empty),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    modNames.forEach { modName ->
+                        Text(
+                            text = "- $modName",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.common_action_close))
+            }
+        }
+    )
 }
 
 private const val BOTTOM_BAR_SWITCH_ANIMATION_MS = 220
@@ -1722,6 +1774,7 @@ private fun MainBottomBarSwitcher(
     onLaunch: () -> Unit,
     enabledCount: Int,
     totalCount: Int,
+    onEnabledModsClick: () -> Unit,
     gameRunning: Boolean,
     hasStorageIssue: Boolean
 ) {
@@ -1765,6 +1818,7 @@ private fun MainBottomBarSwitcher(
                 onLaunch = onLaunch,
                 enabledCount = enabledCount,
                 totalCount = totalCount,
+                onEnabledModsClick = onEnabledModsClick,
                 gameRunning = gameRunning,
                 hasStorageIssue = hasStorageIssue
             )
@@ -1782,6 +1836,7 @@ private fun MainBottomFixedActions(
     onLaunch: () -> Unit,
     enabledCount: Int,
     totalCount: Int,
+    onEnabledModsClick: () -> Unit,
     gameRunning: Boolean,
     hasStorageIssue: Boolean
 ) {
@@ -1799,11 +1854,16 @@ private fun MainBottomFixedActions(
                 .navigationBarsPadding(),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text(
-                text = stringResource(R.string.main_enabled_mods_count, enabledCount, totalCount),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold
-            )
+            TextButton(
+                onClick = onEnabledModsClick,
+                contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.main_enabled_mods_count, enabledCount, totalCount),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
             Text(
                 text = when {
                     hasStorageIssue -> stringResource(R.string.main_status_storage_unavailable_os_issue)

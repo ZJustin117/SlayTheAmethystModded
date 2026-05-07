@@ -633,6 +633,8 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="common_busy_preparing_jvm_log_bundle">Preparing JVM log bundle...</string>
     <string name="main_feedback_updates_content_description">Feedback updates available</string>
     <string name="main_enabled_mods_count">%1$d / %2$d mods enabled</string>
+    <string name="main_enabled_mods_dialog_title">Enabled mods</string>
+    <string name="main_enabled_mods_dialog_empty">No mods are currently enabled.</string>
     <string name="main_status_storage_unavailable_os_issue">The mod directory is currently unavailable due to an OS issue. Restarting the phone is recommended.</string>
     <string name="main_status_game_running">A game session is still running</string>
     <string name="main_status_mods_ok">Mod status is normal</string>
