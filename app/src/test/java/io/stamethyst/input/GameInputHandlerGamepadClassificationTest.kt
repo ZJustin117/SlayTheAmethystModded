@@ -30,6 +30,28 @@ class GameInputHandlerGamepadClassificationTest {
     }
 
     @Test
+    fun mixedKeyboardGamepadButtonUsesGamepadPath() {
+        assertTrue(
+            GameInputHandler.isGamepadKeyEventSource(
+                keyCode = KeyEvent.KEYCODE_BUTTON_A,
+                eventSource = InputDevice.SOURCE_KEYBOARD or InputDevice.SOURCE_GAMEPAD,
+                deviceSources = InputDevice.SOURCE_KEYBOARD or InputDevice.SOURCE_GAMEPAD
+            )
+        )
+    }
+
+    @Test
+    fun mixedKeyboardBackKeyStaysKeyboard() {
+        assertFalse(
+            GameInputHandler.isGamepadKeyEventSource(
+                keyCode = KeyEvent.KEYCODE_BACK,
+                eventSource = InputDevice.SOURCE_KEYBOARD or InputDevice.SOURCE_GAMEPAD,
+                deviceSources = InputDevice.SOURCE_KEYBOARD or InputDevice.SOURCE_GAMEPAD
+            )
+        )
+    }
+
+    @Test
     fun pureGamepadButtonUsesGamepadPath() {
         assertTrue(
             GameInputHandler.isGamepadKeyEventSource(

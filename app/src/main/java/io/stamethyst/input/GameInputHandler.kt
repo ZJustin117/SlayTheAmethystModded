@@ -36,11 +36,44 @@ class GameInputHandler(
             deviceSources: Int?
         ): Boolean {
             if (!AndroidGamepadGlfwMapper.isGamepadKeyCode(keyCode)) return false
+            if (isDedicatedGamepadButtonKeyCode(keyCode)) {
+                return hasGamepadSource(eventSource) ||
+                    (deviceSources != null && hasGamepadSource(deviceSources))
+            }
             if (hasKeyboardSource(eventSource)) return false
             if (hasGamepadSource(eventSource)) return true
             return deviceSources != null &&
                 hasGamepadSource(deviceSources) &&
                 !hasKeyboardSource(deviceSources)
+        }
+
+        private fun isDedicatedGamepadButtonKeyCode(keyCode: Int): Boolean {
+            return when (keyCode) {
+                KeyEvent.KEYCODE_BUTTON_A,
+                KeyEvent.KEYCODE_BUTTON_1,
+                KeyEvent.KEYCODE_BUTTON_B,
+                KeyEvent.KEYCODE_BUTTON_2,
+                KeyEvent.KEYCODE_BUTTON_X,
+                KeyEvent.KEYCODE_BUTTON_3,
+                KeyEvent.KEYCODE_BUTTON_Y,
+                KeyEvent.KEYCODE_BUTTON_4,
+                KeyEvent.KEYCODE_BUTTON_L1,
+                KeyEvent.KEYCODE_BUTTON_5,
+                KeyEvent.KEYCODE_BUTTON_R1,
+                KeyEvent.KEYCODE_BUTTON_6,
+                KeyEvent.KEYCODE_BUTTON_SELECT,
+                KeyEvent.KEYCODE_BUTTON_7,
+                KeyEvent.KEYCODE_BUTTON_START,
+                KeyEvent.KEYCODE_BUTTON_8,
+                KeyEvent.KEYCODE_BUTTON_MODE,
+                KeyEvent.KEYCODE_BUTTON_THUMBL,
+                KeyEvent.KEYCODE_BUTTON_9,
+                KeyEvent.KEYCODE_BUTTON_THUMBR,
+                KeyEvent.KEYCODE_BUTTON_10,
+                KeyEvent.KEYCODE_BUTTON_L2,
+                KeyEvent.KEYCODE_BUTTON_R2 -> true
+                else -> false
+            }
         }
 
         private fun hasKeyboardSource(source: Int): Boolean {
