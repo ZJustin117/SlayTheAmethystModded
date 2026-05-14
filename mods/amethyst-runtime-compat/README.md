@@ -61,6 +61,9 @@ Adds a debug-only runtime crash trigger controlled by the launcher's `amethyst.d
 19. `TouchscreenSingleTargetCancelPatches`
 Cancels the current combat targeted-card selection when a native touchscreen blank tap or release would otherwise promote an already selected targeted card into the base game's single-target mode or directly call `playCard()` with no hovered monster, and also cleans up any blank click/release that still returns from `AbstractPlayer.updateSingleTargetInput` in target-selection mode. This addresses the symptom where cards such as `Strike` can remain stuck in midair after tapping the card and then tapping empty combat space under the launcher's default hybrid touchscreen setting; tapping a monster is not intercepted and still continues through the original target/play-card path. Type: gameplay/runtime fix implemented by `TouchscreenSingleTargetCancelPatches`.
 
+20. `DisplaySettingsPromptCompatPatches`
+Replaces the base game's display-settings restart prompt with a launcher-specific warning telling players not to change graphics quality in-game and to use launcher settings instead. This addresses the symptom where changing quality-related options in the in-game settings shows the misleading vanilla message that a game restart is enough for display-setting changes to take effect, even though Amethyst-managed graphics options should be adjusted before launch. Type: compatibility workaround implemented by `DisplaySettingsPromptCompatPatches`.
+
 ## Maintenance rule
 
 If you add another fix through this mod, update this README in the same change and describe:
