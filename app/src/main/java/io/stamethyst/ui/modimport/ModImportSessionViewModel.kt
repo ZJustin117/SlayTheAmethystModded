@@ -21,6 +21,8 @@ import io.stamethyst.backend.mods.importing.ModImportItemPlan
 import io.stamethyst.backend.mods.importing.ModImportItemStatus
 import io.stamethyst.backend.mods.importing.ModImportPlan
 import io.stamethyst.backend.mods.importing.ModImportPlanner
+import io.stamethyst.ui.main.MainFolderStateStore
+import io.stamethyst.ui.main.UNASSIGNED_FOLDER_ID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +44,7 @@ internal data class ModImportUiState(
     val scanning: Boolean = false,
     val plan: ModImportPlan? = null,
     val decisions: ModImportDecisions = ModImportDecisions(),
+    val folderOptions: List<ModImportFolderOptionUi> = emptyList(),
     val progress: ModImportExecutionProgress? = null,
     val report: ModImportExecutionReport? = null,
     val errorMessage: String? = null
@@ -52,6 +55,11 @@ internal data class ModImportUiState(
             conflictKey == null || decisions.duplicateDecisionFor(conflictKey) != DuplicateImportDecision.SkipNew
         } == true
 }
+
+internal data class ModImportFolderOptionUi(
+    val id: String?,
+    val name: String
+)
 
 @Stable
 internal class ModImportSessionViewModel : ViewModel() {
@@ -81,6 +89,7 @@ internal class ModImportSessionViewModel : ViewModel() {
                     return@execute
                 }
                 val initialDecisions = buildInitialDecisions(plan)
+                val folderOptions = buildFolderOptions(context)
                 updateState { state ->
                     if (activeRequestToken != requestToken) return@updateState state
                     state.copy(
@@ -88,6 +97,7 @@ internal class ModImportSessionViewModel : ViewModel() {
                         scanning = false,
                         plan = plan,
                         decisions = initialDecisions,
+                        folderOptions = folderOptions,
                         errorMessage = null
                     )
                 }
@@ -185,6 +195,16 @@ internal class ModImportSessionViewModel : ViewModel() {
         uiState = uiState.copy(decisions = uiState.decisions.copy(atlasDownscaleStrategy = strategy))
     }
 
+    fun setTargetFolder(itemId: String, folderId: String?) {
+        val normalizedFolderId = folderId?.trim()?.ifBlank { null }
+        val current = uiState.decisions
+        uiState = uiState.copy(
+            decisions = current.copy(
+                targetFolderIdByItemId = current.targetFolderIdByItemId + (itemId to normalizedFolderId)
+            )
+        )
+    }
+
     fun execute(context: Context, onCompleted: () -> Unit = {}) {
         val plan = uiState.plan ?: return
         val decisions = uiState.decisions
@@ -239,8 +259,25 @@ internal class ModImportSessionViewModel : ViewModel() {
             patchEnabledByKey = patchEnabled,
             atlasDownscaleStrategy = AtlasOfflineDownscaleStrategy.maxEdge(
                 AtlasOfflineDownscaleStrategy.DEFAULT_MAX_EDGE_PX
-            )
+            ),
+            targetFolderIdByItemId = emptyMap()
         )
+    }
+
+    private fun buildFolderOptions(context: Context): List<ModImportFolderOptionUi> {
+        val activity = context as? android.app.Activity ?: return emptyList()
+        val store = MainFolderStateStore().apply { ensureLoaded(activity) }
+        val foldersById = store.folders.associateBy { it.id }
+        return store.buildFolderOrderTokens().mapNotNull { token ->
+            if (token == UNASSIGNED_FOLDER_ID) {
+                ModImportFolderOptionUi(id = null, name = store.unassignedName)
+            } else {
+                val folder = foldersById[token] ?: return@mapNotNull null
+                ModImportFolderOptionUi(id = folder.id, name = folder.name)
+            }
+        }.ifEmpty {
+            listOf(ModImportFolderOptionUi(id = null, name = context.getString(R.string.main_import_folder_picker_unassigned)))
+        }
     }
 
     private fun hasConfigurablePatches(plan: ModImportPlan): Boolean {

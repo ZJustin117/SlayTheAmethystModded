@@ -185,7 +185,7 @@ internal object AtlasOfflineDownscalePatchModule : ImportPatchModule {
     override val displayNameResId = R.string.mod_import_patch_atlas_downscale_title
     override val summaryResId = R.string.mod_import_patch_atlas_downscale_summary
     override val category = ImportPatchCategory.Texture
-    override val defaultEnabled = false
+    override val defaultEnabled = true
     override val userConfigurable = true
     override val order = 400
     override val failurePolicy = ImportPatchFailurePolicy.SkipPatchContinueImport

@@ -1,14 +1,24 @@
 package io.stamethyst.ui.modimport
 
 import android.app.Activity
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -17,11 +27,17 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -29,19 +45,24 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.stamethyst.R
+import io.stamethyst.backend.mods.AtlasOfflineDownscaleMode
 import io.stamethyst.backend.mods.AtlasOfflineDownscaleStrategy
 import io.stamethyst.backend.mods.importing.DuplicateImportDecision
 import io.stamethyst.backend.mods.importing.ImportPatchPlan
 import io.stamethyst.backend.mods.importing.ImportPatchResult
 import io.stamethyst.backend.mods.importing.ModImportItemPlan
-import io.stamethyst.backend.mods.importing.ModImportItemStatus
 import io.stamethyst.backend.mods.importing.ModImportPlan
 
 @Composable
@@ -73,6 +94,7 @@ internal fun ModImportHost(
             onSetReusePreviousFolder = viewModel::setReusePreviousFolder,
             onSetPatchEnabled = viewModel::setPatchEnabled,
             onSetAtlasStrategy = viewModel::setAtlasDownscaleStrategy,
+            onSetTargetFolder = viewModel::setTargetFolder,
             onExecute = {
                 viewModel.execute(context) {
                     activity?.runOnUiThread(onImportCompleted)
@@ -94,6 +116,7 @@ private fun ModImportWizardDialog(
     onSetReusePreviousFolder: (Boolean) -> Unit,
     onSetPatchEnabled: (String, String, Boolean) -> Unit,
     onSetAtlasStrategy: (AtlasOfflineDownscaleStrategy?) -> Unit,
+    onSetTargetFolder: (String, String?) -> Unit,
     onExecute: () -> Unit
 ) {
     val title = when (state.step) {
@@ -110,6 +133,7 @@ private fun ModImportWizardDialog(
         onDismissRequest = {
             if (state.step != ModImportStep.Executing) onDismiss()
         },
+        properties = DialogProperties(dismissOnClickOutside = false),
         title = { Text(title) },
         text = {
             Column(
@@ -132,7 +156,7 @@ private fun ModImportWizardDialog(
                         onSetPatchEnabled = onSetPatchEnabled,
                         onSetAtlasStrategy = onSetAtlasStrategy
                     )
-                    ModImportStep.Confirm -> ConfirmStep(state)
+                    ModImportStep.Confirm -> ConfirmStep(state, onSetTargetFolder)
                     ModImportStep.Executing -> ExecutingStep(state)
                     ModImportStep.Result -> ResultStep(state)
                 }
@@ -220,14 +244,10 @@ private fun ImportFileCard(item: ModImportItemPlan) {
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = item.source.displayName,
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.titleSmall
-                )
-                StatusChip(item)
-            }
+            Text(
+                text = item.source.displayName,
+                style = MaterialTheme.typography.titleSmall
+            )
             if (item.manifest != null) {
                 Text(
                     stringResource(R.string.mod_import_summary_item_title, item.displayModName, item.displayModId),
@@ -248,17 +268,6 @@ private fun ImportFileCard(item: ModImportItemPlan) {
 }
 
 @Composable
-private fun StatusChip(item: ModImportItemPlan) {
-    val selected = item.status == ModImportItemStatus.IMPORTABLE || item.status == ModImportItemStatus.NEEDS_DECISION
-    FilterChip(
-        selected = selected,
-        onClick = {},
-        label = { Text(stringResource(item.statusLabelResId())) },
-        enabled = false
-    )
-}
-
-@Composable
 private fun DuplicateStep(
     state: ModImportUiState,
     onSetDuplicateDecision: (String, DuplicateImportDecision) -> Unit,
@@ -266,6 +275,9 @@ private fun DuplicateStep(
     onSetReusePreviousFolder: (Boolean) -> Unit
 ) {
     val plan = state.plan ?: return
+    val showReplaceOptions = plan.duplicateConflicts.any { conflict ->
+        state.decisions.duplicateDecisionFor(conflict.normalizedModId) == DuplicateImportDecision.ReplaceExisting
+    }
     Column(
         modifier = Modifier.verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -297,24 +309,37 @@ private fun DuplicateStep(
                 }
             }
         }
-        HorizontalDivider()
-        ToggleRow(
-            label = stringResource(R.string.mod_import_wizard_reuse_previous_file_name),
-            checked = state.decisions.reusePreviousFileNameOnReplace,
-            onCheckedChange = onSetReusePreviousFileName
-        )
-        ToggleRow(
-            label = stringResource(R.string.mod_import_wizard_reuse_previous_folder),
-            checked = state.decisions.reusePreviousFolderOnReplace,
-            onCheckedChange = onSetReusePreviousFolder
-        )
+        AnimatedVisibility(
+            visible = showReplaceOptions,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically()
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                HorizontalDivider()
+                ToggleRow(
+                    label = stringResource(R.string.mod_import_wizard_reuse_previous_file_name),
+                    checked = state.decisions.reusePreviousFileNameOnReplace,
+                    onCheckedChange = onSetReusePreviousFileName
+                )
+                ToggleRow(
+                    label = stringResource(R.string.mod_import_wizard_reuse_previous_folder),
+                    checked = state.decisions.reusePreviousFolderOnReplace,
+                    onCheckedChange = onSetReusePreviousFolder
+                )
+            }
+        }
     }
 }
 
 @Composable
 private fun DuplicateOption(selected: Boolean, label: String, onClick: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        RadioButton(selected = selected, onClick = onClick)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(selected = selected, onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(selected = selected, onClick = null)
         Text(label)
     }
 }
@@ -327,6 +352,26 @@ private fun PatchStep(
 ) {
     val plan = state.plan ?: return
     val patchItems = plan.importableItems.flatMap { item -> item.patchPlans.map { item to it } }
+    var showAtlasHelp by remember { mutableStateOf(false) }
+    val atlasHelpText = buildAtlasDownscaleHelpText()
+    if (showAtlasHelp) {
+        AlertDialog(
+            onDismissRequest = { showAtlasHelp = false },
+            properties = DialogProperties(dismissOnClickOutside = false),
+            title = { Text(stringResource(R.string.mod_import_dialog_atlas_downscale_confirm_title)) },
+            text = {
+                Text(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    text = atlasHelpText
+                )
+            },
+            confirmButton = {
+                Button(onClick = { showAtlasHelp = false }) {
+                    Text(stringResource(R.string.common_action_confirm))
+                }
+            }
+        )
+    }
     Column(
         modifier = Modifier.verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -337,15 +382,28 @@ private fun PatchStep(
                 item = item,
                 patch = patch,
                 checked = state.decisions.isPatchEnabled(item.id, patch),
-                onCheckedChange = { enabled -> onSetPatchEnabled(item.id, patch.moduleId, enabled) }
+                onCheckedChange = { enabled ->
+                    onSetPatchEnabled(item.id, patch.moduleId, enabled)
+                    if (enabled && patch.moduleId == ATLAS_OFFLINE_DOWNSCALE_PATCH_ID) {
+                        onSetAtlasStrategy(
+                            state.decisions.atlasDownscaleStrategy ?: defaultAtlasDownscaleStrategy()
+                        )
+                    }
+                }
             )
         }
-        if (patchItems.any { it.second.moduleId == "texture.atlas_offline_downscale" }) {
-            HorizontalDivider()
-            Text(stringResource(R.string.mod_import_wizard_atlas_downscale_level), style = MaterialTheme.typography.titleSmall)
-            AtlasStrategyOption(stringResource(R.string.mod_import_wizard_atlas_strategy_max_edge, 512), AtlasOfflineDownscaleStrategy.maxEdge(512), state, onSetAtlasStrategy)
-            AtlasStrategyOption(stringResource(R.string.mod_import_wizard_atlas_strategy_max_edge, 1024), AtlasOfflineDownscaleStrategy.maxEdge(1024), state, onSetAtlasStrategy)
-            AtlasStrategyOption(stringResource(R.string.mod_import_wizard_atlas_strategy_max_edge, 2048), AtlasOfflineDownscaleStrategy.maxEdge(2048), state, onSetAtlasStrategy)
+        val atlasItems = patchItems.filter { it.second.moduleId == ATLAS_OFFLINE_DOWNSCALE_PATCH_ID }
+        val showAtlasLevel = atlasItems.any { (item, patch) -> state.decisions.isPatchEnabled(item.id, patch) }
+        AnimatedVisibility(
+            visible = showAtlasLevel,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically()
+        ) {
+            AtlasDownscaleLevelSection(
+                state = state,
+                onShowHelp = { showAtlasHelp = true },
+                onSetAtlasStrategy = onSetAtlasStrategy
+            )
         }
     }
 }
@@ -373,7 +431,7 @@ private fun PatchCard(
                 }
                 Switch(
                     checked = checked,
-                    enabled = patch.userConfigurable,
+                    enabled = true,
                     onCheckedChange = onCheckedChange
                 )
             }
@@ -384,23 +442,118 @@ private fun PatchCard(
 }
 
 @Composable
-private fun AtlasStrategyOption(
-    label: String,
-    strategy: AtlasOfflineDownscaleStrategy,
+private fun AtlasDownscaleLevelSection(
     state: ModImportUiState,
+    onShowHelp: () -> Unit,
     onSetAtlasStrategy: (AtlasOfflineDownscaleStrategy?) -> Unit
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        RadioButton(
-            selected = state.decisions.atlasDownscaleStrategy == strategy,
-            onClick = { onSetAtlasStrategy(strategy) }
+    val selectedStrategy = state.decisions.atlasDownscaleStrategy ?: defaultAtlasDownscaleStrategy()
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        HorizontalDivider()
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = stringResource(R.string.mod_import_wizard_atlas_downscale_level),
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.weight(1f)
+            )
+            IconButton(onClick = onShowHelp) {
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("?", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            }
+        }
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            SegmentedButton(
+                selected = selectedStrategy.mode == AtlasOfflineDownscaleMode.PERCENTAGE,
+                onClick = {
+                    onSetAtlasStrategy(
+                        AtlasOfflineDownscaleStrategy.percentage(
+                            selectedStrategy.takeIf { it.mode == AtlasOfflineDownscaleMode.PERCENTAGE }?.value
+                                ?: AtlasOfflineDownscaleStrategy.DEFAULT_PERCENTAGE
+                        )
+                    )
+                },
+                shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
+            ) {
+                Text(stringResource(R.string.mod_import_atlas_downscale_strategy_percentage))
+            }
+            SegmentedButton(
+                selected = selectedStrategy.mode == AtlasOfflineDownscaleMode.MAX_EDGE,
+                onClick = {
+                    onSetAtlasStrategy(
+                        AtlasOfflineDownscaleStrategy.maxEdge(
+                            selectedStrategy.takeIf { it.mode == AtlasOfflineDownscaleMode.MAX_EDGE }?.value
+                                ?: AtlasOfflineDownscaleStrategy.DEFAULT_MAX_EDGE_PX
+                        )
+                    )
+                },
+                shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
+            ) {
+                Text(stringResource(R.string.mod_import_atlas_downscale_strategy_max_edge))
+            }
+        }
+        val options = when (selectedStrategy.mode) {
+            AtlasOfflineDownscaleMode.PERCENTAGE -> AtlasOfflineDownscaleStrategy.percentageOptions().toList()
+            AtlasOfflineDownscaleMode.MAX_EDGE -> AtlasOfflineDownscaleStrategy.maxEdgeOptions().toList()
+        }
+        options.forEach { option ->
+            val strategy = when (selectedStrategy.mode) {
+                AtlasOfflineDownscaleMode.PERCENTAGE -> AtlasOfflineDownscaleStrategy.percentage(option)
+                AtlasOfflineDownscaleMode.MAX_EDGE -> AtlasOfflineDownscaleStrategy.maxEdge(option)
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .selectable(selected = selectedStrategy == strategy) { onSetAtlasStrategy(strategy) },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(
+                    selected = selectedStrategy == strategy,
+                    onClick = null
+                )
+                Text(
+                    when (selectedStrategy.mode) {
+                        AtlasOfflineDownscaleMode.PERCENTAGE -> stringResource(
+                            R.string.mod_import_atlas_downscale_level_percent_label,
+                            option
+                        )
+                        AtlasOfflineDownscaleMode.MAX_EDGE -> stringResource(
+                            R.string.mod_import_atlas_downscale_level_max_edge_label,
+                            option
+                        )
+                    }
+                )
+            }
+        }
+        Text(
+            when (selectedStrategy.mode) {
+                AtlasOfflineDownscaleMode.PERCENTAGE -> stringResource(
+                    R.string.mod_import_atlas_downscale_level_percent_desc,
+                    selectedStrategy.value,
+                    AtlasOfflineDownscaleStrategy.CANDIDATE_PREVIEW_MAX_EDGE_PX
+                )
+                AtlasOfflineDownscaleMode.MAX_EDGE -> stringResource(
+                    R.string.mod_import_atlas_downscale_level_max_edge_desc,
+                    selectedStrategy.value
+                )
+            },
+            style = MaterialTheme.typography.bodySmall
         )
-        Text(label)
     }
 }
 
 @Composable
-private fun ConfirmStep(state: ModImportUiState) {
+private fun ConfirmStep(
+    state: ModImportUiState,
+    onSetTargetFolder: (String, String?) -> Unit
+) {
     val plan = state.plan ?: return
     val importing = plan.importableItems.count { item ->
         val conflictKey = item.duplicateConflictKey
@@ -412,13 +565,78 @@ private fun ConfirmStep(state: ModImportUiState) {
     val skippedByDecision = plan.duplicateConflicts.count {
         state.decisions.duplicateDecisionFor(it.normalizedModId) == DuplicateImportDecision.SkipNew
     }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(
+        modifier = Modifier.verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
         Text(stringResource(R.string.mod_import_wizard_confirm_ready, importing))
         Text(stringResource(R.string.mod_import_wizard_confirm_replacing, replacing))
         Text(stringResource(R.string.mod_import_wizard_confirm_skipped_by_decision, skippedByDecision))
         Text(stringResource(R.string.mod_import_wizard_confirm_blocked, plan.blockedItems.size))
         Text(stringResource(R.string.mod_import_wizard_confirm_skipped_archives, plan.skippedItems.size))
         Text(stringResource(R.string.mod_import_wizard_confirm_enabled_patches, plan.importableItems.sumOf { item -> item.patchPlans.count { state.decisions.isPatchEnabled(item.id, it) } }))
+        val folderItems = plan.importableItems.filter { item ->
+            val conflictKey = item.duplicateConflictKey
+            conflictKey == null || state.decisions.duplicateDecisionFor(conflictKey) != DuplicateImportDecision.SkipNew
+        }
+        if (folderItems.isNotEmpty() && state.folderOptions.isNotEmpty()) {
+            HorizontalDivider()
+            Text(stringResource(R.string.main_import_folder_picker_list_title), style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.main_import_folder_picker_list_message), style = MaterialTheme.typography.bodySmall)
+            folderItems.forEach { item ->
+                ImportFolderSelector(
+                    item = item,
+                    options = state.folderOptions,
+                    selectedFolderId = state.decisions.targetFolderIdFor(item.id),
+                    onSetTargetFolder = onSetTargetFolder
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ImportFolderSelector(
+    item: ModImportItemPlan,
+    options: List<ModImportFolderOptionUi>,
+    selectedFolderId: String?,
+    onSetTargetFolder: (String, String?) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selectedOption = options.firstOrNull { it.id == selectedFolderId }
+        ?: options.firstOrNull { it.id == null }
+        ?: options.first()
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(item.displayModName, style = MaterialTheme.typography.titleSmall)
+            Box(modifier = Modifier.fillMaxWidth()) {
+                TextButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { expanded = true }
+                ) {
+                    Text(
+                        text = stringResource(R.string.main_import_folder_picker_item_target_format, selectedOption.name),
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                DropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
+                ) {
+                    options.forEach { option ->
+                        DropdownMenuItem(
+                            text = { Text(option.name) },
+                            onClick = {
+                                expanded = false
+                                onSetTargetFolder(item.id, option.id)
+                            }
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -427,8 +645,12 @@ private fun ExecutingStep(state: ModImportUiState) {
     val progress = state.progress
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (progress != null) {
+            val animatedProgress by animateFloatAsState(
+                targetValue = progress.percent / 100f,
+                label = "modImportProgress"
+            )
             LinearProgressIndicator(
-                progress = { progress.percent / 100f },
+                progress = { animatedProgress },
                 modifier = Modifier.fillMaxWidth()
             )
             Text(progress.message)
@@ -519,4 +741,21 @@ private fun resolvePatchResultTitle(patch: ImportPatchResult): String {
     } else {
         patch.displayName
     }
+}
+
+@Composable
+private fun buildAtlasDownscaleHelpText(): String {
+    return buildString {
+        append(stringResource(R.string.mod_import_atlas_downscale_confirm_message_pros))
+        append('\n')
+        append(stringResource(R.string.mod_import_atlas_downscale_confirm_message_cons))
+        append('\n')
+        append(stringResource(R.string.mod_import_atlas_downscale_confirm_message_outro))
+    }
+}
+
+private const val ATLAS_OFFLINE_DOWNSCALE_PATCH_ID = "texture.atlas_offline_downscale"
+
+private fun defaultAtlasDownscaleStrategy(): AtlasOfflineDownscaleStrategy {
+    return AtlasOfflineDownscaleStrategy.maxEdge(AtlasOfflineDownscaleStrategy.DEFAULT_MAX_EDGE_PX)
 }

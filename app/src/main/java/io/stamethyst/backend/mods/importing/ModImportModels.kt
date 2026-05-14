@@ -97,7 +97,8 @@ internal data class ModImportDecisions(
     val reusePreviousFolderOnReplace: Boolean = true,
     val patchEnabledByKey: Map<String, Boolean> = emptyMap(),
     val atlasDownscaleStrategy: AtlasOfflineDownscaleStrategy? = null,
-    val targetFolderId: String? = null
+    val targetFolderId: String? = null,
+    val targetFolderIdByItemId: Map<String, String?> = emptyMap()
 ) {
     fun duplicateDecisionFor(modId: String): DuplicateImportDecision {
         return duplicateDecisions[modId] ?: DuplicateImportDecision.KeepMultiple
@@ -105,6 +106,18 @@ internal data class ModImportDecisions(
 
     fun isPatchEnabled(itemId: String, plan: ImportPatchPlan): Boolean {
         return patchEnabledByKey[patchDecisionKey(itemId, plan.moduleId)] ?: plan.defaultEnabled
+    }
+
+    fun targetFolderIdFor(itemId: String): String? {
+        return if (targetFolderIdByItemId.containsKey(itemId)) {
+            targetFolderIdByItemId[itemId]
+        } else {
+            targetFolderId
+        }
+    }
+
+    fun hasTargetFolderDecision(itemId: String): Boolean {
+        return targetFolderIdByItemId.containsKey(itemId)
     }
 
     companion object {
@@ -116,10 +129,12 @@ internal data class ModImportExecutionProgress(
     val currentIndex: Int,
     val total: Int,
     val currentFileName: String,
-    val message: String
+    val message: String,
+    val currentStep: Int = currentIndex,
+    val totalSteps: Int = total
 ) {
     val percent: Int
-        get() = if (total <= 0) 0 else ((currentIndex.coerceIn(0, total) * 100) / total).coerceIn(0, 100)
+        get() = if (totalSteps <= 0) 0 else ((currentStep.coerceIn(0, totalSteps) * 100) / totalSteps).coerceIn(0, 100)
 }
 
 internal data class ModImportExecutionItemResult(
