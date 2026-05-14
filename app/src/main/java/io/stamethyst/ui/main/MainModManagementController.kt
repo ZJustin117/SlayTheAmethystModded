@@ -847,6 +847,7 @@ internal class MainModManagementController(
                     if (!assignedFolderId.isNullOrBlank()) {
                         folderAssignments[renamedFile.absolutePath] = assignedFolderId
                     }
+                    persistFolderState(host)
                     refresh(host, storageAccessible = true)
                     emitSnackbar(host.getString(R.string.main_mod_renamed, renamedFile.name))
                     hostCallbacks.republish(host)
