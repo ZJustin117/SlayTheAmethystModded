@@ -21,13 +21,16 @@ import io.stamethyst.backend.mods.importing.patches.ManifestRootPatchModule
 import io.stamethyst.model.ModItemUi
 import io.stamethyst.ui.main.MainFolderStateStore
 import io.stamethyst.ui.main.resolveAssignedFolderId
+import java.io.BufferedInputStream
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
 import java.util.LinkedHashMap
 import java.util.LinkedHashSet
 import java.util.Locale
 import java.util.zip.ZipFile
+import java.util.zip.ZipInputStream
 
 internal object ModImportPlanner {
     private val ARCHIVE_EXTENSIONS = arrayOf(
@@ -127,15 +130,15 @@ internal object ModImportPlanner {
 
     private fun inspectSource(context: Context, source: PreparedImportSource): ModImportItemPlan {
         val itemId = "item-${source.index}"
-        if (isLikelyCompressedArchive(source)) {
-            return blockedItem(
-                itemId = itemId,
-                source = source,
-                reason = ModImportBlockingReason.CompressedArchive,
-                detail = context.getString(R.string.mod_import_block_archive_detail)
-            )
-        }
-        if (!source.displayName.endsWith(".jar", ignoreCase = true)) {
+        if (!shouldAttemptJarInspection(source.displayName, source.file)) {
+            if (isLikelyCompressedArchive(source)) {
+                return blockedItem(
+                    itemId = itemId,
+                    source = source,
+                    reason = ModImportBlockingReason.CompressedArchive,
+                    detail = context.getString(R.string.mod_import_block_archive_detail)
+                )
+            }
             return blockedItem(
                 itemId = itemId,
                 source = source,
@@ -160,6 +163,14 @@ internal object ModImportPlanner {
                         source = source,
                         reason = ModImportBlockingReason.ReservedCoreComponent,
                         detail = context.getString(R.string.mod_import_block_modthespire_core_detail)
+                    )
+                }
+                if (isLikelyCompressedArchive(source)) {
+                    return blockedItem(
+                        itemId = itemId,
+                        source = source,
+                        reason = ModImportBlockingReason.CompressedArchive,
+                        detail = context.getString(R.string.mod_import_block_archive_detail)
                     )
                 }
                 return blockedItem(
@@ -221,6 +232,14 @@ internal object ModImportPlanner {
             )
             baseItem.copy(patchPlans = patchPlans)
         } catch (error: Throwable) {
+            if (isLikelyCompressedArchive(source)) {
+                return blockedItem(
+                    itemId = itemId,
+                    source = source,
+                    reason = ModImportBlockingReason.CompressedArchive,
+                    detail = context.getString(R.string.mod_import_block_archive_detail)
+                )
+            }
             blockedItem(
                 itemId = itemId,
                 source = source,
@@ -267,6 +286,26 @@ internal object ModImportPlanner {
         val result = DuplicateZipEntryNormalizer.normalizeInPlaceIfNeeded(inspectionFile)
         ZipFile(inspectionFile).use { /* jar readability check */ }
         return result
+    }
+
+    internal fun shouldAttemptJarInspection(displayName: String, file: File): Boolean {
+        if (displayName.trim().endsWith(".jar", ignoreCase = true)) {
+            return true
+        }
+        return isReadableZipContainer(file)
+    }
+
+    internal fun isReadableZipContainer(file: File): Boolean {
+        if (!file.isFile) {
+            return false
+        }
+        return try {
+            ZipInputStream(BufferedInputStream(FileInputStream(file))).use { zipInput ->
+                zipInput.nextEntry != null
+            }
+        } catch (_: Throwable) {
+            false
+        }
     }
 
     private fun buildDuplicateZipPlan(
@@ -467,6 +506,9 @@ internal object ModImportPlanner {
 
     private fun isLikelyCompressedArchive(source: PreparedImportSource): Boolean {
         val name = source.displayName.trim().lowercase(Locale.ROOT)
+        if (name.endsWith(".jar")) {
+            return false
+        }
         if (name.isNotEmpty() && !name.endsWith(".jar") && ARCHIVE_EXTENSIONS.any { name.endsWith(it) }) {
             return true
         }
