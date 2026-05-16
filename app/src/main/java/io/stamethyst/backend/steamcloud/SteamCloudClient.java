@@ -86,8 +86,10 @@ public final class SteamCloudClient implements AutoCloseable {
     private static final long RPC_TIMEOUT_MS = 90_000L;
     private static final long DOWNLOAD_TIMEOUT_MS = 60_000L;
     private static final long CALLBACK_POLL_TIMEOUT_MS = 250L;
-    private static final int BEGIN_HTTP_UPLOAD_MAX_ATTEMPTS = 4;
+    private static final int BEGIN_HTTP_UPLOAD_MAX_ATTEMPTS = 7;
     private static final long[] BEGIN_HTTP_UPLOAD_RETRY_DELAYS_MS = new long[] { 2_000L, 5_000L, 10_000L };
+    private static final long[] BEGIN_HTTP_UPLOAD_PENDING_RETRY_DELAYS_MS =
+        new long[] { 10_000L, 20_000L, 30_000L, 60_000L, 90_000L, 120_000L };
     private static final int TRANSIENT_RPC_MAX_ATTEMPTS = 4;
     private static final long[] TRANSIENT_RPC_RETRY_DELAYS_MS = new long[] { 2_000L, 5_000L, 10_000L };
     private static final int JAVA_STEAM_LOG_TAIL_LIMIT = 12;
@@ -1157,9 +1159,7 @@ public final class SteamCloudClient implements AutoCloseable {
                 ensureServiceResult(response, "BeginHTTPUpload");
             }
 
-            long delayMs = BEGIN_HTTP_UPLOAD_RETRY_DELAYS_MS[
-                Math.min(attempt - 1, BEGIN_HTTP_UPLOAD_RETRY_DELAYS_MS.length - 1)
-            ];
+            long delayMs = beginHttpUploadRetryDelayMs(result, attempt);
             Log.w(
                 TAG,
                 "BeginHTTPUpload returned "
@@ -1173,6 +1173,7 @@ public final class SteamCloudClient implements AutoCloseable {
                     + " after "
                     + delayMs
                     + "ms."
+                    + beginHttpUploadRetryHint(result)
             );
             sleepBeforeRetry(delayMs);
         }
@@ -1267,7 +1268,22 @@ public final class SteamCloudClient implements AutoCloseable {
     }
 
     private static boolean isRetryableBeginHttpUploadResult(EResult result) {
-        return isRetryableSteamCloudResult(result);
+        return isRetryableSteamCloudResult(result)
+            || result == EResult.TooManyPending;
+    }
+
+    private static long beginHttpUploadRetryDelayMs(EResult result, int attempt) {
+        long[] delays = result == EResult.TooManyPending
+            ? BEGIN_HTTP_UPLOAD_PENDING_RETRY_DELAYS_MS
+            : BEGIN_HTTP_UPLOAD_RETRY_DELAYS_MS;
+        return delays[Math.min(attempt - 1, delays.length - 1)];
+    }
+
+    private static String beginHttpUploadRetryHint(EResult result) {
+        if (result != EResult.TooManyPending) {
+            return "";
+        }
+        return " Steam may still be clearing an earlier unfinished upload batch.";
     }
 
     private static void sleepBeforeRetry(long delayMs) throws InterruptedException {

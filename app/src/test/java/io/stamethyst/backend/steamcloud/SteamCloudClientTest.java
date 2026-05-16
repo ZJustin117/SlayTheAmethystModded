@@ -1,5 +1,7 @@
 package io.stamethyst.backend.steamcloud;
 
+import in.dragonbra.javasteam.enums.EResult;
+
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -79,6 +81,22 @@ public final class SteamCloudClientTest {
         Assert.assertTrue(error.getCause().getMessage().contains("Steam Cloud download SHA-1 mismatch"));
     }
 
+    @Test
+    public void isRetryableBeginHttpUploadResult_retriesTooManyPending() throws Exception {
+        Assert.assertTrue(invokeIsRetryableBeginHttpUploadResult(EResult.TooManyPending));
+        Assert.assertTrue(invokeIsRetryableBeginHttpUploadResult(EResult.Timeout));
+        Assert.assertFalse(invokeIsRetryableBeginHttpUploadResult(EResult.AccessDenied));
+    }
+
+    @Test
+    public void beginHttpUploadRetryDelayMs_usesLongerBackoffForTooManyPending() throws Exception {
+        Assert.assertEquals(10_000L, invokeBeginHttpUploadRetryDelayMs(EResult.TooManyPending, 1));
+        Assert.assertEquals(20_000L, invokeBeginHttpUploadRetryDelayMs(EResult.TooManyPending, 2));
+        Assert.assertEquals(120_000L, invokeBeginHttpUploadRetryDelayMs(EResult.TooManyPending, 7));
+        Assert.assertEquals(2_000L, invokeBeginHttpUploadRetryDelayMs(EResult.Timeout, 1));
+        Assert.assertEquals(10_000L, invokeBeginHttpUploadRetryDelayMs(EResult.Timeout, 4));
+    }
+
     private static void invokeValidateDownloadedBytes(
         byte[] rawBytes,
         long expectedRawSize,
@@ -94,6 +112,25 @@ public final class SteamCloudClientTest {
         );
         method.setAccessible(true);
         method.invoke(null, rawBytes, expectedRawSize, expectedSha1, remotePath);
+    }
+
+    private static boolean invokeIsRetryableBeginHttpUploadResult(EResult result) throws Exception {
+        Method method = SteamCloudClient.class.getDeclaredMethod(
+            "isRetryableBeginHttpUploadResult",
+            EResult.class
+        );
+        method.setAccessible(true);
+        return (boolean) method.invoke(null, result);
+    }
+
+    private static long invokeBeginHttpUploadRetryDelayMs(EResult result, int attempt) throws Exception {
+        Method method = SteamCloudClient.class.getDeclaredMethod(
+            "beginHttpUploadRetryDelayMs",
+            EResult.class,
+            int.class
+        );
+        method.setAccessible(true);
+        return (long) method.invoke(null, result, attempt);
     }
 
     private static final class SequencedDirectoryFile extends File {
