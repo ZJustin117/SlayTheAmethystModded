@@ -1,5 +1,7 @@
 package io.stamethyst
 
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.view.KeyEvent
 import android.widget.TextView
@@ -33,6 +35,7 @@ internal class GameSessionCoordinator(
         private const val BACK_FORCE_RESTART_DELAY_MS = 120L
         private const val BACK_FORCE_KILL_FALLBACK_MS = 1500L
         private const val CRASH_LAUNCHER_RESTART_DELAY_MS = 320L
+        private const val KEYBOARD_REQUEST_POLL_MS = 120L
         private val FOREGROUND_AUDIO_RESTORE_DELAYS_MS = longArrayOf(150L, 400L, 1000L, 2200L)
     }
 
@@ -53,8 +56,11 @@ internal class GameSessionCoordinator(
 
     private var waitingLandscapeSinceMs = -1L
     private var startCheckPosted = false
+    private var lastKeyboardRequestPayload = ""
+    private var keyboardRequestPollStarted = false
     @Volatile
     private var destroyed = false
+    private val mainHandler = Handler(Looper.getMainLooper())
     private var pendingAudioDeviceRecovery = false
     private val foregroundAudioRestoreRunnables = mutableListOf<Runnable>()
     private val foregroundAudioPolicy = ForegroundAudioPolicy()
@@ -65,6 +71,14 @@ internal class GameSessionCoordinator(
     private val backExitForceRestartRunnable = Runnable {
         if (backExitRequested) {
             forceRestartLauncherAndTerminateProcess()
+        }
+    }
+    private val keyboardRequestPollRunnable = object : Runnable {
+        override fun run() {
+            pollInGameKeyboardRequest()
+            if (!destroyed && keyboardRequestPollStarted) {
+                mainHandler.postDelayed(this, KEYBOARD_REQUEST_POLL_MS)
+            }
         }
     }
 
@@ -107,6 +121,7 @@ internal class GameSessionCoordinator(
             activity.runOnUiThread {
                 applyForegroundWindowState()
                 updateFloatingMouseVisibility()
+                startKeyboardRequestPolling()
                 updatePerformanceOverlayVisibility()
                 updateSystemGameState()
                 trySchedulePostBootSurfaceSoftRefresh("runtime_ready")
@@ -149,6 +164,7 @@ internal class GameSessionCoordinator(
         destroyed = true
         cancelStartCheck()
         cancelBackExitForceRestart()
+        stopKeyboardRequestPolling()
         cancelForegroundAudioRestoreRetries()
         activityResumed = false
         pendingAudioDeviceRecovery = false
@@ -785,6 +801,38 @@ internal class GameSessionCoordinator(
             isLoading = isLoading,
             inForeground = inForeground
         )
+    }
+
+    private fun startKeyboardRequestPolling() {
+        if (keyboardRequestPollStarted) {
+            return
+        }
+        keyboardRequestPollStarted = true
+        lastKeyboardRequestPayload = ""
+        RuntimePaths.inGameKeyboardRequestFile(activity).delete()
+        mainHandler.post(keyboardRequestPollRunnable)
+    }
+
+    private fun stopKeyboardRequestPolling() {
+        keyboardRequestPollStarted = false
+        mainHandler.removeCallbacks(keyboardRequestPollRunnable)
+    }
+
+    private fun pollInGameKeyboardRequest() {
+        if (!jvmLaunchController.runtimeLifecycleReady || backExitRequested) {
+            return
+        }
+        val requestFile = RuntimePaths.inGameKeyboardRequestFile(activity)
+        val payload = try {
+            if (requestFile.isFile) requestFile.readText().trim() else ""
+        } catch (_: Throwable) {
+            ""
+        }
+        if (payload.isEmpty() || payload == lastKeyboardRequestPayload) {
+            return
+        }
+        lastKeyboardRequestPayload = payload
+        inputHandler.requestSoftKeyboardForGameTextInput("game_text_input")
     }
 
     private fun trySchedulePostBootSurfaceSoftRefresh(triggerReason: String) {

@@ -176,6 +176,7 @@ object StsLaunchSpec {
         args.add("-Duser.home=${stsHome.absolutePath}")
         args.add("-Duser.dir=${stsRoot.absolutePath}")
         args.add("-Damethyst.expected_exit_marker=${RuntimePaths.expectedGameExitMarker(context).absolutePath}")
+        args.add("-Damethyst.in_game_keyboard_request=${RuntimePaths.inGameKeyboardRequestFile(context).absolutePath}")
         val touchscreenInputMode = LauncherConfig.readTouchscreenInputMode(context)
         args.add(
             "-Damethyst.touchscreen_enabled=" +

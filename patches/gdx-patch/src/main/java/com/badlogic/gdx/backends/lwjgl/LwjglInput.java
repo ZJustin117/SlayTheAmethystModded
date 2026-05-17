@@ -20,6 +20,9 @@ import java.awt.Color;
 import java.awt.FlowLayout;
 import java.awt.event.WindowEvent;
 import java.awt.event.WindowFocusListener;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.nio.ByteOrder;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
@@ -77,7 +80,9 @@ final public class LwjglInput implements Input {
 	long currentEventTimeStamp;
 	float deltaTime;
 	long lastTime;
+	private String lastKeyboardRequestProcessorName = "";
 	private boolean hasSyntheticCursorPosition = false;
+	private static final String IN_GAME_KEYBOARD_REQUEST_PROP = "amethyst.in_game_keyboard_request";
 	private int syntheticCursorX = 0;
 	private int syntheticCursorY = 0;
 	private static long lastCursorDebugLogMs = 0L;
@@ -971,6 +976,59 @@ final public class LwjglInput implements Input {
 	@Override
 	public void setInputProcessor (InputProcessor processor) {
 		this.processor = processor;
+		requestKeyboardForTextInputProcessor(processor);
+	}
+
+	private void requestKeyboardForTextInputProcessor (InputProcessor processor) {
+		if (processor == null) {
+			lastKeyboardRequestProcessorName = "";
+			return;
+		}
+		String processorName = processor.getClass().getName();
+		if (!isLikelyTextInputProcessor(processorName)) {
+			lastKeyboardRequestProcessorName = "";
+			return;
+		}
+		if (processorName.equals(lastKeyboardRequestProcessorName)) {
+			return;
+		}
+		lastKeyboardRequestProcessorName = processorName;
+		writeInGameKeyboardRequest("input_processor:" + processorName);
+	}
+
+	private boolean isLikelyTextInputProcessor (String processorName) {
+		if ("com.megacrit.cardcrawl.helpers.TypeHelper".equals(processorName)) {
+			return true;
+		}
+		String simpleName = processorName;
+		int lastDot = simpleName.lastIndexOf('.');
+		if (lastDot >= 0 && lastDot + 1 < simpleName.length()) {
+			simpleName = simpleName.substring(lastDot + 1);
+		}
+		String normalized = simpleName.toLowerCase();
+		if (normalized.contains("scroll") || normalized.contains("mouse") || normalized.contains("touch")) {
+			return false;
+		}
+		return normalized.contains("text") || normalized.contains("type") || normalized.contains("input") || normalized.contains("keyboard");
+	}
+
+	private void writeInGameKeyboardRequest (String source) {
+		String path = System.getProperty(IN_GAME_KEYBOARD_REQUEST_PROP, "").trim();
+		if (path.length() == 0) {
+			return;
+		}
+		File requestFile = new File(path);
+		File parent = requestFile.getParentFile();
+		if (parent != null && !parent.isDirectory() && !parent.mkdirs()) {
+			return;
+		}
+		try (FileWriter writer = new FileWriter(requestFile, false)) {
+			writer.write(source);
+			writer.write('\n');
+			writer.write(Long.toString(System.currentTimeMillis()));
+			writer.write('\n');
+		} catch (IOException ignored) {
+		}
 	}
 
 	@Override

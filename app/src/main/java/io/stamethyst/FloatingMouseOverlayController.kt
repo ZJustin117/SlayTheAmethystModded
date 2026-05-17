@@ -355,6 +355,10 @@ internal class FloatingMouseOverlayController(
         }
     }
 
+    fun requestSoftKeyboard(reason: String) {
+        showSoftKeyboard(reason)
+    }
+
     fun isSoftKeyboardSessionActive(): Boolean {
         return builtInKeyboardController?.isVisible() == true ||
             imeController?.shouldHoldRenderSurfaceStable() == true
@@ -566,17 +570,17 @@ internal class FloatingMouseOverlayController(
         }
     }
 
-    private fun showSoftKeyboard() {
+    private fun showSoftKeyboard(reason: String = "floating_menu_keyboard") {
         hideFloatingMouseExpandedMenu()
         if (builtInSoftKeyboardEnabled) {
             imeController?.requestHide(
-                reason = "floating_menu_keyboard_builtin",
+                reason = "${reason}_builtin",
                 refocusRenderView = false
             )
             builtInKeyboardController?.show()
         } else {
             builtInKeyboardController?.hide(refocusRenderView = false)
-            imeController?.requestShow(reason = "floating_menu_keyboard")
+            imeController?.requestShow(reason = reason)
         }
     }
 
