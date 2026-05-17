@@ -1,6 +1,7 @@
 package io.stamethyst.backend.mods
 
 import java.io.ByteArrayOutputStream
+import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -10,6 +11,7 @@ import java.nio.charset.StandardCharsets
 import java.util.Locale
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
+import java.util.zip.ZipInputStream
 
 internal object JarFileIoUtils {
     @Throws(IOException::class)
@@ -91,6 +93,47 @@ internal object JarFileIoUtils {
             output.write(buffer, 0, read)
         }
         return output.toByteArray()
+    }
+
+    @Throws(IOException::class)
+    fun forEachZipEntry(jarFile: File, visitor: (ZipEntry, InputStream) -> Boolean) {
+        FileInputStream(jarFile).use { input ->
+            forEachZipEntry(input, visitor)
+        }
+    }
+
+    @Throws(IOException::class)
+    fun forEachZipEntry(input: InputStream, visitor: (ZipEntry, InputStream) -> Boolean) {
+        ZipInputStream(BufferedInputStream(input)).use { zipInput ->
+            while (true) {
+                val entry = zipInput.nextEntry ?: break
+                val keepGoing = visitor(entry, zipInput)
+                zipInput.closeEntry()
+                if (!keepGoing) {
+                    break
+                }
+            }
+        }
+    }
+
+    fun hasZipEntry(jarFile: File, entryName: String): Boolean {
+        if (!jarFile.isFile) {
+            return false
+        }
+        return try {
+            var found = false
+            forEachZipEntry(jarFile) { entry, _ ->
+                if (!entry.isDirectory && entry.name == entryName) {
+                    found = true
+                    false
+                } else {
+                    true
+                }
+            }
+            found
+        } catch (_: Throwable) {
+            false
+        }
     }
 
     @Throws(IOException::class)

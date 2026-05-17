@@ -8,29 +8,25 @@ import io.stamethyst.R
 import io.stamethyst.backend.mods.CompatibilitySettings
 import io.stamethyst.backend.mods.DuplicateZipNormalizationResult
 import io.stamethyst.backend.mods.DuplicateZipEntryNormalizer
+import io.stamethyst.backend.mods.JarFileIoUtils
 import io.stamethyst.backend.mods.ModAtlasFilterCompatPatcher
 import io.stamethyst.backend.mods.ModJarSupport
 import io.stamethyst.backend.mods.ModManager
 import io.stamethyst.backend.mods.ModManifestRootCompatPatcher
 import io.stamethyst.backend.mods.MtsLaunchManifestValidator
 import io.stamethyst.backend.mods.importing.patches.AtlasFilterPatchModule
-import io.stamethyst.backend.mods.importing.patches.AtlasOfflineDownscalePatchModule
 import io.stamethyst.backend.mods.importing.patches.DuplicateZipEntryPatchModule
 import io.stamethyst.backend.mods.importing.patches.ImportPatchRegistry
 import io.stamethyst.backend.mods.importing.patches.ManifestRootPatchModule
 import io.stamethyst.model.ModItemUi
 import io.stamethyst.ui.main.MainFolderStateStore
 import io.stamethyst.ui.main.resolveAssignedFolderId
-import java.io.BufferedInputStream
 import java.io.File
-import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
 import java.util.LinkedHashMap
 import java.util.LinkedHashSet
 import java.util.Locale
-import java.util.zip.ZipFile
-import java.util.zip.ZipInputStream
 
 internal object ModImportPlanner {
     private val ARCHIVE_EXTENSIONS = arrayOf(
@@ -147,17 +143,23 @@ internal object ModImportPlanner {
             )
         }
         val inspectionFile = File(source.file.parentFile, "inspect-${source.index}.jar")
+        var activeInspectionFile = inspectionFile
         return try {
             copyFile(source.file, inspectionFile)
+            val normalizationResult = normalizeAndValidateInspectionJar(inspectionFile)
+            if (normalizationResult.rewritten) {
+                activeInspectionFile = File(source.file.parentFile, "normalized-inspect-${source.index}.jar")
+                copyFile(inspectionFile, activeInspectionFile)
+            }
             val duplicatePlan = buildDuplicateZipPlan(
                 context = context,
-                result = normalizeAndValidateInspectionJar(inspectionFile)
+                result = normalizationResult
             )
-            val manifestRootPlan = runManifestRootPlan(context, inspectionFile)
+            val manifestRootPlan = runManifestRootPlan(context, activeInspectionFile)
             val manifest = try {
-                ModJarSupport.readModManifest(inspectionFile)
+                ModJarSupport.readModManifest(activeInspectionFile)
             } catch (error: Throwable) {
-                if (isLikelyModTheSpireJar(inspectionFile)) {
+                if (isLikelyModTheSpireJar(activeInspectionFile)) {
                     return blockedItem(
                         itemId = itemId,
                         source = source,
@@ -202,7 +204,7 @@ internal object ModImportPlanner {
                 )
             }
 
-            val launchFailure = MtsLaunchManifestValidator.validateModJar(inspectionFile)
+            val launchFailure = MtsLaunchManifestValidator.validateModJar(activeInspectionFile)
             if (launchFailure != null) {
                 return blockedItem(
                     itemId = itemId,
@@ -213,8 +215,8 @@ internal object ModImportPlanner {
                     normalizedModId = normalizedModId
                 )
             }
-            val launchModId = MtsLaunchManifestValidator.resolveLaunchModId(inspectionFile).trim()
-            val atlasFilterPlan = runAtlasFilterPlan(context, inspectionFile)
+            val launchModId = MtsLaunchManifestValidator.resolveLaunchModId(activeInspectionFile).trim()
+            val atlasFilterPlan = runAtlasFilterPlan(context, activeInspectionFile)
             val baseItem = ModImportItemPlan(
                 id = itemId,
                 source = source,
@@ -228,7 +230,8 @@ internal object ModImportPlanner {
                 item = baseItem,
                 duplicatePlan = duplicatePlan,
                 manifestRootPlan = manifestRootPlan,
-                atlasFilterPlan = atlasFilterPlan
+                atlasFilterPlan = atlasFilterPlan,
+                inspectionFile = activeInspectionFile
             )
             baseItem.copy(patchPlans = patchPlans)
         } catch (error: Throwable) {
@@ -250,6 +253,9 @@ internal object ModImportPlanner {
             if (inspectionFile.exists()) {
                 inspectionFile.delete()
             }
+            if (activeInspectionFile != inspectionFile && activeInspectionFile.exists()) {
+                activeInspectionFile.delete()
+            }
         }
     }
 
@@ -258,7 +264,8 @@ internal object ModImportPlanner {
         item: ModImportItemPlan,
         duplicatePlan: ImportPatchPlan?,
         manifestRootPlan: ImportPatchPlan?,
-        atlasFilterPlan: ImportPatchPlan?
+        atlasFilterPlan: ImportPatchPlan?,
+        inspectionFile: File
     ): List<ImportPatchPlan> {
         val plans = ArrayList<ImportPatchPlan>()
         duplicatePlan?.let { plans.add(it) }
@@ -272,7 +279,7 @@ internal object ModImportPlanner {
             ) {
                 return@forEach
             }
-            val plan = module.plan(context, item) ?: return@forEach
+            val plan = module.plan(context, item, inspectionFile) ?: return@forEach
             if (plan.applicable) {
                 plans.add(plan)
             }
@@ -283,9 +290,7 @@ internal object ModImportPlanner {
     }
 
     internal fun normalizeAndValidateInspectionJar(inspectionFile: File): DuplicateZipNormalizationResult {
-        val result = DuplicateZipEntryNormalizer.normalizeInPlaceIfNeeded(inspectionFile)
-        ZipFile(inspectionFile).use { /* jar readability check */ }
-        return result
+        return DuplicateZipEntryNormalizer.normalizeInPlaceIfNeeded(inspectionFile)
     }
 
     internal fun shouldAttemptJarInspection(displayName: String, file: File): Boolean {
@@ -300,9 +305,12 @@ internal object ModImportPlanner {
             return false
         }
         return try {
-            ZipInputStream(BufferedInputStream(FileInputStream(file))).use { zipInput ->
-                zipInput.nextEntry != null
+            var hasEntry = false
+            JarFileIoUtils.forEachZipEntry(file) { _, _ ->
+                hasEntry = true
+                false
             }
+            hasEntry
         } catch (_: Throwable) {
             false
         }
@@ -495,13 +503,7 @@ internal object ModImportPlanner {
     }
 
     private fun isLikelyModTheSpireJar(file: File): Boolean {
-        return try {
-            ZipFile(file).use { zipFile ->
-                zipFile.getEntry("com/evacipated/cardcrawl/modthespire/Loader.class") != null
-            }
-        } catch (_: Throwable) {
-            false
-        }
+        return JarFileIoUtils.hasZipEntry(file, "com/evacipated/cardcrawl/modthespire/Loader.class")
     }
 
     private fun isLikelyCompressedArchive(source: PreparedImportSource): Boolean {

@@ -1,16 +1,11 @@
 package io.stamethyst.backend.mods
 
-import java.io.BufferedInputStream
 import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.FileInputStream
 import java.io.IOException
 import java.util.jar.JarFile
 import java.util.jar.Manifest
-import java.util.zip.ZipEntry
 import java.util.zip.ZipException
-import java.util.zip.ZipInputStream
 
 object StsJarValidator {
     private const val DESKTOP_LAUNCHER_CLASS =
@@ -52,6 +47,19 @@ object StsJarValidator {
         }
     }
 
+    @JvmStatic
+    fun isValidStreaming(jarFile: File?): Boolean {
+        if (jarFile == null || !jarFile.isFile || jarFile.length() == 0L) {
+            return false
+        }
+        return try {
+            validateLenient(jarFile)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     @Throws(IOException::class)
     private fun validateStrict(jarFile: File) {
         JarFile(jarFile).use { jar ->
@@ -74,19 +82,16 @@ object StsJarValidator {
         var manifestMainClass: String? = null
         var hasDesktopLauncher = false
 
-        ZipInputStream(BufferedInputStream(FileInputStream(jarFile))).use { zipInput ->
-            var entry: ZipEntry?
-            while (zipInput.nextEntry.also { entry = it } != null) {
-                val name = entry!!.name
-                if (DESKTOP_LAUNCHER_CLASS == name) {
-                    hasDesktopLauncher = true
-                } else if ("META-INF/MANIFEST.MF".equals(name, ignoreCase = true)) {
-                    val manifestBytes = readCurrentEntry(zipInput)
-                    val manifest = Manifest(ByteArrayInputStream(manifestBytes))
-                    manifestMainClass = manifest.mainAttributes.getValue("Main-Class")
-                }
-                zipInput.closeEntry()
+        JarFileIoUtils.forEachZipEntry(jarFile) { entry, zipInput ->
+            val name = entry.name
+            if (DESKTOP_LAUNCHER_CLASS == name) {
+                hasDesktopLauncher = true
+            } else if ("META-INF/MANIFEST.MF".equals(name, ignoreCase = true)) {
+                val manifestBytes = JarFileIoUtils.readAll(zipInput)
+                val manifest = Manifest(ByteArrayInputStream(manifestBytes))
+                manifestMainClass = manifest.mainAttributes.getValue("Main-Class")
             }
+            !(hasDesktopLauncher && manifestMainClass != null)
         }
 
         if (manifestMainClass != null && DESKTOP_LAUNCHER_MAIN != manifestMainClass.trim()) {
@@ -96,16 +101,5 @@ object StsJarValidator {
         if (!hasDesktopLauncher) {
             throw IOException("DesktopLauncher class not found in jar")
         }
-    }
-
-    @Throws(IOException::class)
-    private fun readCurrentEntry(zipInput: ZipInputStream): ByteArray {
-        val output = ByteArrayOutputStream()
-        val buffer = ByteArray(4096)
-        var read: Int
-        while (zipInput.read(buffer).also { read = it } != -1) {
-            output.write(buffer, 0, read)
-        }
-        return output.toByteArray()
     }
 }

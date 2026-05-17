@@ -27,7 +27,6 @@ import io.stamethyst.ui.UiBusyOperation
 import io.stamethyst.ui.main.MainScreenViewModel
 import io.stamethyst.ui.modimport.ModImportRequestBus
 import io.stamethyst.ui.preferences.LauncherPreferences
-import io.stamethyst.ui.settings.JarImportInspectionService
 import io.stamethyst.ui.settings.SettingsFileService
 import io.stamethyst.ui.settings.SettingsScreenViewModel
 import io.stamethyst.ui.theme.LauncherTheme
@@ -470,22 +469,29 @@ class LauncherActivity : AppCompatActivity() {
         uri: Uri,
         displayName: String
     ): IncomingJarIntentTarget {
-        if (displayName.trim().equals(STS_JAR_FILE_NAME, ignoreCase = true)) {
+        if (displayName.trim().equals(STS_JAR_FILE_NAME, ignoreCase = true) || isExternalStsJar(uri)) {
             return IncomingJarIntentTarget.StsJar(uri = uri, displayName = displayName)
         }
-        val tempJar = File(cacheDir, "import-preview-${System.nanoTime()}.jar")
-        try {
-            val preparedDisplayName = JarImportInspectionService.prepareImportedJar(this, uri, tempJar)
-            if (StsJarValidator.isValid(tempJar)) {
-                return IncomingJarIntentTarget.StsJar(uri = uri, displayName = preparedDisplayName)
+        return IncomingJarIntentTarget.ModJar(uri = uri)
+    }
+
+    private fun isExternalStsJar(uri: Uri): Boolean {
+        val tempJar = File(cacheDir, "external-sts-check-${System.nanoTime()}.jar")
+        return try {
+            contentResolver.openInputStream(uri).use { input ->
+                if (input == null) {
+                    return false
+                }
+                tempJar.outputStream().use { output -> input.copyTo(output) }
             }
+            StsJarValidator.isValidStreaming(tempJar)
         } catch (_: Throwable) {
+            false
         } finally {
             if (tempJar.exists()) {
                 tempJar.delete()
             }
         }
-        return IncomingJarIntentTarget.ModJar(uri = uri)
     }
 
     private fun startExternalModImport(uri: Uri) {

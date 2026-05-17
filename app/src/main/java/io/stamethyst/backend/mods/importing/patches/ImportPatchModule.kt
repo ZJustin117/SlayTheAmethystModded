@@ -32,6 +32,10 @@ internal interface ImportPatchModule {
 
     fun plan(context: Context, item: ModImportItemPlan): ImportPatchPlan?
 
+    fun plan(context: Context, item: ModImportItemPlan, inspectionJar: File): ImportPatchPlan? {
+        return plan(context, item)
+    }
+
     fun apply(
         context: Context,
         workingJar: File,

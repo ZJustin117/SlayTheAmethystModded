@@ -3,6 +3,7 @@ package io.stamethyst.backend.mods
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.util.zip.ZipInputStream
+import io.stamethyst.backend.mods.importing.ModImportExecutor
 import io.stamethyst.backend.mods.importing.ModImportPlanner
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry
 import org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream
@@ -21,6 +22,7 @@ class DuplicateZipEntryNormalizerTest {
         val result = ModImportPlanner.normalizeAndValidateInspectionJar(jarFile)
 
         assertTrue(result.changed)
+        assertTrue(result.rewritten)
         assertEquals(4, result.totalEntries)
         assertEquals(2, result.uniqueEntries)
         assertEquals(2, result.duplicateEntriesRemoved)
@@ -29,6 +31,21 @@ class DuplicateZipEntryNormalizerTest {
             readEntryNames(jarFile)
         )
         assertEquals("MapMarkerMod", ModJarSupport.readModManifest(jarFile).modId)
+    }
+
+    @Test
+    fun normalizeWorkingJarForImport_acceptsDuplicateRootManifestBeforeLaunchValidation() {
+        val tempDir = Files.createTempDirectory("duplicate-zip-normalizer-working")
+        val jarFile = tempDir.resolve("MapMarker.jar").toFile()
+        writeJarWithDuplicateRootManifests(jarFile)
+
+        ModImportExecutor.normalizeWorkingJarForImport(jarFile)
+
+        assertEquals(
+            listOf("ModTheSpire.json", "mapmarker/MapMarkerMod.class"),
+            readEntryNames(jarFile)
+        )
+        assertEquals("MapMarkerMod", MtsLaunchManifestValidator.resolveLaunchModId(jarFile))
     }
 
     @Test
@@ -50,6 +67,7 @@ class DuplicateZipEntryNormalizerTest {
         val result = DuplicateZipEntryNormalizer.normalizeInPlaceIfNeeded(jarFile)
 
         assertTrue(result.changed)
+        assertTrue(result.rewritten)
         assertEquals(4, result.totalEntries)
         assertEquals(3, result.uniqueEntries)
         assertEquals(1, result.duplicateEntriesRemoved)
@@ -89,6 +107,7 @@ class DuplicateZipEntryNormalizerTest {
         val result = DuplicateZipEntryNormalizer.normalizeInPlaceIfNeeded(jarFile)
 
         assertFalse(result.changed)
+        assertFalse(result.rewritten)
         assertEquals(1, result.totalEntries)
         assertEquals(1, result.uniqueEntries)
         assertEquals(0, result.duplicateEntriesRemoved)

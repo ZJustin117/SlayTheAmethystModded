@@ -33,6 +33,14 @@ internal object ModManifestRootCompatPatcher {
         if (!modJar.isFile) {
             throw IOException("Mod jar not found: ${modJar.absolutePath}")
         }
+        val quickPlan = createStreamPatchPlan(modJar)
+        if (quickPlan.patchedFileEntries <= 0 || quickPlan.sourceRootPrefix.isEmpty()) {
+            return ManifestRootPatchResult(
+                scannedFileEntries = quickPlan.scannedFileEntries,
+                patchedFileEntries = 0,
+                sourceRootPrefix = ""
+            )
+        }
 
         val plan = ZipFile(modJar).use { zipFile ->
             createPatchPlan(zipFile)
@@ -51,6 +59,79 @@ internal object ModManifestRootCompatPatcher {
             patchedFileEntries = plan.patchedFileEntries,
             sourceRootPrefix = plan.sourceRootPrefix
         )
+    }
+
+    private fun createStreamPatchPlan(modJar: File): PatchPlan {
+        val entries = ArrayList<String>()
+        JarFileIoUtils.forEachZipEntry(modJar) { entry, _ ->
+            if (!entry.isDirectory) {
+                val normalizedName = normalizeEntryName(entry.name)
+                if (normalizedName.isNotEmpty()) {
+                    entries.add(normalizedName)
+                }
+            }
+            true
+        }
+        if (entries.any { it.equals(MANIFEST_FILE_NAME, ignoreCase = true) }) {
+            return PatchPlan(
+                scannedFileEntries = entries.size,
+                patchedFileEntries = 0,
+                sourceRootPrefix = ""
+            )
+        }
+        return createPatchPlan(entries)
+    }
+
+    private fun createPatchPlan(entryNames: List<String>): PatchPlan {
+        val sourcePrefix = findSingleNestedManifestPrefix(entryNames) ?: return PatchPlan(
+            scannedFileEntries = entryNames.size,
+            patchedFileEntries = 0,
+            sourceRootPrefix = ""
+        )
+
+        var scannedFileEntries = 0
+        var patchedFileEntries = 0
+        val outputNames = LinkedHashSet<String>()
+        entryNames.forEach { normalizedName ->
+            scannedFileEntries++
+            if (!startsWithIgnoreCase(normalizedName, sourcePrefix)
+                && !startsWithIgnoreCase(normalizedName, META_INF_PREFIX)
+            ) {
+                return PatchPlan(scannedFileEntries, 0, "")
+            }
+            val outputName = resolveOutputName(normalizedName, sourcePrefix)
+            if (outputName.isEmpty() || !outputNames.add(outputName.lowercase(Locale.ROOT))) {
+                return PatchPlan(scannedFileEntries, 0, "")
+            }
+            if (!normalizedName.equals(outputName, ignoreCase = false)) {
+                patchedFileEntries++
+            }
+        }
+        return PatchPlan(scannedFileEntries, patchedFileEntries, sourcePrefix)
+    }
+
+    private fun findSingleNestedManifestPrefix(entryNames: List<String>): String? {
+        var prefix: String? = null
+        val marker = "/$MANIFEST_FILE_NAME"
+        entryNames.forEach { normalizedName ->
+            if (!normalizedName.lowercase(Locale.ROOT).endsWith(marker.lowercase(Locale.ROOT))) {
+                return@forEach
+            }
+            val slashIndex = normalizedName.lastIndexOf('/')
+            if (slashIndex <= 0) {
+                return@forEach
+            }
+            val currentPrefix = normalizedName.substring(0, slashIndex + 1)
+            if (startsWithIgnoreCase(currentPrefix, META_INF_PREFIX)) {
+                return@forEach
+            }
+            if (prefix == null) {
+                prefix = currentPrefix
+            } else if (!prefix.equals(currentPrefix, ignoreCase = true)) {
+                return null
+            }
+        }
+        return prefix
     }
 
     private fun createPatchPlan(zipFile: ZipFile): PatchPlan {

@@ -191,8 +191,12 @@ internal object AtlasOfflineDownscalePatchModule : ImportPatchModule {
     override val failurePolicy = ImportPatchFailurePolicy.SkipPatchContinueImport
 
     override fun plan(context: Context, item: ModImportItemPlan): ImportPatchPlan? {
+        return plan(context, item, item.source.file)
+    }
+
+    override fun plan(context: Context, item: ModImportItemPlan, inspectionJar: File): ImportPatchPlan? {
         val result = ModAtlasOfflineDownscalePatcher.inspectOversizedAtlasPages(
-            item.source.file,
+            inspectionJar,
             AtlasOfflineDownscaleStrategy.previewCandidates()
         )
         if (!result.hasPatchedChanges) {

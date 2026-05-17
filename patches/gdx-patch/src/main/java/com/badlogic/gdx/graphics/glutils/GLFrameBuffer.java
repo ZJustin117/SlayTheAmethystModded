@@ -974,13 +974,26 @@ public abstract class GLFrameBuffer<T extends GLTexture> implements Disposable {
 		long minIdleFrames,
 		long minBytes
 	) {
-		if (disposed || buildInProgress || !nativeResourcesAllocated) return false;
-		if (framebufferHandle == 0 || framebufferHandle == currentlyBoundFramebuffer) return false;
-		if (isReclaimSuppressed(frameId)) return false;
-		if (estimatedNativeBytes < minBytes) return false;
-		if (getIdleFrames(frameId) < minIdleFrames) return false;
-		if (getBuildAgeFrames(frameId) < minIdleFrames) return false;
-		return resolveManagerProtectReason() == null;
+		return resolveGuardianReclaimProtectReason(frameId, currentlyBoundFramebuffer, minIdleFrames, minBytes) == null;
+	}
+
+	private String resolveGuardianReclaimProtectReason (
+		long frameId,
+		int currentlyBoundFramebuffer,
+		long minIdleFrames,
+		long minBytes
+	) {
+		if (disposed) return "disposed";
+		if (buildInProgress) return "build_in_progress";
+		if (!nativeResourcesAllocated) return "native_not_allocated";
+		if (framebufferHandle == 0) return "missing_handle";
+		if (framebufferHandle == currentlyBoundFramebuffer) return "currently_bound";
+		if (isReclaimSuppressed(frameId)) return "reclaim_suppressed";
+		if (estimatedNativeBytes < minBytes) return "below_min_bytes";
+		if (getIdleFrames(frameId) < minIdleFrames) return "recently_used";
+		if (getBuildAgeFrames(frameId) < minIdleFrames) return "recently_built";
+		String managerProtectReason = resolveManagerProtectReason();
+		return managerProtectReason == null ? null : managerProtectReason;
 	}
 
 	private boolean reclaimForPressure (long frameId) {
@@ -1217,22 +1230,51 @@ public abstract class GLFrameBuffer<T extends GLTexture> implements Disposable {
 		int candidates = 0;
 		int reclaimed = 0;
 		long reclaimedBytes = 0L;
+		Map<String, Integer> protectReasonCounts = GPU_RESOURCE_DIAG_ENABLED ? new HashMap<String, Integer>() : null;
+		Map<String, Long> protectReasonBytes = GPU_RESOURCE_DIAG_ENABLED ? new HashMap<String, Long>() : null;
+		Map<String, Integer> protectOwnerCounts = GPU_RESOURCE_DIAG_ENABLED ? new HashMap<String, Integer>() : null;
+		Map<String, Long> protectOwnerBytes = GPU_RESOURCE_DIAG_ENABLED ? new HashMap<String, Long>() : null;
+		int budgetSkipped = 0;
+		long budgetSkippedBytes = 0L;
 		while (checked < boundedMaxChecks && reclaimed < boundedMaxReclaims) {
 			GLFrameBuffer candidate = bufferArray.get(index);
 			checked++;
-			if (candidate != null && candidate.isEligibleForGuardianReclaim(frameId, currentlyBoundFramebuffer, minIdleFrames, minBytes)) {
-				candidates++;
+			if (candidate == null) {
+				recordGuardianProtectGroup(protectReasonCounts, protectReasonBytes, "null_framebuffer", 0L);
+			} else {
 				long candidateBytes = candidate.estimatedNativeBytes;
-				if (candidateBytes > 0L
-					&& (boundedMaxBytes == 0L || reclaimedBytes + candidateBytes <= boundedMaxBytes)
-					&& candidate.reclaimForGuardian(frameId)) {
-					reclaimed++;
-					reclaimedBytes += candidateBytes;
+				String protectReason = candidate.resolveGuardianReclaimProtectReason(frameId, currentlyBoundFramebuffer, minIdleFrames, minBytes);
+				if (protectReason == null) {
+					candidates++;
+					if (candidateBytes > 0L
+						&& boundedMaxBytes > 0L
+						&& reclaimedBytes + candidateBytes > boundedMaxBytes) {
+						budgetSkipped++;
+						budgetSkippedBytes += candidateBytes;
+					} else if (candidateBytes > 0L && candidate.reclaimForGuardian(frameId)) {
+						reclaimed++;
+						reclaimedBytes += candidateBytes;
+					}
+				} else {
+					recordGuardianProtectGroup(protectReasonCounts, protectReasonBytes, protectReason, candidateBytes);
+					recordGuardianProtectGroup(protectOwnerCounts, protectOwnerBytes, candidate.getFrameBufferOwnerKey(), candidateBytes);
 				}
 			}
 			index = nextSweepIndex(index, size);
 		}
 		guardianFrameBufferSweepCursor = index;
+		if (GPU_RESOURCE_DIAG_ENABLED && checked > 0) {
+			System.out.println("[gdx-diag] GLFrameBuffer guardian_fbo_sweep frame=" + frameId
+				+ " managedFrameBuffers=" + size
+				+ " checked=" + checked
+				+ " candidates=" + candidates
+				+ " reclaimed=" + reclaimed
+				+ " reclaimedBytes=" + reclaimedBytes
+				+ " budgetSkipped=" + budgetSkipped
+				+ " budgetSkippedBytes=" + budgetSkippedBytes
+				+ " protectReasons=" + summarizeGuardianProtectGroups(protectReasonCounts, protectReasonBytes)
+				+ " protectOwners=" + summarizeGuardianProtectGroups(protectOwnerCounts, protectOwnerBytes));
+		}
 		return guardianSweepStats(checked, candidates, reclaimed, reclaimedBytes);
 	}
 
@@ -1640,6 +1682,59 @@ public abstract class GLFrameBuffer<T extends GLTexture> implements Disposable {
 		return summary.startsWith("frameBufferOwnerTop=")
 			? summary.substring("frameBufferOwnerTop=".length())
 			: summary;
+	}
+
+	private static void recordGuardianProtectGroup (Map<String, Integer> counts, Map<String, Long> bytesByKey, String key, long bytes) {
+		if (counts == null) return;
+		String safeKey = key == null || key.length() == 0 ? "unknown" : sanitizeGuardianSummaryValue(key);
+		Integer count = counts.get(safeKey);
+		counts.put(safeKey, count == null ? Integer.valueOf(1) : Integer.valueOf(count.intValue() + 1));
+		if (bytesByKey != null && bytes > 0L) {
+			Long existing = bytesByKey.get(safeKey);
+			bytesByKey.put(safeKey, existing == null ? Long.valueOf(bytes) : Long.valueOf(existing.longValue() + bytes));
+		}
+	}
+
+	private static String summarizeGuardianProtectGroups (Map<String, Integer> counts, Map<String, Long> bytesByKey) {
+		if (counts == null || counts.isEmpty()) return "none";
+		StringBuilder builder = new StringBuilder(128);
+		int emitted = 0;
+		while (emitted < 6) {
+			String bestKey = null;
+			int bestCount = -1;
+			for (Map.Entry<String, Integer> entry : counts.entrySet()) {
+				String key = entry.getKey();
+				if (key == null || containsGuardianProtectSummaryKey(builder, key)) continue;
+				Integer count = entry.getValue();
+				int safeCount = count == null ? 0 : count.intValue();
+				if (safeCount > bestCount || (safeCount == bestCount && bestKey != null && key.compareTo(bestKey) < 0)) {
+					bestKey = key;
+					bestCount = safeCount;
+				}
+			}
+			if (bestKey == null) break;
+			if (emitted > 0) builder.append("|");
+			long bytes = 0L;
+			if (bytesByKey != null) {
+				Long bytesRef = bytesByKey.get(bestKey);
+				bytes = bytesRef == null ? 0L : bytesRef.longValue();
+			}
+			builder.append(bestKey).append(":").append(bestCount).append("/").append(toSummaryMegabytes(bytes)).append("m");
+			emitted++;
+		}
+		return builder.length() == 0 ? "none" : builder.toString();
+	}
+
+	private static boolean containsGuardianProtectSummaryKey (StringBuilder builder, String key) {
+		if (builder == null || key == null || builder.length() == 0) return false;
+		String summary = builder.toString();
+		return summary.equals(key) || summary.startsWith(key + ":") || summary.indexOf("|" + key + ":") >= 0;
+	}
+
+	private static String sanitizeGuardianSummaryValue (String value) {
+		if (value == null || value.length() == 0) return "unknown";
+		String sanitized = value.replace(' ', '_').replace('\n', '_').replace('\r', '_').replace('|', '_');
+		return sanitized.length() <= 160 ? sanitized : sanitized.substring(0, 160) + "...";
 	}
 
 	private static String resolveFrameBufferManagerProtectReason (String stackKey) {

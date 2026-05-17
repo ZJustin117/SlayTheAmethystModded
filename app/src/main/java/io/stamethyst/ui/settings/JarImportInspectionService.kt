@@ -5,13 +5,13 @@ import android.content.Context
 import android.net.Uri
 import io.stamethyst.backend.mods.CompatibilitySettings
 import io.stamethyst.backend.mods.DuplicateZipEntryNormalizer
+import io.stamethyst.backend.mods.JarFileIoUtils
 import io.stamethyst.backend.mods.ModJarSupport
 import io.stamethyst.backend.mods.ModManager
 import io.stamethyst.backend.mods.ModManifestRootCompatPatcher
 import java.io.File
 import java.io.IOException
 import java.util.Locale
-import java.util.zip.ZipFile
 
 internal data class ModJarInspection(
     val displayName: String,
@@ -101,13 +101,7 @@ internal object JarImportInspectionService {
         if (looksLikeModTheSpireName(displayName)) {
             return true
         }
-        return try {
-            ZipFile(jarFile).use { zipFile ->
-                zipFile.getEntry(MTS_LOADER_ENTRY) != null
-            }
-        } catch (_: Throwable) {
-            false
-        }
+        return JarFileIoUtils.hasZipEntry(jarFile, MTS_LOADER_ENTRY)
     }
 
     private fun looksLikeModTheSpireName(displayName: String?): Boolean {

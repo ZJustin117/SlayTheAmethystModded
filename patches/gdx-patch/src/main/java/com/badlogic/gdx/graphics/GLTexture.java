@@ -701,6 +701,13 @@ public abstract class GLTexture implements Disposable {
 		int reclaimed = 0;
 		long reclaimedBytes = 0L;
 		Map<String, Integer> protectReasonCounts = GPU_RESOURCE_DIAG_ENABLED ? new HashMap<String, Integer>() : null;
+		Map<String, Long> protectReasonBytes = GPU_RESOURCE_DIAG_ENABLED ? new HashMap<String, Long>() : null;
+		Map<String, Integer> protectOwnerCounts = GPU_RESOURCE_DIAG_ENABLED ? new HashMap<String, Integer>() : null;
+		Map<String, Long> protectOwnerBytes = GPU_RESOURCE_DIAG_ENABLED ? new HashMap<String, Long>() : null;
+		Map<String, Integer> protectSourceCounts = GPU_RESOURCE_DIAG_ENABLED ? new HashMap<String, Integer>() : null;
+		Map<String, Long> protectSourceBytes = GPU_RESOURCE_DIAG_ENABLED ? new HashMap<String, Long>() : null;
+		int budgetSkipped = 0;
+		long budgetSkippedBytes = 0L;
 		int currentTexture2DBinding = getCurrentTextureBinding(GL_TEXTURE_2D_ENUM);
 		int boundedMaxChecks = Math.max(1, Math.min(size, maxChecks));
 		int boundedMaxReclaims = Math.max(1, maxReclaims);
@@ -710,20 +717,27 @@ public abstract class GLTexture implements Disposable {
 			GLTexture texture = managedTextures.get(index);
 			checked++;
 			if (texture == null) {
-				recordGuardianProtectReason(protectReasonCounts, "null_texture");
+				recordGuardianProtectReason(protectReasonCounts, protectReasonBytes, "null_texture", 0L);
 			} else {
+				long textureBytes = GPU_RESOURCE_DIAG_ENABLED ? texture.captureTrackedHandleBytes() : 0L;
 				String protectReason = texture.resolveTextureGuardianProtectReason(minIdleNanos, minBytes, currentTexture2DBinding);
 				if (protectReason == null) {
 					candidates++;
 					long candidateBytes = texture.captureTrackedHandleBytes();
 					if (candidateBytes > 0L
-						&& (boundedMaxBytes == 0L || reclaimedBytes + candidateBytes <= boundedMaxBytes)
+						&& boundedMaxBytes > 0L
+						&& reclaimedBytes + candidateBytes > boundedMaxBytes) {
+						budgetSkipped++;
+						budgetSkippedBytes += candidateBytes;
+					} else if (candidateBytes > 0L
 						&& texture.reclaimForGuardianSweep(minIdleNanos, minBytes, currentTexture2DBinding)) {
 						reclaimed++;
 						reclaimedBytes += candidateBytes;
 					}
 				} else {
-					recordGuardianProtectReason(protectReasonCounts, protectReason);
+					recordGuardianProtectReason(protectReasonCounts, protectReasonBytes, protectReason, textureBytes);
+					recordGuardianProtectGroup(protectOwnerCounts, protectOwnerBytes, texture.getResidencyOwnerKeyForLog(), textureBytes);
+					recordGuardianProtectGroup(protectSourceCounts, protectSourceBytes, texture.getResidencySourceSampleForLog(), textureBytes);
 				}
 			}
 			index = nextGuardianSweepIndex(index, size);
@@ -737,7 +751,11 @@ public abstract class GLTexture implements Disposable {
 				+ " candidates=" + candidates
 				+ " reclaimed=" + reclaimed
 				+ " reclaimedBytes=" + reclaimedBytes
-				+ " protectReasons=" + summarizeGuardianProtectReasons(protectReasonCounts));
+				+ " budgetSkipped=" + budgetSkipped
+				+ " budgetSkippedBytes=" + budgetSkippedBytes
+				+ " protectReasons=" + summarizeGuardianProtectReasons(protectReasonCounts, protectReasonBytes)
+				+ " protectOwners=" + summarizeGuardianProtectGroups(protectOwnerCounts, protectOwnerBytes)
+				+ " protectSources=" + summarizeGuardianProtectGroups(protectSourceCounts, protectSourceBytes));
 		}
 		return guardianSweepStats(checked, candidates, reclaimed, reclaimedBytes);
 	}
@@ -1113,14 +1131,26 @@ public abstract class GLTexture implements Disposable {
 		return true;
 	}
 
-	private static void recordGuardianProtectReason (Map<String, Integer> counts, String reason) {
-		if (counts == null) return;
-		String key = reason == null || reason.length() == 0 ? "unknown" : reason;
-		Integer count = counts.get(key);
-		counts.put(key, count == null ? Integer.valueOf(1) : Integer.valueOf(count.intValue() + 1));
+	private static void recordGuardianProtectReason (Map<String, Integer> counts, Map<String, Long> bytesByKey, String reason, long bytes) {
+		recordGuardianProtectGroup(counts, bytesByKey, reason, bytes);
 	}
 
-	private static String summarizeGuardianProtectReasons (Map<String, Integer> counts) {
+	private static void recordGuardianProtectGroup (Map<String, Integer> counts, Map<String, Long> bytesByKey, String key, long bytes) {
+		if (counts == null) return;
+		String safeKey = key == null || key.length() == 0 ? "unknown" : sanitizeGuardianSummaryValue(key);
+		Integer count = counts.get(safeKey);
+		counts.put(safeKey, count == null ? Integer.valueOf(1) : Integer.valueOf(count.intValue() + 1));
+		if (bytesByKey != null && bytes > 0L) {
+			Long existing = bytesByKey.get(safeKey);
+			bytesByKey.put(safeKey, existing == null ? Long.valueOf(bytes) : Long.valueOf(existing.longValue() + bytes));
+		}
+	}
+
+	private static String summarizeGuardianProtectReasons (Map<String, Integer> counts, Map<String, Long> bytesByKey) {
+		return summarizeGuardianProtectGroups(counts, bytesByKey);
+	}
+
+	private static String summarizeGuardianProtectGroups (Map<String, Integer> counts, Map<String, Long> bytesByKey) {
 		if (counts == null || counts.isEmpty()) return "none";
 		StringBuilder builder = new StringBuilder(128);
 		int emitted = 0;
@@ -1139,10 +1169,21 @@ public abstract class GLTexture implements Disposable {
 			}
 			if (bestKey == null) break;
 			if (emitted > 0) builder.append("|");
-			builder.append(bestKey).append(":").append(bestCount);
+			long bytes = 0L;
+			if (bytesByKey != null) {
+				Long bytesRef = bytesByKey.get(bestKey);
+				bytes = bytesRef == null ? 0L : bytesRef.longValue();
+			}
+			builder.append(bestKey).append(":").append(bestCount).append("/").append(toSummaryMegabytes(bytes)).append("m");
 			emitted++;
 		}
 		return builder.length() == 0 ? "none" : builder.toString();
+	}
+
+	private static String sanitizeGuardianSummaryValue (String value) {
+		if (value == null || value.length() == 0) return "unknown";
+		String sanitized = value.replace(' ', '_').replace('\n', '_').replace('\r', '_').replace('|', '_');
+		return sanitized.length() <= 160 ? sanitized : sanitized.substring(0, 160) + "...";
 	}
 
 	private static boolean containsGuardianProtectSummaryKey (StringBuilder builder, String key) {

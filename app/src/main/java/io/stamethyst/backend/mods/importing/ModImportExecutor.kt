@@ -2,6 +2,7 @@ package io.stamethyst.backend.mods.importing
 
 import android.content.Context
 import io.stamethyst.R
+import io.stamethyst.backend.mods.DuplicateZipEntryNormalizer
 import io.stamethyst.backend.mods.ImportedModPatchInfo
 import io.stamethyst.backend.mods.ImportedModPatchRegistry
 import io.stamethyst.backend.mods.ModManager
@@ -26,6 +27,9 @@ import java.io.FileOutputStream
 import java.io.IOException
 
 internal object ModImportExecutor {
+    internal fun normalizeWorkingJarForImport(workingJar: File) =
+        DuplicateZipEntryNormalizer.normalizeInPlaceIfNeeded(workingJar)
+
     private class ProgressReporter(
         val totalSteps: Int,
         private val onProgress: (ModImportExecutionProgress) -> Unit
@@ -135,14 +139,23 @@ internal object ModImportExecutor {
         progress: ProgressReporter
     ): ModImportExecutionItemResult {
         val workingJar = File(plan.session.sessionDir, "working-${item.source.index}.jar")
+        var activeWorkingJar = workingJar
         return try {
             progress.step(
                 item = item,
                 message = context.getString(R.string.mod_import_progress_prepare_working_copy, item.source.displayName)
             )
             copyFile(item.source.file, workingJar)
+            val normalized = normalizeWorkingJarForImport(workingJar)
+            if (normalized.rewritten) {
+                activeWorkingJar = File(plan.session.sessionDir, "normalized-working-${item.source.index}.jar")
+                copyFile(workingJar, activeWorkingJar)
+            }
             val patchResults = ArrayList<ImportPatchResult>()
             for (patchPlan in item.patchPlans) {
+                if (patchPlan.moduleId == DuplicateZipEntryPatchModule.id) {
+                    continue
+                }
                 if (!decisions.isPatchEnabled(item.id, patchPlan)) {
                     continue
                 }
@@ -157,7 +170,7 @@ internal object ModImportExecutor {
                     )
                     val result = module.apply(
                         context = context,
-                        workingJar = workingJar,
+                        workingJar = activeWorkingJar,
                         item = item,
                         plan = patchPlan,
                         decisions = decisions
@@ -185,7 +198,7 @@ internal object ModImportExecutor {
                 item = item,
                 message = context.getString(R.string.mod_import_progress_validate_manifest, item.source.displayName)
             )
-            val finalLaunchModId = MtsLaunchManifestValidator.resolveLaunchModId(workingJar).trim()
+            val finalLaunchModId = MtsLaunchManifestValidator.resolveLaunchModId(activeWorkingJar).trim()
             val replaceExisting = item.duplicateConflictKey?.let { conflictKey ->
                 decisions.duplicateDecisionFor(conflictKey) == DuplicateImportDecision.ReplaceExisting
             } == true
@@ -203,7 +216,7 @@ internal object ModImportExecutor {
                     context = context,
                     normalizedModId = item.normalizedModId,
                     launchModId = finalLaunchModId,
-                    excludedPath = workingJar.absolutePath
+                    excludedPath = activeWorkingJar.absolutePath
                 )
             }
             val targetName = reuse.targetFileName
@@ -214,7 +227,7 @@ internal object ModImportExecutor {
                 item = item,
                 message = context.getString(R.string.mod_import_progress_write_file, target.name)
             )
-            moveFileReplacing(workingJar, target)
+            moveFileReplacing(activeWorkingJar, target)
             val targetPath = target.absolutePath
             progress.step(
                 item = item,
@@ -266,6 +279,9 @@ internal object ModImportExecutor {
             if (workingJar.exists()) {
                 workingJar.delete()
             }
+            if (activeWorkingJar != workingJar && activeWorkingJar.exists()) {
+                activeWorkingJar.delete()
+            }
             ModImportExecutionItemResult(
                 itemId = item.id,
                 displayName = item.source.displayName,
@@ -283,7 +299,9 @@ internal object ModImportExecutor {
         modulesById: Map<String, ImportPatchModule>
     ): Int {
         val enabledPatchSteps = item.patchPlans.count { patchPlan ->
-            decisions.isPatchEnabled(item.id, patchPlan) && modulesById.containsKey(patchPlan.moduleId)
+            patchPlan.moduleId != DuplicateZipEntryPatchModule.id &&
+                decisions.isPatchEnabled(item.id, patchPlan) &&
+                modulesById.containsKey(patchPlan.moduleId)
         }
         val replaceExisting = item.duplicateConflictKey?.let { conflictKey ->
             decisions.duplicateDecisionFor(conflictKey) == DuplicateImportDecision.ReplaceExisting
