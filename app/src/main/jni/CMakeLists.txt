@@ -7,6 +7,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
 
 find_package(bytehook REQUIRED CONFIG)
+find_package(zstd REQUIRED CONFIG)
 
 add_compile_options(-Wall -Wextra)
 
@@ -75,6 +76,18 @@ target_link_libraries(
     bytehook::bytehook
     pojavexec
     dl
+)
+
+add_library(
+    workshop_zstd
+    SHARED
+    workshop_zstd.c
+)
+
+target_link_libraries(
+    workshop_zstd
+    PRIVATE
+    zstd::libzstd.so
 )
 
 add_library(

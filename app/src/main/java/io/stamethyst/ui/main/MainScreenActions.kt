@@ -56,6 +56,7 @@ internal data class MainScreenActions(
     val onShareCrashRecoveryReport: () -> Unit = {},
     val onReturnToMainMenu: () -> Unit = {},
     val onImportMods: () -> Unit = {},
+    val onOpenWorkshop: () -> Unit = {},
     val onLaunch: () -> LaunchRequestAction = { LaunchRequestAction.NONE },
     val onLaunchAfterSteamCloudError: () -> Unit = {},
     val onRefreshSteamCloudStatus: () -> Unit = {},
@@ -69,9 +70,10 @@ internal data class MainScreenActions(
 internal fun rememberMainScreenActions(
     viewModel: MainScreenViewModel,
     hostActivity: Activity?,
-    importModsLauncher: ActivityResultLauncher<Array<String>>
+    importModsLauncher: ActivityResultLauncher<Array<String>>,
+    onOpenWorkshop: () -> Unit = {},
 ): MainScreenActions {
-    return remember(viewModel, hostActivity, importModsLauncher) {
+    return remember(viewModel, hostActivity, importModsLauncher, onOpenWorkshop) {
         val activity = hostActivity
         if (activity == null) {
             MainScreenActions(isHostAvailable = false)
@@ -137,6 +139,7 @@ internal fun rememberMainScreenActions(
                         arrayOf("application/java-archive", "application/octet-stream", "*/*")
                     )
                 },
+                onOpenWorkshop = onOpenWorkshop,
                 onLaunch = { viewModel.onLaunchRequested(activity) },
                 onLaunchAfterSteamCloudError = { viewModel.onLaunchAfterSteamCloudError(activity) },
                 onRefreshSteamCloudStatus = {

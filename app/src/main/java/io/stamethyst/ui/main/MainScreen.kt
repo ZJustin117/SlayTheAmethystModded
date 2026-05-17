@@ -55,7 +55,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -67,7 +66,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -146,6 +144,7 @@ fun LauncherMainScreen(
     viewModel: MainScreenViewModel,
     onOpenSettings: () -> Unit = {},
     onOpenFeedback: () -> Unit = {},
+    onOpenWorkshop: () -> Unit = {},
     feedbackUnreadCount: Int = 0,
     onOpenFeedbackUpdates: () -> Unit = {},
 ) {
@@ -173,7 +172,8 @@ fun LauncherMainScreen(
     val actions = rememberMainScreenActions(
         viewModel = viewModel,
         hostActivity = hostActivity,
-        importModsLauncher = importModsLauncher
+        importModsLauncher = importModsLauncher,
+        onOpenWorkshop = onOpenWorkshop,
     )
 
     LaunchedEffect(hostActivity) {
@@ -244,6 +244,7 @@ fun LauncherMainScreen(
         actions = actions,
         onOpenSettings = onOpenSettings,
         onOpenFeedback = onOpenFeedback,
+        onOpenWorkshop = onOpenWorkshop,
         feedbackUnreadCount = feedbackUnreadCount,
         onOpenFeedbackUpdates = onOpenFeedbackUpdates
     )
@@ -348,6 +349,7 @@ private fun LauncherMainScreenContent(
     actions: MainScreenActions = MainScreenActions(isHostAvailable = false),
     onOpenSettings: () -> Unit = {},
     onOpenFeedback: () -> Unit = {},
+    onOpenWorkshop: () -> Unit = {},
     feedbackUnreadCount: Int = 0,
     onOpenFeedbackUpdates: () -> Unit = {},
 ) {
@@ -505,6 +507,7 @@ private fun LauncherMainScreenContent(
                     onToggleDragLocked = actions.onToggleDragLocked,
                     onAddFolderClick = { showCreateFolderDialog = true },
                     onOpenSettings = onOpenSettings,
+                    onOpenWorkshop = onOpenWorkshop,
                     onOpenFeedbackUpdates = onOpenFeedbackUpdates,
                     onSteamCloudClick = {
                         if (steamCloudIndicator.visible) {
@@ -1057,6 +1060,7 @@ private fun MainTopBar(
     onToggleDragLocked: () -> Unit,
     onAddFolderClick: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenWorkshop: () -> Unit,
     onOpenFeedbackUpdates: () -> Unit,
     onSteamCloudClick: () -> Unit,
 ) {
@@ -1116,12 +1120,12 @@ private fun MainTopBar(
                     DragLockStateIcon(dragLocked = dragLocked)
                 }
                 CompactTopBarIconButton(
-                    onClick = onAddFolderClick,
-                    enabled = folderControlsEnabled && hostAvailable
+                    onClick = onOpenWorkshop,
+                    enabled = hostAvailable
                 ) {
                     Icon(
-                        painter = painterResource(R.drawable.ic_folder_add),
-                        contentDescription = stringResource(R.string.main_action_add_folder)
+                        painter = painterResource(R.drawable.ic_cloud),
+                        contentDescription = "打开创意工坊"
                     )
                 }
                 CompactTopBarIconButton(
@@ -1215,14 +1219,12 @@ private fun CompactTopBarIconButton(
     enabled: Boolean,
     content: @Composable () -> Unit,
 ) {
-    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
-        IconButton(
-            onClick = onClick,
-            enabled = enabled,
-            modifier = Modifier.size(36.dp)
-        ) {
-            content()
-        }
+    IconButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.size(48.dp)
+    ) {
+        content()
     }
 }
 

@@ -66,6 +66,9 @@ import io.stamethyst.ui.feedback.FeedbackSubmissionNotice
 import io.stamethyst.ui.main.LauncherMainScreen
 import io.stamethyst.ui.main.MainScreenViewModel
 import io.stamethyst.ui.modimport.ModImportHost
+import io.stamethyst.ui.workshop.WorkshopScreen
+import io.stamethyst.ui.workshop.WorkshopDownloadCenterScreen
+import io.stamethyst.ui.workshop.WorkshopDetailScreen
 import io.stamethyst.ui.quickstart.QuickStartScreen
 import io.stamethyst.ui.settings.LauncherFirstRunSetupScreen
 import io.stamethyst.ui.settings.LauncherDeveloperSettingsScreen
@@ -214,6 +217,7 @@ fun LauncherContent(
                                 modifier = Modifier.fillMaxSize(),
                                 onOpenSettings = { navigator.push(Route.Settings) },
                                 onOpenFeedback = { navigator.push(Route.Feedback) },
+                                onOpenWorkshop = { navigator.push(Route.Workshop) },
                                 feedbackUnreadCount = feedbackInboxState.unreadIssueCount,
                                 onOpenFeedbackUpdates = {
                                     val unreadIssues = feedbackInboxState.subscriptions
@@ -241,6 +245,41 @@ fun LauncherContent(
                                 onDismissFeedbackSubmissionNotice = {
                                     pendingFeedbackNotice = null
                                 }
+                            )
+                        }
+
+                        entry<Route.Workshop> {
+                            WorkshopScreen(
+                                modifier = Modifier.fillMaxSize(),
+                                onBack = { navigator.goBack() },
+                                onOpenSteamLogin = { navigator.push(Route.SteamCloudLogin) },
+                                onOpenDownloadCenter = { navigator.push(Route.WorkshopDownloadCenter) },
+                                onOpenDetails = { item ->
+                                    navigator.push(
+                                        Route.WorkshopDetail(
+                                            publishedFileId = item.publishedFileId.toString(),
+                                            appId = item.appId.toLong(),
+                                        )
+                                    )
+                                },
+                            )
+                        }
+
+                        entry<Route.WorkshopDetail> { route ->
+                            val publishedFileId = route.publishedFileId.toULongOrNull() ?: 0u
+                            WorkshopDetailScreen(
+                                appId = route.appId.toUInt(),
+                                publishedFileId = publishedFileId,
+                                modifier = Modifier.fillMaxSize(),
+                                onBack = { navigator.goBack() },
+                                onOpenDownloadCenter = { navigator.push(Route.WorkshopDownloadCenter) },
+                            )
+                        }
+
+                        entry<Route.WorkshopDownloadCenter> {
+                            WorkshopDownloadCenterScreen(
+                                modifier = Modifier.fillMaxSize(),
+                                onBack = { navigator.goBack() },
                             )
                         }
 

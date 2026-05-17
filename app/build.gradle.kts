@@ -98,6 +98,7 @@ android {
         targetSdk = 33
         versionCode = appVersionCode
         versionName = appVersionName
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "FEEDBACK_BASE_URL", "\"http://1315061624-boxfc2p5fb.ap-guangzhou.tencentscf.com\"")
         buildConfigField("String", "FEEDBACK_ENDPOINT", "\"http://1315061624-boxfc2p5fb.ap-guangzhou.tencentscf.com/api/sts-feedback\"")
         buildConfigField("String", "FEEDBACK_API_KEY", feedbackApiKey.toBuildConfigStringLiteral())
@@ -220,12 +221,17 @@ dependencies {
     implementation(libs.tukaani.xz)
     implementation(libs.apache.commons.compress)
     implementation(libs.bytedance.bytehook)
+    implementation(libs.android.zstd)
     implementation(libs.ow2.asm)
     implementation(libs.ow2.asm.tree)
+    implementation(project(":workshop-core"))
+    implementation(project(":steam-protocol"))
     testImplementation(platform(libs.okhttpBom))
     testImplementation("org.json:json:20240303")
     testImplementation(libs.junit4)
     testImplementation(libs.mockwebserver3)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

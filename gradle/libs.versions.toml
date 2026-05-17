@@ -23,6 +23,13 @@ asm = "9.7.1"
 haze = "1.7.1"
 okhttp = "5.3.2"
 bouncycastle = "1.83"
+coroutines = "1.8.1"
+okio = "3.9.1"
+protobufPlugin = "0.9.4"
+protobufLite = "4.31.1"
+zstd = "1.5.6-9"
+aircompressor = "0.27"
+android-zstd = "1.5.2"
 
 [libraries]
 androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "androidx-appcompat" }
@@ -52,6 +59,13 @@ haze-materials = { module = "dev.chrisbanes.haze:haze-materials", version.ref = 
 okhttpBom = { module = "com.squareup.okhttp3:okhttp-bom", version.ref = "okhttp" }
 okhttp = { module = "com.squareup.okhttp3:okhttp" }
 bouncycastle-bcprov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
+coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+okhttp-logging = { module = "com.squareup.okhttp3:logging-interceptor" }
+okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
+protobuf-javalite = { module = "com.google.protobuf:protobuf-javalite", version.ref = "protobufLite" }
+zstd = { module = "com.github.luben:zstd-jni", version.ref = "zstd" }
+aircompressor = { module = "io.airlift:aircompressor", version.ref = "aircompressor" }
+android-zstd = { module = "com.fpliu.ndk.pkg.prefab.android.21:zstd", version.ref = "android-zstd" }
 mockwebserver3 = { module = "com.squareup.okhttp3:mockwebserver3" }
 junit4 = { module = "junit:junit", version.ref = "junit4" }
 log4j-api = { module = "org.apache.logging.log4j:log4j-api", version.ref = "log4j" }
@@ -63,5 +77,7 @@ ow2-asm-tree = { module = "org.ow2.asm:asm-tree", version.ref = "asm" }
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-test = { id = "com.android.test", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+protobuf = { id = "com.google.protobuf", version.ref = "protobufPlugin" }

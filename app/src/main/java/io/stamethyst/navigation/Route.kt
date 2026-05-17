@@ -14,6 +14,15 @@ sealed interface Route : NavKey {
     @Serializable
     data object Settings : Route
     @Serializable
+    data object Workshop : Route
+    @Serializable
+    data class WorkshopDetail(
+        val publishedFileId: String,
+        val appId: Long = 646570L,
+    ) : Route
+    @Serializable
+    data object WorkshopDownloadCenter : Route
+    @Serializable
     data object SteamCloudLogin : Route
     @Serializable
     data object SteamCloudGuard : Route
