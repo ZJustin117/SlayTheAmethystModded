@@ -129,6 +129,11 @@ object LauncherConfig {
     private const val PREF_KEY_AUTO_CHECK_UPDATES_ENABLED = "auto_check_updates_enabled"
     private const val PREF_KEY_STEAM_CLOUD_WATT_ACCELERATION_ENABLED =
         "steam_cloud_watt_acceleration_enabled"
+    private const val PREF_KEY_WORKSHOP_MAX_CONCURRENT_DOWNLOADS =
+        "workshop_max_concurrent_downloads"
+    private const val PREF_KEY_WORKSHOP_DOWNLOAD_THREADS = "workshop_download_threads"
+    private const val PREF_KEY_WORKSHOP_WATT_ACCELERATION_ENABLED =
+        "workshop_watt_acceleration_enabled"
     private const val PREF_KEY_STEAM_CLOUD_SAVE_MODE = "steam_cloud_save_mode"
     private const val PREF_KEY_STEAM_CLOUD_SYNC_BLACKLIST_PATHS =
         "steam_cloud_sync_blacklist_paths"
@@ -202,6 +207,13 @@ object LauncherConfig {
     const val DEFAULT_GLBRIDGE_SWAP_HEARTBEAT_DEBUG = false
     const val DEFAULT_AUTO_CHECK_UPDATES_ENABLED = true
     const val DEFAULT_STEAM_CLOUD_WATT_ACCELERATION_ENABLED = true
+    const val DEFAULT_WORKSHOP_MAX_CONCURRENT_DOWNLOADS = 1
+    const val MIN_WORKSHOP_MAX_CONCURRENT_DOWNLOADS = 1
+    const val MAX_WORKSHOP_MAX_CONCURRENT_DOWNLOADS = 4
+    const val DEFAULT_WORKSHOP_DOWNLOAD_THREADS = 4
+    const val MIN_WORKSHOP_DOWNLOAD_THREADS = 1
+    const val MAX_WORKSHOP_DOWNLOAD_THREADS = 8
+    const val DEFAULT_WORKSHOP_WATT_ACCELERATION_ENABLED = true
     val DEFAULT_STEAM_CLOUD_SAVE_MODE: SteamCloudSaveMode = SteamCloudSaveMode.DEFAULT
     val DEFAULT_STEAM_CLOUD_SYNC_BLACKLIST_PATHS: Set<String> =
         SteamCloudSyncBlacklist.defaultLocalRelativePaths()
@@ -1177,6 +1189,54 @@ object LauncherConfig {
     fun setSteamCloudWattAccelerationEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit {
             putBoolean(PREF_KEY_STEAM_CLOUD_WATT_ACCELERATION_ENABLED, enabled)
+        }
+    }
+
+    fun normalizeWorkshopMaxConcurrentDownloads(value: Int): Int {
+        return value.coerceIn(MIN_WORKSHOP_MAX_CONCURRENT_DOWNLOADS, MAX_WORKSHOP_MAX_CONCURRENT_DOWNLOADS)
+    }
+
+    fun readWorkshopMaxConcurrentDownloads(context: Context): Int {
+        return normalizeWorkshopMaxConcurrentDownloads(
+            prefs(context).getInt(
+                PREF_KEY_WORKSHOP_MAX_CONCURRENT_DOWNLOADS,
+                DEFAULT_WORKSHOP_MAX_CONCURRENT_DOWNLOADS
+            )
+        )
+    }
+
+    fun saveWorkshopMaxConcurrentDownloads(context: Context, value: Int) {
+        prefs(context).edit {
+            putInt(PREF_KEY_WORKSHOP_MAX_CONCURRENT_DOWNLOADS, normalizeWorkshopMaxConcurrentDownloads(value))
+        }
+    }
+
+    fun normalizeWorkshopDownloadThreads(value: Int): Int {
+        return value.coerceIn(MIN_WORKSHOP_DOWNLOAD_THREADS, MAX_WORKSHOP_DOWNLOAD_THREADS)
+    }
+
+    fun readWorkshopDownloadThreads(context: Context): Int {
+        return normalizeWorkshopDownloadThreads(
+            prefs(context).getInt(PREF_KEY_WORKSHOP_DOWNLOAD_THREADS, DEFAULT_WORKSHOP_DOWNLOAD_THREADS)
+        )
+    }
+
+    fun saveWorkshopDownloadThreads(context: Context, value: Int) {
+        prefs(context).edit {
+            putInt(PREF_KEY_WORKSHOP_DOWNLOAD_THREADS, normalizeWorkshopDownloadThreads(value))
+        }
+    }
+
+    fun isWorkshopWattAccelerationEnabled(context: Context): Boolean {
+        return prefs(context).getBoolean(
+            PREF_KEY_WORKSHOP_WATT_ACCELERATION_ENABLED,
+            DEFAULT_WORKSHOP_WATT_ACCELERATION_ENABLED
+        )
+    }
+
+    fun setWorkshopWattAccelerationEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit {
+            putBoolean(PREF_KEY_WORKSHOP_WATT_ACCELERATION_ENABLED, enabled)
         }
     }
 

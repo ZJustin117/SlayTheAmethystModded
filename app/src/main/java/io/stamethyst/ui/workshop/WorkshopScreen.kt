@@ -32,6 +32,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -66,8 +68,10 @@ import androidx.core.content.ContextCompat
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import io.stamethyst.R
-import io.stamethyst.ui.CollapsibleFloatingGlassHeader
+import io.stamethyst.backend.workshop.WorkshopBrowseSort
+import io.stamethyst.backend.workshop.WorkshopBrowseTimeFilter
 import io.stamethyst.backend.workshop.WorkshopItemSummary
+import io.stamethyst.ui.CollapsibleFloatingGlassHeader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -102,6 +106,8 @@ internal fun WorkshopScreen(
     val measuredHeaderHeight = with(density) { headerHeightPx.toDp() }
     val headerContentTopInset = (if (headerHeightPx == 0) 102.dp else measuredHeaderHeight) + 16.dp
     var query by rememberSaveable { mutableStateOf("") }
+    var sort by rememberSaveable { mutableStateOf(WorkshopBrowseSort.TextSearch) }
+    var timeFilter by rememberSaveable { mutableStateOf(WorkshopBrowseTimeFilter.ThreeMonths) }
     val shouldLoadMore by remember {
         derivedStateOf {
             val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: return@derivedStateOf false
@@ -148,9 +154,20 @@ internal fun WorkshopScreen(
                 SearchPanel(
                     query = query,
                     loading = state.browseLoading,
+                    sort = sort,
+                    timeFilter = timeFilter,
                     onQueryChange = { query = it },
-                    onSearch = { viewModel.search(context.applicationContext, query) },
-                    onRefresh = { viewModel.search(context.applicationContext, query) },
+                    onSearch = {
+                        viewModel.search(context.applicationContext, query, sort, timeFilter)
+                    },
+                    onSortChange = { selectedSort ->
+                        sort = selectedSort
+                        viewModel.search(context.applicationContext, query, selectedSort, timeFilter)
+                    },
+                    onTimeFilterChange = { selectedTimeFilter ->
+                        timeFilter = selectedTimeFilter
+                        viewModel.search(context.applicationContext, query, sort, selectedTimeFilter)
+                    },
                 )
             }
 
@@ -158,7 +175,7 @@ internal fun WorkshopScreen(
                 item {
                     ErrorPanel(
                         message = state.errorMessage,
-                        onRetry = { viewModel.search(context.applicationContext, query) },
+                        onRetry = { viewModel.search(context.applicationContext, query, sort, timeFilter) },
                     )
                 }
             }
@@ -179,7 +196,7 @@ internal fun WorkshopScreen(
                     item { LoadingPanel("正在连接 Steam 创意工坊") }
                 }
                 state.items.isEmpty() && state.errorMessage == null -> {
-                    item { EmptyPanel(onRetry = { viewModel.search(context.applicationContext, query) }) }
+                    item { EmptyPanel(onRetry = { viewModel.search(context.applicationContext, query, sort, timeFilter) }) }
                 }
                 else -> {
                     items(state.items, key = { it.publishedFileId.toString() }) { item ->
@@ -314,17 +331,14 @@ private fun WorkshopStatusHeader(
     state: WorkshopUiState,
     onOpenSteamLogin: () -> Unit,
 ) {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("下载状态会同步到模组页", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(
-                text = "下载完成后可在模组页查看状态、安装或重试。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
             if (!state.steamLoggedIn) {
                 Text(
-                    text = "未检测到启动器 Steam 登录。公开条目可浏览，受限下载需要先登录。",
+                    text = "Steam 尚未登录，部分模组不会显示。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -332,7 +346,7 @@ private fun WorkshopStatusHeader(
             }
             if (state.installedMods.isNotEmpty()) {
                 Text(
-                    text = "已记录 ${state.installedMods.size} 个创意工坊模组，可用于更新检查。",
+                    text = "已下载 ${state.installedMods.size} 个创意工坊模组",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -345,10 +359,16 @@ private fun WorkshopStatusHeader(
 private fun SearchPanel(
     query: String,
     loading: Boolean,
+    sort: WorkshopBrowseSort,
+    timeFilter: WorkshopBrowseTimeFilter,
     onQueryChange: (String) -> Unit,
     onSearch: () -> Unit,
-    onRefresh: () -> Unit,
+    onSortChange: (WorkshopBrowseSort) -> Unit,
+    onTimeFilterChange: (WorkshopBrowseTimeFilter) -> Unit,
 ) {
+    var sortMenuExpanded by remember { mutableStateOf(false) }
+    var timeMenuExpanded by remember { mutableStateOf(false) }
+
     Card {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(
@@ -359,9 +379,61 @@ private fun SearchPanel(
                 singleLine = true,
                 supportingText = { Text("留空浏览推荐/默认排序条目") },
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Button(enabled = !loading, onClick = onSearch) { Text("搜索") }
-                OutlinedButton(enabled = !loading, onClick = onRefresh) { Text("刷新") }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (sort.usesTimeFilter) {
+                        Box {
+                            OutlinedButton(
+                                enabled = !loading,
+                                onClick = { timeMenuExpanded = true }
+                            ) {
+                                Text(timeFilter.displayName)
+                            }
+                            DropdownMenu(
+                                expanded = timeMenuExpanded,
+                                onDismissRequest = { timeMenuExpanded = false }
+                            ) {
+                                WorkshopBrowseTimeFilter.entries.forEach { option ->
+                                    DropdownMenuItem(
+                                        text = { Text(option.displayName) },
+                                        onClick = {
+                                            timeMenuExpanded = false
+                                            if (option != timeFilter) {
+                                                onTimeFilterChange(option)
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Box {
+                        OutlinedButton(enabled = !loading, onClick = { sortMenuExpanded = true }) {
+                            Text(sort.displayName)
+                        }
+                        DropdownMenu(
+                            expanded = sortMenuExpanded,
+                            onDismissRequest = { sortMenuExpanded = false }
+                        ) {
+                            WorkshopBrowseSort.entries.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(option.displayName) },
+                                    onClick = {
+                                        sortMenuExpanded = false
+                                        if (option != sort) {
+                                            onSortChange(option)
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
             }
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
         }

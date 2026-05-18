@@ -290,6 +290,11 @@ class SettingsScreenViewModel : ViewModel() {
         val steamCloudSyncBlacklistCandidates: List<String> = emptyList(),
         val steamCloudWattAccelerationEnabled: Boolean =
             LauncherPreferences.DEFAULT_STEAM_CLOUD_WATT_ACCELERATION_ENABLED,
+        val workshopMaxConcurrentDownloads: Int =
+            LauncherPreferences.DEFAULT_WORKSHOP_MAX_CONCURRENT_DOWNLOADS,
+        val workshopDownloadThreads: Int = LauncherPreferences.DEFAULT_WORKSHOP_DOWNLOAD_THREADS,
+        val workshopWattAccelerationEnabled: Boolean =
+            LauncherPreferences.DEFAULT_WORKSHOP_WATT_ACCELERATION_ENABLED,
         val steamCloudCredentialsSummary: String = "",
         val steamCloudStatusText: String = "",
         val steamCloudManifestSummary: String = "",
@@ -944,6 +949,9 @@ class SettingsScreenViewModel : ViewModel() {
                         steamCloudSyncBlacklistCandidates = steamCloudSyncBlacklistCandidates,
                         steamCloudWattAccelerationEnabled =
                             LauncherPreferences.isSteamCloudWattAccelerationEnabled(host),
+                        workshopMaxConcurrentDownloads = LauncherPreferences.readWorkshopMaxConcurrentDownloads(host),
+                        workshopDownloadThreads = LauncherPreferences.readWorkshopDownloadThreads(host),
+                        workshopWattAccelerationEnabled = LauncherPreferences.isWorkshopWattAccelerationEnabled(host),
                         steamCloudCredentialsSummary = buildSteamCloudCredentialsSummary(
                             host,
                             steamCloudAuthSnapshot
@@ -1423,6 +1431,21 @@ class SettingsScreenViewModel : ViewModel() {
 
     fun onSteamCloudWattAccelerationChanged(host: Activity, enabled: Boolean) {
         LauncherPreferences.setSteamCloudWattAccelerationEnabled(host, enabled)
+        refreshStatus(host)
+    }
+
+    fun onWorkshopMaxConcurrentDownloadsChanged(host: Activity, value: Int) {
+        LauncherPreferences.saveWorkshopMaxConcurrentDownloads(host, value)
+        refreshStatus(host)
+    }
+
+    fun onWorkshopDownloadThreadsChanged(host: Activity, value: Int) {
+        LauncherPreferences.saveWorkshopDownloadThreads(host, value)
+        refreshStatus(host)
+    }
+
+    fun onWorkshopWattAccelerationChanged(host: Activity, enabled: Boolean) {
+        LauncherPreferences.setWorkshopWattAccelerationEnabled(host, enabled)
         refreshStatus(host)
     }
 
@@ -2664,6 +2687,7 @@ class SettingsScreenViewModel : ViewModel() {
         val jvm = snapshot.jvm
         val input = snapshot.input
         val diagnostics = snapshot.diagnostics
+        val market = snapshot.market
         val compatibility = snapshot.compatibility
         val rendererDecision = rendering.rendererDecision
         val mobileGluesSettings = rendering.mobileGluesSettings
@@ -2735,7 +2759,10 @@ class SettingsScreenViewModel : ViewModel() {
                     compatibility.nativeTouchscreenAllowlistCompatEnabled
             ),
             gameplayFontScale = input.fontScale,
-            gameplayLargerUiEnabled = input.largerUiEnabled
+            gameplayLargerUiEnabled = input.largerUiEnabled,
+            workshopMaxConcurrentDownloads = market.workshopMaxConcurrentDownloads,
+            workshopDownloadThreads = market.workshopDownloadThreads,
+            workshopWattAccelerationEnabled = market.workshopWattAccelerationEnabled
         )
     }
 

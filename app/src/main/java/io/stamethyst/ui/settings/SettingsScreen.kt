@@ -117,6 +117,7 @@ import io.stamethyst.ui.haptics.LauncherHaptics
 import io.stamethyst.ui.icon.ArrowBack
 import io.stamethyst.ui.openBasicTutorial
 import io.stamethyst.ui.modimport.ModImportRequestBus
+import io.stamethyst.ui.preferences.LauncherPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
@@ -162,6 +163,15 @@ fun LauncherSettingsScreen(
         onOpenSteamCloudSaveSettings = { navigator.push(Route.SteamCloudSaveSettings) },
         onClearSteamCloudCredentials = { viewModel.onClearSteamCloudCredentials(activity) },
         onOpenNativeLibraryMarket = { navigator.push(Route.NativeLibraryMarket) },
+        onWorkshopMaxConcurrentDownloadsChanged = { value ->
+            viewModel.onWorkshopMaxConcurrentDownloadsChanged(activity, value)
+        },
+        onWorkshopDownloadThreadsChanged = { value ->
+            viewModel.onWorkshopDownloadThreadsChanged(activity, value)
+        },
+        onWorkshopWattAccelerationChanged = { enabled ->
+            viewModel.onWorkshopWattAccelerationChanged(activity, enabled)
+        },
         onRenderScaleSelected = { value -> viewModel.onRenderScaleSelected(activity, value) },
         onTargetFpsSelected = { fps -> viewModel.onTargetFpsSelected(activity, fps) },
         onVirtualResolutionModeChanged = { mode ->
@@ -411,6 +421,9 @@ private fun LauncherSettingsScreenContent(
     onOpenSteamCloudSaveSettings: () -> Unit = {},
     onClearSteamCloudCredentials: () -> Unit = {},
     onOpenNativeLibraryMarket: () -> Unit = {},
+    onWorkshopMaxConcurrentDownloadsChanged: (Int) -> Unit = {},
+    onWorkshopDownloadThreadsChanged: (Int) -> Unit = {},
+    onWorkshopWattAccelerationChanged: (Boolean) -> Unit = {},
     onRenderScaleSelected: (Float) -> Unit = {},
     onTargetFpsSelected: (Int) -> Unit = {},
     onVirtualResolutionModeChanged: (VirtualResolutionMode) -> Unit = {},
@@ -563,6 +576,17 @@ private fun LauncherSettingsScreenContent(
                         onExportLogs = onExportLogs,
                         onExportLogsToFile = onExportLogsToFile,
                         onOpenNativeLibraryMarket = onOpenNativeLibraryMarket
+                    )
+                }
+            }
+
+            item {
+                SettingsSectionCard(title = stringResource(R.string.settings_market_section_title)) {
+                    SettingsMarketSection(
+                        uiState = uiState,
+                        onWorkshopMaxConcurrentDownloadsChanged = onWorkshopMaxConcurrentDownloadsChanged,
+                        onWorkshopDownloadThreadsChanged = onWorkshopDownloadThreadsChanged,
+                        onWorkshopWattAccelerationChanged = onWorkshopWattAccelerationChanged,
                     )
                 }
             }
@@ -748,6 +772,91 @@ private fun SettingsSteamCloudSection(
         )
     }
 
+}
+
+@Composable
+private fun SettingsMarketSection(
+    uiState: SettingsScreenViewModel.UiState,
+    onWorkshopMaxConcurrentDownloadsChanged: (Int) -> Unit,
+    onWorkshopDownloadThreadsChanged: (Int) -> Unit,
+    onWorkshopWattAccelerationChanged: (Boolean) -> Unit,
+) {
+    Text(
+        text = stringResource(R.string.settings_market_intro),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    Spacer(modifier = Modifier.size(8.dp))
+    NumberStepperSettingRow(
+        title = stringResource(R.string.settings_market_concurrent_downloads_title),
+        value = uiState.workshopMaxConcurrentDownloads,
+        minValue = LauncherPreferences.MIN_WORKSHOP_MAX_CONCURRENT_DOWNLOADS,
+        maxValue = LauncherPreferences.MAX_WORKSHOP_MAX_CONCURRENT_DOWNLOADS,
+        description = stringResource(R.string.settings_market_concurrent_downloads_desc),
+        enabled = !uiState.busy,
+        onValueChange = onWorkshopMaxConcurrentDownloadsChanged,
+    )
+    Spacer(modifier = Modifier.size(8.dp))
+    NumberStepperSettingRow(
+        title = stringResource(R.string.settings_market_download_threads_title),
+        value = uiState.workshopDownloadThreads,
+        minValue = LauncherPreferences.MIN_WORKSHOP_DOWNLOAD_THREADS,
+        maxValue = LauncherPreferences.MAX_WORKSHOP_DOWNLOAD_THREADS,
+        description = stringResource(R.string.settings_market_download_threads_desc),
+        enabled = !uiState.busy,
+        onValueChange = onWorkshopDownloadThreadsChanged,
+    )
+    Spacer(modifier = Modifier.size(8.dp))
+    SwitchSettingRow(
+        checked = uiState.workshopWattAccelerationEnabled,
+        enabled = !uiState.busy,
+        enabledText = stringResource(R.string.settings_market_workshop_acceleration_enabled_title),
+        disabledText = stringResource(R.string.settings_market_workshop_acceleration_disabled_title),
+        description = stringResource(R.string.settings_market_workshop_acceleration_desc),
+        onCheckedChange = onWorkshopWattAccelerationChanged,
+    )
+}
+
+@Composable
+private fun NumberStepperSettingRow(
+    title: String,
+    value: Int,
+    minValue: Int,
+    maxValue: Int,
+    description: String,
+    enabled: Boolean,
+    onValueChange: (Int) -> Unit,
+) {
+    val view = LocalView.current
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title)
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        HapticIconButton(
+            enabled = enabled && value > minValue,
+            onClick = {
+                onValueChange((value - 1).coerceAtLeast(minValue))
+                performTapHapticFeedback(view)
+            }
+        ) { Text("-") }
+        Text(text = value.toString(), style = MaterialTheme.typography.titleMedium)
+        HapticIconButton(
+            enabled = enabled && value < maxValue,
+            onClick = {
+                onValueChange((value + 1).coerceAtMost(maxValue))
+                performTapHapticFeedback(view)
+            }
+        ) { Text("+") }
+    }
 }
 
 @Composable

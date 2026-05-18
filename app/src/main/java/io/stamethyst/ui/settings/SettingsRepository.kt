@@ -36,6 +36,7 @@ internal object SettingsRepository {
         val jvm: JvmSnapshot,
         val input: InputSnapshot,
         val diagnostics: DiagnosticsSnapshot,
+        val market: MarketSnapshot,
         val compatibility: CompatibilitySnapshot
     )
 
@@ -89,6 +90,12 @@ internal object SettingsRepository {
         val gpuResourceDiagEnabled: Boolean,
         val gdxPadCursorDebugEnabled: Boolean,
         val glBridgeSwapHeartbeatDebugEnabled: Boolean
+    )
+
+    data class MarketSnapshot(
+        val workshopMaxConcurrentDownloads: Int,
+        val workshopDownloadThreads: Int,
+        val workshopWattAccelerationEnabled: Boolean
     )
 
     data class CompatibilitySnapshot(
@@ -185,6 +192,11 @@ internal object SettingsRepository {
                 gdxPadCursorDebugEnabled = LauncherPreferences.isGdxPadCursorDebugEnabled(context),
                 glBridgeSwapHeartbeatDebugEnabled =
                     LauncherPreferences.isGlBridgeSwapHeartbeatDebugEnabled(context)
+            ),
+            market = MarketSnapshot(
+                workshopMaxConcurrentDownloads = LauncherPreferences.readWorkshopMaxConcurrentDownloads(context),
+                workshopDownloadThreads = LauncherPreferences.readWorkshopDownloadThreads(context),
+                workshopWattAccelerationEnabled = LauncherPreferences.isWorkshopWattAccelerationEnabled(context)
             ),
             compatibility = CompatibilitySnapshot(
                 globalAtlasFilterCompatEnabled =
@@ -352,6 +364,18 @@ internal object SettingsRepository {
         LauncherPreferences.setSteamCloudWattAccelerationEnabled(
             context,
             LauncherPreferences.DEFAULT_STEAM_CLOUD_WATT_ACCELERATION_ENABLED
+        )
+        LauncherPreferences.saveWorkshopMaxConcurrentDownloads(
+            context,
+            LauncherPreferences.DEFAULT_WORKSHOP_MAX_CONCURRENT_DOWNLOADS
+        )
+        LauncherPreferences.saveWorkshopDownloadThreads(
+            context,
+            LauncherPreferences.DEFAULT_WORKSHOP_DOWNLOAD_THREADS
+        )
+        LauncherPreferences.setWorkshopWattAccelerationEnabled(
+            context,
+            LauncherPreferences.DEFAULT_WORKSHOP_WATT_ACCELERATION_ENABLED
         )
         CompatibilitySettings.resetToDefaults(context)
     }

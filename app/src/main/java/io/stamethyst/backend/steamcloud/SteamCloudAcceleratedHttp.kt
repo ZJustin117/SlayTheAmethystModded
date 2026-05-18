@@ -71,11 +71,13 @@ object SteamCloudAcceleratedHttp {
         LauncherConfig.isSteamCloudWattAccelerationEnabled(context)
 
     @JvmStatic
+    @JvmOverloads
     fun createClient(
         context: Context,
         connectTimeoutMs: Long,
         readTimeoutMs: Long,
         callTimeoutMs: Long,
+        enabled: Boolean = isEnabled(context),
     ): OkHttpClient {
         val builder = OkHttpClient.Builder()
             .connectTimeout(connectTimeoutMs, TimeUnit.MILLISECONDS)
@@ -84,7 +86,7 @@ object SteamCloudAcceleratedHttp {
             .callTimeout(callTimeoutMs, TimeUnit.MILLISECONDS)
             .retryOnConnectionFailure(true)
 
-        if (!isEnabled(context)) {
+        if (!enabled) {
             return builder.build()
         }
 

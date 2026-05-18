@@ -4,6 +4,7 @@ import android.content.Context
 import io.stamethyst.backend.steamcloud.SteamCloudAcceleratedHttp
 import io.stamethyst.backend.steamcloud.SteamCloudAuthStore
 import io.stamethyst.backend.steamcloud.SteamCloudAuthStore.AuthSnapshot
+import io.stamethyst.ui.preferences.LauncherPreferences
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -31,6 +32,7 @@ internal class WorkshopService(
         connectTimeoutMs = 15_000L,
         readTimeoutMs = 60_000L,
         callTimeoutMs = 120_000L,
+        enabled = LauncherPreferences.isWorkshopWattAccelerationEnabled(context),
     ),
     private val contentDownloaderFactory: ((WorkshopService) -> WorkshopContentDownloader)? = null,
 ) {
@@ -203,7 +205,7 @@ internal class WorkshopService(
             client = client,
             sessionFactory = { identity.createSession(client) },
             sessionConnector = buildSessionConnector(account),
-            maxConcurrentChunks = 4,
+            maxConcurrentChunks = LauncherPreferences.readWorkshopDownloadThreads(context),
             allowPublicCdnFallbackOnSessionFailure = account == null,
             publishedFileLanguage = "schinese",
         )
@@ -282,8 +284,13 @@ internal class WorkshopService(
         val searchUrl = "https://steamcommunity.com/workshop/browse/".toHttpUrl().newBuilder()
             .addQueryParameter("appid", query.appId.toString())
             .addQueryParameter("searchtext", query.searchText)
-            .addQueryParameter("actualsort", "textsearch")
+            .addQueryParameter("actualsort", query.sort.steamValue)
             .addQueryParameter("p", query.page.toString())
+            .apply {
+                if (query.sort.usesTimeFilter && query.timeFilter.days > 0) {
+                    addQueryParameter("days", query.timeFilter.days.toString())
+                }
+            }
             .build()
         val html = client.newCall(Request.Builder().url(searchUrl).get().build()).execute().use { response ->
             if (!response.isSuccessful) error("Steam workshop browse failed: ${response.code}")

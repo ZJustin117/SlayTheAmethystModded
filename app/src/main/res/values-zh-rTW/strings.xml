@@ -7,6 +7,15 @@
     <string name="settings_basic_tutorial_title">新手教程</string>
     <string name="settings_basic_tutorial_action">檢視啟動器新手教學</string>
     <string name="settings_basic_tutorial_desc">開啟 B 站影片，檢視基礎使用教學。</string>
+    <string name="settings_market_section_title">市場</string>
+    <string name="settings_market_intro">控制市場中的 Steam 創意工坊模組下載。</string>
+    <string name="settings_market_concurrent_downloads_title">同時下載模組數量</string>
+    <string name="settings_market_concurrent_downloads_desc">允許同時下載多少個創意工坊模組。</string>
+    <string name="settings_market_download_threads_title">單個模組下載執行緒數</string>
+    <string name="settings_market_download_threads_desc">控制每個創意工坊模組的分塊下載並發數。</string>
+    <string name="settings_market_workshop_acceleration_enabled_title">創意工坊加速：已開啟</string>
+    <string name="settings_market_workshop_acceleration_disabled_title">創意工坊加速：已關閉</string>
+    <string name="settings_market_workshop_acceleration_desc">對 Steam 創意工坊、商店/CDN 和預覽圖請求使用 Watt Toolkit 路由。</string>
     <string name="sts_crash_dialog_title">遊戲已崩潰</string>
     <string name="sts_crash_detail_format">遊戲已崩潰。\n%1$s</string>
     <string name="sts_normal_exit">遊戲程序異常退出，退出碼 %1$d。</string>

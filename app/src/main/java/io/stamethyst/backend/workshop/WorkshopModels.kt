@@ -5,9 +5,31 @@ import java.io.File
 data class WorkshopBrowseQuery(
     val appId: UInt = 646570u,
     val searchText: String = "",
+    val sort: WorkshopBrowseSort = WorkshopBrowseSort.TextSearch,
+    val timeFilter: WorkshopBrowseTimeFilter = WorkshopBrowseTimeFilter.ThreeMonths,
     val page: Int = 1,
     val pageSize: Int = 20,
 )
+
+enum class WorkshopBrowseSort(
+    val steamValue: String,
+    val displayName: String,
+    val usesTimeFilter: Boolean = false,
+) {
+    TextSearch("textsearch", "相关"),
+    MostRecent("mostrecent", "最新"),
+    MostSubscribed("totaluniquesubscribers", "订阅", usesTimeFilter = true),
+    Trend("trend", "热门", usesTimeFilter = true),
+}
+
+enum class WorkshopBrowseTimeFilter(
+    val days: Int,
+    val displayName: String,
+) {
+    OneWeek(7, "一周"),
+    ThreeMonths(90, "三月"),
+    AllTime(0, "全部"),
+}
 
 data class WorkshopBrowseResult(
     val items: List<WorkshopItemSummary>,

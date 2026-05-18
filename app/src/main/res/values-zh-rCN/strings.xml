@@ -7,6 +7,15 @@
     <string name="settings_basic_tutorial_title">新手教程</string>
     <string name="settings_basic_tutorial_action">查看启动器新手教程</string>
     <string name="settings_basic_tutorial_desc">打开 B 站视频，查看基础使用教程。</string>
+    <string name="settings_market_section_title">市场</string>
+    <string name="settings_market_intro">控制市场中的 Steam 创意工坊模组下载。</string>
+    <string name="settings_market_concurrent_downloads_title">同时下载模组数量</string>
+    <string name="settings_market_concurrent_downloads_desc">允许同时下载多少个创意工坊模组。</string>
+    <string name="settings_market_download_threads_title">单个模组下载线程数</string>
+    <string name="settings_market_download_threads_desc">控制每个创意工坊模组的分块下载并发数。</string>
+    <string name="settings_market_workshop_acceleration_enabled_title">创意工坊加速：已开启</string>
+    <string name="settings_market_workshop_acceleration_disabled_title">创意工坊加速：已关闭</string>
+    <string name="settings_market_workshop_acceleration_desc">对 Steam 创意工坊、商店/CDN 和预览图请求使用 Watt Toolkit 路由。</string>
     <string name="sts_crash_dialog_title">游戏已崩溃</string>
     <string name="sts_crash_detail_format">游戏已崩溃。\n%1$s</string>
     <string name="sts_normal_exit">游戏进程异常退出，退出码 %1$d。</string>

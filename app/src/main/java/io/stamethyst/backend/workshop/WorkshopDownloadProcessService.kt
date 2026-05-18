@@ -14,9 +14,11 @@ import android.os.ResultReceiver
 import androidx.core.app.NotificationCompat
 import io.stamethyst.R
 import io.stamethyst.LauncherActivity
+import io.stamethyst.ui.preferences.LauncherPreferences
 import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.runBlocking
 
 class WorkshopDownloadProcessService : Service() {
@@ -61,10 +63,10 @@ class WorkshopDownloadProcessService : Service() {
         private const val NOTIFICATION_ID = 646570
 
         @Volatile
-        private var activeDownloadKeySnapshot: String? = null
+        private var activeDownloadKeySnapshot: Set<String> = emptySet()
 
         fun isActiveDownload(publishedFileId: ULong): Boolean {
-            return activeDownloadKeySnapshot?.substringAfter(':') == publishedFileId.toString()
+            return activeDownloadKeySnapshot.any { it.substringAfter(':') == publishedFileId.toString() }
         }
 
         fun start(context: Context, details: WorkshopItemDetails, receiver: ResultReceiver? = null) {
@@ -109,8 +111,16 @@ class WorkshopDownloadProcessService : Service() {
         }
 
         fun startNextQueued(context: Context) {
-            val task = WorkshopDownloadTaskStore(context).nextQueuedTask() ?: return
-            start(context, task.details, null)
+            repeat(availableDownloadSlots(context)) {
+                val task = WorkshopDownloadTaskStore(context).nextQueuedTask() ?: return
+                start(context, task.details, null)
+            }
+        }
+
+        private fun availableDownloadSlots(context: Context): Int {
+            val limit = LauncherPreferences.readWorkshopMaxConcurrentDownloads(context)
+            val runningCount = activeDownloadKeySnapshot.size
+            return (limit - runningCount).coerceAtLeast(0)
         }
 
         fun pause(context: Context, appId: UInt, publishedFileId: ULong, receiver: ResultReceiver? = null) {
@@ -134,13 +144,9 @@ class WorkshopDownloadProcessService : Service() {
     }
 
     @Volatile
-    private var workerThread: Thread? = null
+    private var workerThreads: MutableMap<String, Thread> = ConcurrentHashMap()
 
-    @Volatile
-    private var activeDownloadKey: String? = null
-
-    @Volatile
-    private var requestedStop: StopReason? = null
+    private val requestedStops: MutableMap<String, StopReason> = ConcurrentHashMap()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -153,51 +159,54 @@ class WorkshopDownloadProcessService : Service() {
         if (safeIntent.action != ACTION_DOWNLOAD) return START_NOT_STICKY
 
         val receiver = extractResultReceiver(safeIntent)
-        if (workerThread != null) {
+        val requestedDownloadKey = safeIntent.downloadKeyOrNull()
+        if (requestedDownloadKey != null && workerThreads.containsKey(requestedDownloadKey)) {
             startForeground(NOTIFICATION_ID, buildNotification("下载正在进行"))
-            val requestedDownloadKey = safeIntent.downloadKeyOrNull()
-            if (requestedDownloadKey != null && requestedDownloadKey == activeDownloadKey) {
-                receiver?.send(RESULT_PROGRESS, Bundle().apply {
-                    putString(EXTRA_MESSAGE, "下载已在后台进行中")
-                    putString(EXTRA_TASK_STATUS, "Downloading")
-                })
-            } else {
-                receiver?.send(RESULT_FAILURE, errorBundle(IllegalStateException("Workshop download process is already busy")))
-            }
+            receiver?.send(RESULT_PROGRESS, Bundle().apply {
+                putString(EXTRA_MESSAGE, "下载已在后台进行中")
+                putString(EXTRA_TASK_STATUS, "Downloading")
+            })
+            return START_NOT_STICKY
+        }
+        if (workerThreads.size >= LauncherPreferences.readWorkshopMaxConcurrentDownloads(applicationContext)) {
+            receiver?.send(RESULT_PROGRESS, Bundle().apply {
+                putString(EXTRA_MESSAGE, "等待下载")
+                putString(EXTRA_TASK_STATUS, "Queued")
+            })
             return START_NOT_STICKY
         }
 
         startForeground(NOTIFICATION_ID, buildNotification("准备下载"))
-        requestedStop = null
         val startingDetails = extractDetails(safeIntent)
         val startingTaskStore = WorkshopDownloadTaskStore(applicationContext)
         startingTaskStore.clearDeletedMarker(startingDetails.summary.publishedFileId)
         startingTaskStore.update(startingDetails.summary.publishedFileId) {
             it.copy(status = WorkshopDownloadTaskStatus.Resolving, message = "正在解析下载内容", updatedAtMillis = System.currentTimeMillis())
         }
-        val thread = Thread({ runDownload(startId, safeIntent, receiver) }, "STS-WorkshopDownload")
-        activeDownloadKey = safeIntent.downloadKeyOrNull()
-        activeDownloadKeySnapshot = activeDownloadKey
-        workerThread = thread
+        val activeDownloadKey = requireNotNull(requestedDownloadKey)
+        requestedStops.remove(activeDownloadKey)
+        val thread = Thread({ runDownload(startId, safeIntent, receiver) }, "STS-WorkshopDownload-$activeDownloadKey")
+        workerThreads[activeDownloadKey] = thread
+        activeDownloadKeySnapshot = workerThreads.keys.toSet()
         thread.start()
         return START_REDELIVER_INTENT
     }
 
     override fun onDestroy() {
-        val thread = workerThread
-        workerThread = null
-        activeDownloadKey = null
-        activeDownloadKeySnapshot = null
-        requestedStop = StopReason.Cancel
-        thread?.interrupt()
+        val threads = workerThreads.values.toList()
+        workerThreads.clear()
+        activeDownloadKeySnapshot = emptySet()
+        threads.forEach { thread ->
+            thread.interrupt()
+        }
         super.onDestroy()
     }
 
     private fun handleControlIntent(intent: Intent) {
         val requestedDownloadKey = intent.downloadKeyOrNull() ?: return
-        if (requestedDownloadKey != activeDownloadKey) return
-        requestedStop = if (intent.action == ACTION_PAUSE) StopReason.Pause else StopReason.Cancel
-        workerThread?.interrupt()
+        val thread = workerThreads[requestedDownloadKey] ?: return
+        requestedStops[requestedDownloadKey] = if (intent.action == ACTION_PAUSE) StopReason.Pause else StopReason.Cancel
+        thread.interrupt()
     }
 
     private fun runDownload(startId: Int, intent: Intent, receiver: ResultReceiver?) {
@@ -205,6 +214,7 @@ class WorkshopDownloadProcessService : Service() {
         val metadataStore = WorkshopMetadataStore(applicationContext)
         val taskStore = WorkshopDownloadTaskStore(applicationContext)
         val service = WorkshopService(applicationContext)
+        val downloadKey = requireNotNull(intent.downloadKeyOrNull())
         try {
             metadataStore.upsert(
                 WorkshopInstalledModRecord(
@@ -282,7 +292,7 @@ class WorkshopDownloadProcessService : Service() {
                             sendProgress(receiver, message, event.state.toTaskStatusName())
                         }
                         is WorkshopDownloadEvent.Completed -> {
-                            if (requestedStop == StopReason.Cancel || taskStore.isMarkedDeleted(details.summary.publishedFileId) || taskStore.find(details.summary.publishedFileId) == null) {
+                            if (requestedStops[downloadKey] == StopReason.Cancel || taskStore.isMarkedDeleted(details.summary.publishedFileId) || taskStore.find(details.summary.publishedFileId) == null) {
                                 cleanOutput(details)
                                 return@collect
                             }
@@ -332,7 +342,7 @@ class WorkshopDownloadProcessService : Service() {
                 }
             }
         } catch (throwable: Throwable) {
-            when (requestedStop) {
+            when (requestedStops[downloadKey]) {
                 StopReason.Pause -> {
                     taskStore.update(details.summary.publishedFileId) {
                         it.copy(status = WorkshopDownloadTaskStatus.Paused, message = "下载已暂停", updatedAtMillis = System.currentTimeMillis())
@@ -380,13 +390,13 @@ class WorkshopDownloadProcessService : Service() {
                 }
             }
         } finally {
-            if (Thread.currentThread() === workerThread) {
-                workerThread = null
-                activeDownloadKey = null
-                activeDownloadKeySnapshot = null
+            workerThreads.remove(downloadKey)
+            requestedStops.remove(downloadKey)
+            activeDownloadKeySnapshot = workerThreads.keys.toSet()
+            if (workerThreads.isEmpty()) {
+                stopForegroundCompat()
+                stopSelf()
             }
-            stopForegroundCompat()
-            stopSelf()
             startNextQueued(applicationContext)
         }
     }

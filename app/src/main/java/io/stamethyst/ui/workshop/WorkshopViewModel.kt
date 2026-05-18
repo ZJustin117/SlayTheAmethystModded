@@ -12,6 +12,8 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.stamethyst.backend.workshop.WorkshopBrowseQuery
+import io.stamethyst.backend.workshop.WorkshopBrowseSort
+import io.stamethyst.backend.workshop.WorkshopBrowseTimeFilter
 import io.stamethyst.backend.workshop.WorkshopDownloadProcessService
 import io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus
 import io.stamethyst.backend.workshop.WorkshopInstalledModRecord
@@ -37,6 +39,8 @@ internal class WorkshopViewModel : ViewModel() {
     private var metadataStore: WorkshopMetadataStore? = null
     private var loaded = false
     private var activeQueryText: String = ""
+    private var activeSort: WorkshopBrowseSort = WorkshopBrowseSort.TextSearch
+    private var activeTimeFilter: WorkshopBrowseTimeFilter = WorkshopBrowseTimeFilter.ThreeMonths
 
     fun load(context: Context) {
         WorkshopDownloadCenterStore.initialize(context)
@@ -66,6 +70,18 @@ internal class WorkshopViewModel : ViewModel() {
 
     fun search(context: Context, queryText: String) {
         activeQueryText = queryText
+        loadBrowsePage(context, queryText = queryText, page = 1, append = false)
+    }
+
+    fun search(
+        context: Context,
+        queryText: String,
+        sort: WorkshopBrowseSort,
+        timeFilter: WorkshopBrowseTimeFilter,
+    ) {
+        activeQueryText = queryText
+        activeSort = sort
+        activeTimeFilter = timeFilter
         loadBrowsePage(context, queryText = queryText, page = 1, append = false)
     }
 
@@ -100,6 +116,8 @@ internal class WorkshopViewModel : ViewModel() {
                     currentService.browse(
                         WorkshopBrowseQuery(
                             searchText = queryText,
+                            sort = activeSort,
+                            timeFilter = activeTimeFilter,
                             page = page,
                             pageSize = WorkshopUiState.PAGE_SIZE,
                         )

@@ -7,6 +7,15 @@
     <string name="settings_basic_tutorial_title">Beginner tutorial</string>
     <string name="settings_basic_tutorial_action">View launcher beginner tutorial</string>
     <string name="settings_basic_tutorial_desc">Open the Bilibili tutorial video for first-time setup and usage guidance.</string>
+    <string name="settings_market_section_title">Market</string>
+    <string name="settings_market_intro">Controls Steam Workshop mod downloads in the market.</string>
+    <string name="settings_market_concurrent_downloads_title">Concurrent mod downloads</string>
+    <string name="settings_market_concurrent_downloads_desc">How many Workshop mods may download at the same time.</string>
+    <string name="settings_market_download_threads_title">Download threads per mod</string>
+    <string name="settings_market_download_threads_desc">Controls Workshop chunk download concurrency for each mod.</string>
+    <string name="settings_market_workshop_acceleration_enabled_title">Workshop acceleration: Enabled</string>
+    <string name="settings_market_workshop_acceleration_disabled_title">Workshop acceleration: Disabled</string>
+    <string name="settings_market_workshop_acceleration_desc">Uses Watt Toolkit routes for Steam Workshop, Store/CDN, and preview image requests.</string>
     <string name="sts_crash_dialog_title">Game crashed</string>
     <string name="sts_crash_detail_format">Game crashed.\n%1$s</string>
     <string name="sts_normal_exit">Game process exited unexpectedly, exit code %1$d.</string>

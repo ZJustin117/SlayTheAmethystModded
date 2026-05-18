@@ -112,6 +112,20 @@ object LauncherPreferences {
         get() = LauncherConfig.DEFAULT_AUTO_CHECK_UPDATES_ENABLED
     val DEFAULT_STEAM_CLOUD_WATT_ACCELERATION_ENABLED: Boolean
         get() = LauncherConfig.DEFAULT_STEAM_CLOUD_WATT_ACCELERATION_ENABLED
+    val DEFAULT_WORKSHOP_MAX_CONCURRENT_DOWNLOADS: Int
+        get() = LauncherConfig.DEFAULT_WORKSHOP_MAX_CONCURRENT_DOWNLOADS
+    val MIN_WORKSHOP_MAX_CONCURRENT_DOWNLOADS: Int
+        get() = LauncherConfig.MIN_WORKSHOP_MAX_CONCURRENT_DOWNLOADS
+    val MAX_WORKSHOP_MAX_CONCURRENT_DOWNLOADS: Int
+        get() = LauncherConfig.MAX_WORKSHOP_MAX_CONCURRENT_DOWNLOADS
+    val DEFAULT_WORKSHOP_DOWNLOAD_THREADS: Int
+        get() = LauncherConfig.DEFAULT_WORKSHOP_DOWNLOAD_THREADS
+    val MIN_WORKSHOP_DOWNLOAD_THREADS: Int
+        get() = LauncherConfig.MIN_WORKSHOP_DOWNLOAD_THREADS
+    val MAX_WORKSHOP_DOWNLOAD_THREADS: Int
+        get() = LauncherConfig.MAX_WORKSHOP_DOWNLOAD_THREADS
+    val DEFAULT_WORKSHOP_WATT_ACCELERATION_ENABLED: Boolean
+        get() = LauncherConfig.DEFAULT_WORKSHOP_WATT_ACCELERATION_ENABLED
     val DEFAULT_STEAM_CLOUD_SAVE_MODE: SteamCloudSaveMode
         get() = LauncherConfig.DEFAULT_STEAM_CLOUD_SAVE_MODE
     val DEFAULT_STEAM_CLOUD_SYNC_BLACKLIST_PATHS: Set<String>
@@ -426,6 +440,30 @@ object LauncherPreferences {
 
     fun setSteamCloudWattAccelerationEnabled(context: Context, enabled: Boolean) {
         LauncherConfig.setSteamCloudWattAccelerationEnabled(context, enabled)
+    }
+
+    fun readWorkshopMaxConcurrentDownloads(context: Context): Int {
+        return LauncherConfig.readWorkshopMaxConcurrentDownloads(context)
+    }
+
+    fun saveWorkshopMaxConcurrentDownloads(context: Context, value: Int) {
+        LauncherConfig.saveWorkshopMaxConcurrentDownloads(context, value)
+    }
+
+    fun readWorkshopDownloadThreads(context: Context): Int {
+        return LauncherConfig.readWorkshopDownloadThreads(context)
+    }
+
+    fun saveWorkshopDownloadThreads(context: Context, value: Int) {
+        LauncherConfig.saveWorkshopDownloadThreads(context, value)
+    }
+
+    fun isWorkshopWattAccelerationEnabled(context: Context): Boolean {
+        return LauncherConfig.isWorkshopWattAccelerationEnabled(context)
+    }
+
+    fun setWorkshopWattAccelerationEnabled(context: Context, enabled: Boolean) {
+        LauncherConfig.setWorkshopWattAccelerationEnabled(context, enabled)
     }
 
     fun readSteamCloudSaveMode(context: Context): SteamCloudSaveMode {
