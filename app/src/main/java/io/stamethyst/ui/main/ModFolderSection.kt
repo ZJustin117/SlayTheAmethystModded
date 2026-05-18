@@ -51,6 +51,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -92,8 +93,10 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
 internal fun ModFolderSection(
     modifier: Modifier = Modifier,
     uiState: MainScreenViewModel.UiState,
+    contentTopInset: Dp = 0.dp,
     contentBottomInset: Dp = 0.dp,
     hostAvailable: Boolean,
+    onHeaderCollapsedChange: (Boolean) -> Unit = {},
     onBatchEditBarStateChange: (BatchEditBarState?) -> Unit = {},
     callbacks: ModFolderSectionCallbacks
 ) {
@@ -165,6 +168,14 @@ internal fun ModFolderSection(
     }
     val selectedBatchMods = remember(filteredMods, selectedBatchStoragePaths) {
         filteredMods.filter { selectedBatchStoragePaths.contains(it.storagePath) }
+    }
+    val density = LocalDensity.current
+    val headerCollapseThresholdPx = with(density) { 24.dp.roundToPx() }
+    LaunchedEffect(interactionState.listState, headerCollapseThresholdPx) {
+        snapshotFlow {
+            interactionState.listState.firstVisibleItemIndex > 0 ||
+                interactionState.listState.firstVisibleItemScrollOffset > headerCollapseThresholdPx
+        }.collect { onHeaderCollapsedChange(it) }
     }
     val batchSelectionControlsEnabled = organizationControlsEnabled && selectedBatchMods.isNotEmpty()
     fun exitBatchSelection() {
@@ -592,7 +603,7 @@ internal fun ModFolderSection(
                 modifier = Modifier
                     .fillMaxSize()
                     .onGloballyPositioned { interactionState.listViewportInWindow = it.boundsInWindow() },
-                contentPadding = PaddingValues(bottom = effectiveContentBottomInset)
+                contentPadding = PaddingValues(top = contentTopInset, bottom = effectiveContentBottomInset)
             ) {
                 items(
                     items = lazyListItems,
@@ -1667,4 +1678,4 @@ private const val FOLDER_PLACEMENT_ANIMATION_MS = 220
 private const val FOLDER_TOGGLE_THROTTLE_MS = 260L
 private val FOLDER_BODY_ANIMATION_OFFSET = 10.dp
 private val BATCH_EDIT_BOTTOM_INSET = 148.dp
-private val MOD_LIST_TOP_PLACEHOLDER_HEIGHT = 84.dp
+private val MOD_LIST_TOP_PLACEHOLDER_HEIGHT = 25.dp

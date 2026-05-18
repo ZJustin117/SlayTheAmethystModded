@@ -8,34 +8,38 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -46,11 +50,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
+import io.stamethyst.R
+import io.stamethyst.ui.CollapsibleFloatingGlassHeader
 import io.stamethyst.backend.workshop.WorkshopItemSummary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -58,9 +68,9 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 
 @Composable
-@OptIn(ExperimentalMaterial3Api::class)
 internal fun WorkshopScreen(
     modifier: Modifier = Modifier,
+    showBackButton: Boolean = true,
     onBack: () -> Unit,
     onOpenSteamLogin: () -> Unit,
     onOpenDownloadCenter: () -> Unit,
@@ -70,6 +80,13 @@ internal fun WorkshopScreen(
     val viewModel: WorkshopViewModel = viewModel()
     val state = viewModel.uiState
     val listState = rememberLazyListState()
+    val density = LocalDensity.current
+    val headerHazeState = rememberHazeState()
+    var headerHeightPx by remember { mutableIntStateOf(0) }
+    val headerCollapsed = listState.firstVisibleItemIndex > 0 ||
+        listState.firstVisibleItemScrollOffset > with(density) { 24.dp.roundToPx() }
+    val measuredHeaderHeight = with(density) { headerHeightPx.toDp() }
+    val headerContentTopInset = (if (headerHeightPx == 0) 102.dp else measuredHeaderHeight) + 16.dp
     var query by rememberSaveable { mutableStateOf("") }
     val shouldLoadMore by remember {
         derivedStateOf {
@@ -88,45 +105,24 @@ internal fun WorkshopScreen(
         }
     }
 
-    Scaffold(
-        modifier = modifier,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text("STS 创意工坊")
-                        Text(
-                            text = "浏览、下载并导入 Slay the Spire 模组",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                },
-                navigationIcon = {
-                    TextButton(onClick = onBack) { Text("返回") }
-                },
-                actions = {
-                    TextButton(onClick = onOpenDownloadCenter) { Text("下载中心") }
-                    TextButton(
-                        enabled = !state.updateChecking,
-                        onClick = { viewModel.checkUpdates(context.applicationContext) },
-                    ) {
-                        Text("检查更新")
-                    }
-                },
-            )
-        },
-    ) { padding ->
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .padding(start = 16.dp, top = 18.dp, end = 16.dp),
+    ) {
         LazyColumn(
             state = listState,
             modifier = Modifier
-                .padding(padding)
+                .fillMaxSize()
+                .hazeSource(state = headerHazeState)
                 .fillMaxSize(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+            contentPadding = PaddingValues(bottom = 132.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            item {
+                Spacer(modifier = Modifier.height(headerContentTopInset))
+            }
             item {
                 WorkshopStatusHeader(
                     state = state,
@@ -188,6 +184,70 @@ internal fun WorkshopScreen(
                     }
                 }
             }
+        }
+
+        CollapsibleFloatingGlassHeader(
+            modifier = Modifier.align(Alignment.TopCenter),
+            hazeState = headerHazeState,
+            collapsed = headerCollapsed,
+            shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
+            onHeightChanged = {
+                if (!headerCollapsed) {
+                    headerHeightPx = maxOf(headerHeightPx, it)
+                }
+            },
+            pinnedContent = {
+                WorkshopHeaderPinnedContent(
+                    showBackButton = showBackButton,
+                    onBack = onBack,
+                    onOpenDownloadCenter = onOpenDownloadCenter,
+                )
+            },
+        )
+    }
+}
+
+@Composable
+private fun WorkshopHeaderPinnedContent(
+    showBackButton: Boolean,
+    onBack: () -> Unit,
+    onOpenDownloadCenter: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = "STS 创意工坊",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = "浏览、下载并导入 Slay the Spire 模组",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        IconButton(
+            onClick = onOpenDownloadCenter,
+            modifier = Modifier.size(48.dp),
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_cloud),
+                contentDescription = "下载中心",
+            )
+        }
+        if (showBackButton) {
+            TextButton(onClick = onBack) { Text("返回") }
         }
     }
 }

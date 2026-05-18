@@ -131,6 +131,7 @@ private const val WORKSHOP_DOWNLOADER_PACKAGE_NAME = "top.apricityx.workshop"
 fun LauncherSettingsScreen(
     viewModel: SettingsScreenViewModel,
     modifier: Modifier = Modifier,
+    showBackButton: Boolean = true,
     feedbackSubmissionNotice: FeedbackSubmissionNotice? = null,
     onDismissFeedbackSubmissionNotice: () -> Unit = {},
 ) {
@@ -146,6 +147,7 @@ fun LauncherSettingsScreen(
         modifier = modifier,
         uiState = uiState,
         onGoBack = navigator::goBack,
+        showBackButton = showBackButton,
         onImportJar = viewModel::onImportJar,
         onImportMods = viewModel::onImportMods,
         onExportMods = viewModel::onExportMods,
@@ -396,6 +398,7 @@ private fun LauncherSettingsScreenContent(
     modifier: Modifier = Modifier,
     uiState: SettingsScreenViewModel.UiState,
     onGoBack: () -> Unit = {},
+    showBackButton: Boolean = true,
     onImportJar: () -> Unit = {},
     onImportMods: () -> Unit = {},
     onExportMods: () -> Unit = {},
@@ -466,14 +469,16 @@ private fun LauncherSettingsScreenContent(
             TopAppBar(
                 title = { Text(stringResource(R.string.settings_title)) },
                 navigationIcon = {
-                    HapticIconButton(
-                        onClick = onGoBack,
-                        enabled = !blockingInteractionLocked
-                    ) {
-                        Icon(
-                            imageVector = Icons.ArrowBack,
-                            contentDescription = stringResource(R.string.common_content_desc_back),
-                        )
+                    if (showBackButton) {
+                        HapticIconButton(
+                            onClick = onGoBack,
+                            enabled = !blockingInteractionLocked
+                        ) {
+                            Icon(
+                                imageVector = Icons.ArrowBack,
+                                contentDescription = stringResource(R.string.common_content_desc_back),
+                            )
+                        }
                     }
                 },
             )
@@ -483,7 +488,7 @@ private fun LauncherSettingsScreenContent(
             modifier = modifier
                 .fillMaxSize()
                 .padding(paddingValues),
-            contentPadding = PaddingValues(16.dp),
+            contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 132.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {

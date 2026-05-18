@@ -20,7 +20,6 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
@@ -28,6 +27,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -42,9 +43,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -99,6 +101,8 @@ import io.stamethyst.backend.render.RendererBackendResolver
 import io.stamethyst.backend.steamcloud.SteamCloudSyncDirection
 import io.stamethyst.backend.steamcloud.SteamCloudUserWarning
 import io.stamethyst.backend.steamcloud.SteamCloudUploadPlan
+import io.stamethyst.ui.CollapsibleFloatingGlassHeader
+import io.stamethyst.ui.FloatingGlassHeader
 import io.stamethyst.ui.LauncherTransientNoticeBus
 import io.stamethyst.model.ModItemUi
 import io.stamethyst.ui.Icons
@@ -107,11 +111,9 @@ import io.stamethyst.ui.icon.Settings
 import io.stamethyst.ui.modimport.ModImportRequestBus
 import io.stamethyst.ui.preferences.LauncherPreferences
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
-import dev.chrisbanes.haze.materials.HazeMaterials
 import dev.chrisbanes.haze.rememberHazeState
+import java.io.File
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
@@ -120,6 +122,588 @@ import kotlinx.coroutines.delay
 private enum class SteamCloudConflictResolutionChoice {
     USE_LOCAL,
     USE_CLOUD,
+}
+
+@Composable
+private fun LauncherGamePage(
+    modifier: Modifier = Modifier,
+    uiState: MainScreenViewModel.UiState,
+    actions: MainScreenActions,
+    feedbackUnreadCount: Int,
+    onOpenSettings: () -> Unit,
+    onOpenFeedbackUpdates: () -> Unit,
+    onEnabledModsClick: () -> Unit,
+    onSteamCloudClick: () -> Unit,
+    onLaunch: () -> Unit,
+) {
+    val steamCloudIndicator = uiState.steamCloudIndicator
+    val enabledMods = remember(uiState.optionalMods) {
+        uiState.optionalMods.filter { mod -> mod.enabled && mod.installed && !mod.required }
+    }
+    val enabledModBytes = remember(enabledMods) {
+        enabledMods.sumOf { mod -> File(mod.storagePath).takeIf { it.isFile }?.length() ?: 0L }
+    }
+    val launchEnabled = !uiState.busy && uiState.storageIssue == null && !uiState.launchInFlight
+    val settingsEnabled = !uiState.busy &&
+        steamCloudIndicator.state != MainScreenViewModel.SteamCloudIndicatorState.SYNCING
+    val gameHeaderHazeState = rememberHazeState()
+    val density = LocalDensity.current
+    val scrollState = rememberScrollState()
+    var gameHeaderHeightPx by remember { mutableIntStateOf(0) }
+    val gameHeaderCollapsed = scrollState.value > with(density) { 24.dp.roundToPx() }
+    val measuredGameHeaderHeight = with(density) { gameHeaderHeightPx.toDp() }
+    val gameHeaderContentTopInset =
+        (if (gameHeaderHeightPx == 0) 88.dp else measuredGameHeaderHeight) + 16.dp
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .hazeSource(state = gameHeaderHazeState)
+                .verticalScroll(scrollState)
+                .padding(start = 16.dp, top = 18.dp, end = 16.dp, bottom = 118.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Spacer(modifier = Modifier.height(gameHeaderContentTopInset))
+
+            if (uiState.busy && !uiState.busyOperation.usesBlockingOverlay()) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                uiState.busyMessage?.let { message ->
+                    Text(
+                        text = message.resolve(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            if (uiState.initializing) {
+                LoadingStateCard()
+            }
+
+            uiState.storageIssue?.let { issue ->
+                StorageIssueCard(
+                    issue = issue,
+                    retryEnabled = actions.isHostAvailable && !uiState.busy,
+                    onRetry = actions.onRetryStorageCheck,
+                )
+            }
+
+            GameStatusHeroCard(
+                enabledModCount = enabledMods.size,
+                totalModCount = uiState.optionalMods.size,
+                enabledModBytes = enabledModBytes,
+                gameRunning = uiState.gameProcessRunning,
+                hasStorageIssue = uiState.storageIssue != null,
+                onEnabledModsClick = onEnabledModsClick,
+            )
+
+            SteamCloudOverviewCard(
+                indicator = steamCloudIndicator,
+                onClick = onSteamCloudClick,
+            )
+        }
+
+        GameLaunchActionBar(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 28.dp, bottom = 120.dp),
+            enabled = launchEnabled,
+            gameRunning = uiState.gameProcessRunning,
+            onLaunch = onLaunch,
+        )
+
+        CollapsibleFloatingGlassHeader(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(start = 16.dp, top = 18.dp, end = 16.dp),
+            hazeState = gameHeaderHazeState,
+            collapsed = gameHeaderCollapsed,
+            onHeightChanged = {
+                if (!gameHeaderCollapsed) {
+                    gameHeaderHeightPx = maxOf(gameHeaderHeightPx, it)
+                }
+            },
+            pinnedContent = {
+                GameHeader(
+                    steamCloudIndicator = steamCloudIndicator,
+                    feedbackUnreadCount = feedbackUnreadCount,
+                    settingsEnabled = settingsEnabled,
+                    busy = uiState.busy,
+                    onSteamCloudClick = onSteamCloudClick,
+                    onOpenFeedbackUpdates = onOpenFeedbackUpdates,
+                    onOpenSettings = onOpenSettings,
+                )
+            },
+        )
+    }
+}
+
+@Composable
+private fun GameHeader(
+    steamCloudIndicator: MainScreenViewModel.SteamCloudIndicatorUi,
+    feedbackUnreadCount: Int,
+    settingsEnabled: Boolean,
+    busy: Boolean,
+    onSteamCloudClick: () -> Unit,
+    onOpenFeedbackUpdates: () -> Unit,
+    onOpenSettings: () -> Unit,
+) {
+    HeaderPinnedRow(
+        iconResId = R.drawable.ic_dock_game,
+        iconContentDescription = null,
+        iconContainerColor = MaterialTheme.colorScheme.primaryContainer,
+        iconContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        title = stringResource(R.string.main_app_title),
+        subtitle = "启动器 v${BuildConfig.VERSION_NAME}",
+        iconSize = 30.dp,
+    ) {
+        if (steamCloudIndicator.visible) {
+            SteamCloudStatusButton(
+                indicator = steamCloudIndicator,
+                enabled = !busy,
+                onClick = onSteamCloudClick,
+            )
+        }
+        if (feedbackUnreadCount > 0) {
+            CompactTopBarIconButton(
+                onClick = onOpenFeedbackUpdates,
+                enabled = settingsEnabled,
+            ) {
+                NotificationBadge(
+                    count = feedbackUnreadCount,
+                    badgeShape = RoundedCornerShape(999.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_feedback_updates),
+                        contentDescription = stringResource(R.string.main_feedback_updates_content_description),
+                    )
+                }
+            }
+        }
+        CompactTopBarIconButton(
+            onClick = onOpenSettings,
+            enabled = settingsEnabled,
+        ) {
+            Icon(
+                imageVector = Icons.Settings,
+                contentDescription = stringResource(R.string.main_open_settings),
+            )
+        }
+    }
+}
+
+@Composable
+private fun HeaderPinnedRow(
+    @DrawableRes iconResId: Int,
+    iconContentDescription: String?,
+    iconContainerColor: Color,
+    iconContentColor: Color,
+    title: String,
+    subtitle: String,
+    iconSize: Dp,
+    actions: @Composable RowScope.() -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Surface(
+            modifier = Modifier.size(52.dp),
+            shape = RoundedCornerShape(18.dp),
+            color = iconContainerColor,
+            contentColor = iconContentColor,
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    painter = painterResource(iconResId),
+                    contentDescription = iconContentDescription,
+                    modifier = Modifier.size(iconSize),
+                )
+            }
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        actions()
+    }
+}
+
+@Composable
+private fun LoadingStateCard() {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            CircularProgressIndicator()
+            Text(
+                text = stringResource(R.string.main_loading_mods),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun GameInfoChip(text: String) {
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.74f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.44f)),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+        )
+    }
+}
+
+@Composable
+private fun GameLaunchActionBar(
+    modifier: Modifier = Modifier,
+    enabled: Boolean,
+    gameRunning: Boolean,
+    onLaunch: () -> Unit,
+) {
+    Button(
+        onClick = onLaunch,
+        enabled = enabled,
+        shape = RoundedCornerShape(18.dp),
+        modifier = modifier
+            .height(56.dp),
+        elevation = ButtonDefaults.buttonElevation(
+            defaultElevation = 2.dp,
+            pressedElevation = 1.dp,
+            disabledElevation = 0.dp,
+        ),
+        contentPadding = PaddingValues(horizontal = 22.dp),
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.ic_dock_game),
+            contentDescription = null,
+            modifier = Modifier.size(20.dp),
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = if (gameRunning) {
+                stringResource(R.string.main_restart_game)
+            } else {
+                stringResource(R.string.main_launch_game)
+            },
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+@Composable
+private fun ModsHeaderPinnedContent(
+    folderControlsEnabled: Boolean,
+    dragLocked: Boolean,
+    hostAvailable: Boolean,
+    feedbackUnreadCount: Int,
+    onToggleDragLocked: () -> Unit,
+    onAddFolderClick: () -> Unit,
+    onOpenFeedbackUpdates: () -> Unit,
+) {
+    val canEditFolders = folderControlsEnabled && hostAvailable
+    HeaderPinnedRow(
+        iconResId = R.drawable.ic_dock_mods,
+        iconContentDescription = null,
+        iconContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+        iconContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        title = "模组",
+        subtitle = "文件夹、导入和方案切换",
+        iconSize = 28.dp,
+    ) {
+        if (feedbackUnreadCount > 0) {
+            CompactTopBarIconButton(
+                onClick = onOpenFeedbackUpdates,
+                enabled = true,
+            ) {
+                NotificationBadge(
+                    count = feedbackUnreadCount,
+                    badgeShape = RoundedCornerShape(999.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_feedback_updates),
+                        contentDescription = stringResource(R.string.main_feedback_updates_content_description),
+                    )
+                }
+            }
+        }
+        CompactTopBarIconButton(
+            onClick = onToggleDragLocked,
+            enabled = canEditFolders,
+        ) {
+            DragLockStateIcon(dragLocked = dragLocked)
+        }
+        CompactTopBarIconButton(
+            onClick = onAddFolderClick,
+            enabled = canEditFolders,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_folder_add),
+                contentDescription = stringResource(R.string.main_action_add_folder),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ModsHeaderExpandedContent(
+    folderControlsEnabled: Boolean,
+    dragLocked: Boolean,
+    hostAvailable: Boolean,
+    enabledCount: Int,
+    totalCount: Int,
+    folderCount: Int,
+    importEnabled: Boolean,
+    profiles: List<ModLaunchProfile>,
+    activeProfileId: String,
+    profileEnabled: Boolean,
+    onImportMods: () -> Unit,
+    onSelectProfile: (String) -> Unit,
+    onAddProfile: (String) -> Unit,
+    onRenameProfile: (String, String) -> Unit,
+    onDeleteProfile: (String) -> Unit,
+) {
+    val canEditFolders = folderControlsEnabled && hostAvailable
+
+    if (!canEditFolders) {
+        Text(
+            text = "当前无法修改文件夹，等主进程准备好后再操作。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Button(
+            onClick = onImportMods,
+            enabled = importEnabled,
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier
+                .weight(1f)
+                .height(48.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.main_import_mods),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.56f)),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.36f),
+            modifier = Modifier.height(48.dp),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                ModLaunchProfileMenu(
+                    modifier = Modifier.padding(horizontal = 6.dp),
+                    profiles = profiles,
+                    activeProfileId = activeProfileId,
+                    enabled = profileEnabled,
+                    onSelectProfile = onSelectProfile,
+                    onAddProfile = onAddProfile,
+                    onRenameProfile = onRenameProfile,
+                    onDeleteProfile = onDeleteProfile,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun GameStatusHeroCard(
+    enabledModCount: Int,
+    totalModCount: Int,
+    enabledModBytes: Long,
+    gameRunning: Boolean,
+    hasStorageIssue: Boolean,
+    onEnabledModsClick: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text(
+                text = "游戏概览",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                GameMetricCard(
+                    modifier = Modifier.weight(1f),
+                    label = "已加载模组",
+                    value = "$enabledModCount / $totalModCount",
+                )
+                GameMetricCard(
+                    modifier = Modifier.weight(1f),
+                    label = "模组大小",
+                    value = formatLauncherByteSize(enabledModBytes),
+                )
+            }
+            TextButton(onClick = onEnabledModsClick) {
+                Text(
+                    text = when {
+                        hasStorageIssue -> stringResource(R.string.main_status_storage_unavailable_os_issue)
+                        gameRunning -> stringResource(R.string.main_status_game_running)
+                        else -> stringResource(R.string.main_status_mods_ok)
+                    },
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun GameMetricCard(
+    modifier: Modifier = Modifier,
+    label: String,
+    value: String,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.56f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SteamCloudOverviewCard(
+    indicator: MainScreenViewModel.SteamCloudIndicatorUi,
+    onClick: () -> Unit,
+) {
+    val visibleIndicator = indicator.visible
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
+        enabled = visibleIndicator,
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = if (visibleIndicator) {
+                    steamCloudIndicatorTint(indicator.state).copy(alpha = 0.14f)
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant
+                },
+                contentColor = if (visibleIndicator) {
+                    steamCloudIndicatorTint(indicator.state)
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            ) {
+                Icon(
+                    painter = painterResource(
+                        if (visibleIndicator) {
+                            steamCloudButtonIcon(indicator.state)
+                        } else {
+                            R.drawable.ic_cloud_off
+                        }
+                    ),
+                    contentDescription = null,
+                    modifier = Modifier.padding(10.dp),
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = "云存档状态",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = if (visibleIndicator) {
+                        steamCloudActionBarTitle(indicator.state)
+                    } else {
+                        "未启用或未登录"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    text = if (visibleIndicator) {
+                        steamCloudActionBarSummary(indicator)
+                    } else {
+                        "在设置中登录 Steam 并启用云存档后，这里会显示同步状态。"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+private enum class LauncherMainContentMode {
+    GAME,
+    MODS,
 }
 
 private const val STEAM_CLOUD_AUTO_RETRY_INITIAL_DELAY_SECONDS = 5
@@ -147,6 +731,63 @@ fun LauncherMainScreen(
     onOpenWorkshop: () -> Unit = {},
     feedbackUnreadCount: Int = 0,
     onOpenFeedbackUpdates: () -> Unit = {},
+) {
+    LauncherMainRoute(
+        modifier = modifier,
+        viewModel = viewModel,
+        onOpenWorkshop = onOpenWorkshop,
+    ) { routeModifier, uiState, actions ->
+        LauncherGameScreenContent(
+            modifier = routeModifier,
+            uiState = uiState,
+            actions = actions,
+            onOpenSettings = onOpenSettings,
+            onOpenFeedback = onOpenFeedback,
+            feedbackUnreadCount = feedbackUnreadCount,
+            onOpenFeedbackUpdates = onOpenFeedbackUpdates,
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LauncherModsScreen(
+    modifier: Modifier = Modifier,
+    viewModel: MainScreenViewModel,
+    onOpenSettings: () -> Unit = {},
+    onOpenFeedback: () -> Unit = {},
+    onOpenWorkshop: () -> Unit = {},
+    feedbackUnreadCount: Int = 0,
+    onOpenFeedbackUpdates: () -> Unit = {},
+) {
+    LauncherMainRoute(
+        modifier = modifier,
+        viewModel = viewModel,
+        onOpenWorkshop = onOpenWorkshop,
+    ) { routeModifier, uiState, actions ->
+        LauncherModsScreenContent(
+            modifier = routeModifier,
+            uiState = uiState,
+            actions = actions,
+            onOpenSettings = onOpenSettings,
+            onOpenFeedback = onOpenFeedback,
+            onOpenWorkshop = onOpenWorkshop,
+            feedbackUnreadCount = feedbackUnreadCount,
+            onOpenFeedbackUpdates = onOpenFeedbackUpdates,
+        )
+    }
+}
+
+@Composable
+private fun LauncherMainRoute(
+    modifier: Modifier,
+    viewModel: MainScreenViewModel,
+    onOpenWorkshop: () -> Unit,
+    content: @Composable (
+        modifier: Modifier,
+        uiState: MainScreenViewModel.UiState,
+        actions: MainScreenActions,
+    ) -> Unit,
 ) {
     val context = LocalContext.current
     val hostActivity = context as? Activity
@@ -238,15 +879,10 @@ fun LauncherMainScreen(
         )
     }
 
-    LauncherMainScreenContent(
-        modifier = modifier,
-        uiState = uiState,
-        actions = actions,
-        onOpenSettings = onOpenSettings,
-        onOpenFeedback = onOpenFeedback,
-        onOpenWorkshop = onOpenWorkshop,
-        feedbackUnreadCount = feedbackUnreadCount,
-        onOpenFeedbackUpdates = onOpenFeedbackUpdates
+    content(
+        modifier,
+        uiState,
+        actions,
     )
 }
 
@@ -254,7 +890,7 @@ fun LauncherMainScreen(
 @Preview(showBackground = true)
 @Composable
 private fun LauncherMainScreenPreview() {
-    LauncherMainScreenContent(
+    LauncherGameScreenContent(
         uiState = MainScreenViewModel.UiState(
             initializing = false,
             busy = false,
@@ -341,12 +977,59 @@ private fun LauncherMainScreenPreview() {
     )
 }
 
+@Composable
+private fun LauncherGameScreenContent(
+    modifier: Modifier = Modifier,
+    uiState: MainScreenViewModel.UiState,
+    actions: MainScreenActions = MainScreenActions(isHostAvailable = false),
+    onOpenSettings: () -> Unit = {},
+    onOpenFeedback: () -> Unit = {},
+    feedbackUnreadCount: Int = 0,
+    onOpenFeedbackUpdates: () -> Unit = {},
+) {
+    LauncherMainScreenContent(
+        modifier = modifier,
+        uiState = uiState,
+        actions = actions,
+        contentMode = LauncherMainContentMode.GAME,
+        onOpenSettings = onOpenSettings,
+        onOpenFeedback = onOpenFeedback,
+        feedbackUnreadCount = feedbackUnreadCount,
+        onOpenFeedbackUpdates = onOpenFeedbackUpdates,
+    )
+}
+
+@Composable
+private fun LauncherModsScreenContent(
+    modifier: Modifier = Modifier,
+    uiState: MainScreenViewModel.UiState,
+    actions: MainScreenActions = MainScreenActions(isHostAvailable = false),
+    onOpenSettings: () -> Unit = {},
+    onOpenFeedback: () -> Unit = {},
+    onOpenWorkshop: () -> Unit = {},
+    feedbackUnreadCount: Int = 0,
+    onOpenFeedbackUpdates: () -> Unit = {},
+) {
+    LauncherMainScreenContent(
+        modifier = modifier,
+        uiState = uiState,
+        actions = actions,
+        contentMode = LauncherMainContentMode.MODS,
+        onOpenSettings = onOpenSettings,
+        onOpenFeedback = onOpenFeedback,
+        onOpenWorkshop = onOpenWorkshop,
+        feedbackUnreadCount = feedbackUnreadCount,
+        onOpenFeedbackUpdates = onOpenFeedbackUpdates,
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun LauncherMainScreenContent(
     modifier: Modifier = Modifier,
     uiState: MainScreenViewModel.UiState,
     actions: MainScreenActions = MainScreenActions(isHostAvailable = false),
+    contentMode: LauncherMainContentMode,
     onOpenSettings: () -> Unit = {},
     onOpenFeedback: () -> Unit = {},
     onOpenWorkshop: () -> Unit = {},
@@ -372,8 +1055,9 @@ private fun LauncherMainScreenContent(
     val steamCloudBottomSheetVisible = showSteamCloudBottomSheet && steamCloudIndicator.visible
     val steamCloudBottomSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var batchEditBarState by remember { mutableStateOf<BatchEditBarState?>(null) }
-    var bottomBarHeightPx by remember { mutableIntStateOf(0) }
-    val bottomBarContentPadding = with(density) { bottomBarHeightPx.toDp() }
+    var batchEditBarHeightPx by remember { mutableIntStateOf(0) }
+    val batchEditBarContentPadding = with(density) { batchEditBarHeightPx.toDp() }
+    val launcherDockContentPadding = 108.dp
 
     LaunchedEffect(steamCloudIndicator.visible) {
         if (!steamCloudIndicator.visible) {
@@ -470,84 +1154,120 @@ private fun LauncherMainScreenContent(
                     onReturnToMainMenu = actions.onReturnToMainMenu
                 )
             } else {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .hazeSource(state = hazeState)
-                        .padding(start = 16.dp, top = 16.dp, end = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    if (uiState.busy && !uiState.busyOperation.usesBlockingOverlay()) {
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                        uiState.busyMessage?.let {
-                            Text(text = it.resolve(), style = MaterialTheme.typography.bodyMedium)
-                        }
+                when (contentMode) {
+                    LauncherMainContentMode.GAME -> {
+                        LauncherGamePage(
+                            modifier = Modifier.fillMaxSize(),
+                            uiState = uiState,
+                            actions = actions,
+                            feedbackUnreadCount = feedbackUnreadCount,
+                            onOpenSettings = onOpenSettings,
+                            onOpenFeedbackUpdates = onOpenFeedbackUpdates,
+                            onEnabledModsClick = { showEnabledModsDialog = true },
+                            onSteamCloudClick = {
+                                if (steamCloudIndicator.visible) {
+                                    if (steamCloudIndicator.state ==
+                                        MainScreenViewModel.SteamCloudIndicatorState.HIDDEN
+                                    ) {
+                                        actions.onRefreshSteamCloudStatus()
+                                    }
+                                    showSteamCloudBottomSheet = true
+                                }
+                            },
+                            onLaunch = {
+                                if (actions.onLaunch() == LaunchRequestAction.OPEN_STEAM_CLOUD_SHEET) {
+                                    showSteamCloudBottomSheet = true
+                                }
+                            },
+                        )
                     }
 
-                    MainContentSwitcher(
-                        uiState = uiState,
-                        showInitializing = showInitializing,
-                        actionBarBottomPadding = bottomBarContentPadding,
-                        onBatchEditBarStateChange = { batchEditBarState = it },
-                        actions = actions
-                    )
-                }
+                    LauncherMainContentMode.MODS -> {
+                        var modsHeaderHeightPx by remember { mutableIntStateOf(0) }
+                        var modsHeaderCollapsed by remember { mutableStateOf(false) }
+                        val measuredModsHeaderHeight = with(density) { modsHeaderHeightPx.toDp() }
+                        val modsHeaderContentTopInset =
+                            (if (modsHeaderHeightPx == 0) 232.dp else measuredModsHeaderHeight) + 14.dp
 
-                MainTopBar(
-                    modifier = Modifier.align(Alignment.TopCenter),
-                    hazeState = hazeState,
-                    folderControlsEnabled = uiState.controlsEnabled,
-                    dragLocked = uiState.dragLocked,
-                    settingsEnabled = !uiState.busy &&
-                        steamCloudIndicator.state != MainScreenViewModel.SteamCloudIndicatorState.SYNCING,
-                    steamCloudEnabled = !uiState.busy,
-                    hostAvailable = actions.isHostAvailable,
-                    feedbackUnreadCount = feedbackUnreadCount,
-                    steamCloudIndicator = steamCloudIndicator,
-                    onToggleDragLocked = actions.onToggleDragLocked,
-                    onAddFolderClick = { showCreateFolderDialog = true },
-                    onOpenSettings = onOpenSettings,
-                    onOpenWorkshop = onOpenWorkshop,
-                    onOpenFeedbackUpdates = onOpenFeedbackUpdates,
-                    onSteamCloudClick = {
-                        if (steamCloudIndicator.visible) {
-                            if (steamCloudIndicator.state ==
-                                MainScreenViewModel.SteamCloudIndicatorState.HIDDEN
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .statusBarsPadding()
+                                .padding(start = 16.dp, top = 18.dp, end = 16.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .hazeSource(state = hazeState),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                actions.onRefreshSteamCloudStatus()
+                                if (uiState.busy && !uiState.busyOperation.usesBlockingOverlay()) {
+                                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                    uiState.busyMessage?.let {
+                                        Text(text = it.resolve(), style = MaterialTheme.typography.bodyMedium)
+                                    }
+                                }
+
+                                MainContentSwitcher(
+                                    uiState = uiState,
+                                    showInitializing = showInitializing,
+                                    contentTopInset = modsHeaderContentTopInset,
+                                    actionBarBottomPadding = launcherDockContentPadding + batchEditBarContentPadding,
+                                    onHeaderCollapsedChange = { modsHeaderCollapsed = it },
+                                    onBatchEditBarStateChange = { batchEditBarState = it },
+                                    actions = actions
+                                )
                             }
-                            showSteamCloudBottomSheet = true
+
+                            CollapsibleFloatingGlassHeader(
+                                modifier = Modifier.align(Alignment.TopCenter),
+                                hazeState = hazeState,
+                                collapsed = modsHeaderCollapsed,
+                                onHeightChanged = {
+                                    if (!modsHeaderCollapsed) {
+                                        modsHeaderHeightPx = maxOf(modsHeaderHeightPx, it)
+                                    }
+                                },
+                                pinnedContent = {
+                                    ModsHeaderPinnedContent(
+                                        folderControlsEnabled = uiState.controlsEnabled,
+                                        dragLocked = uiState.dragLocked,
+                                        hostAvailable = actions.isHostAvailable,
+                                        feedbackUnreadCount = feedbackUnreadCount,
+                                        onToggleDragLocked = actions.onToggleDragLocked,
+                                        onAddFolderClick = { showCreateFolderDialog = true },
+                                        onOpenFeedbackUpdates = onOpenFeedbackUpdates,
+                                    )
+                                },
+                                expandedContent = {
+                                    ModsHeaderExpandedContent(
+                                        folderControlsEnabled = uiState.controlsEnabled,
+                                        dragLocked = uiState.dragLocked,
+                                        hostAvailable = actions.isHostAvailable,
+                                        enabledCount = uiState.optionalMods.count { it.enabled },
+                                        totalCount = uiState.optionalMods.size,
+                                        folderCount = uiState.modFolders.size,
+                                        importEnabled = !uiState.busy && uiState.storageIssue == null,
+                                        profiles = uiState.modLaunchProfiles,
+                                        activeProfileId = uiState.activeModLaunchProfileId,
+                                        profileEnabled = actions.isHostAvailable && uiState.controlsEnabled && uiState.storageIssue == null,
+                                        onImportMods = actions.onImportMods,
+                                        onSelectProfile = actions.onSelectModLaunchProfile,
+                                        onAddProfile = actions.onAddModLaunchProfile,
+                                        onRenameProfile = actions.onRenameModLaunchProfile,
+                                        onDeleteProfile = actions.onDeleteModLaunchProfile,
+                                    )
+                                },
+                            )
                         }
+
+                        ModBatchEditBottomBar(
+                            modifier = Modifier.align(Alignment.BottomCenter),
+                            batchEditBarState = batchEditBarState,
+                            onHeightChanged = { batchEditBarHeightPx = it },
+                        )
                     }
-                )
-                MainBottomBarSwitcher(
-                    modifier = Modifier.align(Alignment.BottomCenter),
-                    batchEditBarState = batchEditBarState,
-                    onHeightChanged = { bottomBarHeightPx = it },
-                    hazeState = hazeState,
-                    importEnabled = !uiState.busy && uiState.storageIssue == null,
-                    launchEnabled = !uiState.busy &&
-                        uiState.storageIssue == null &&
-                        !uiState.launchInFlight,
-                    onImportMods = actions.onImportMods,
-                    onLaunch = {
-                        if (actions.onLaunch() == LaunchRequestAction.OPEN_STEAM_CLOUD_SHEET) {
-                            showSteamCloudBottomSheet = true
-                        }
-                    },
-                    enabledCount = uiState.optionalMods.count { it.enabled },
-                    totalCount = uiState.optionalMods.size,
-                    onEnabledModsClick = { showEnabledModsDialog = true },
-                    profiles = uiState.modLaunchProfiles,
-                    activeProfileId = uiState.activeModLaunchProfileId,
-                    profileEnabled = actions.isHostAvailable && uiState.controlsEnabled && uiState.storageIssue == null,
-                    onSelectProfile = actions.onSelectModLaunchProfile,
-                    onAddProfile = actions.onAddModLaunchProfile,
-                    onRenameProfile = actions.onRenameModLaunchProfile,
-                    onDeleteProfile = actions.onDeleteModLaunchProfile,
-                    gameRunning = uiState.gameProcessRunning,
-                    hasStorageIssue = uiState.storageIssue != null
-                )
+                }
             }
         }
     }
@@ -1064,11 +1784,12 @@ private fun MainTopBar(
     onOpenFeedbackUpdates: () -> Unit,
     onSteamCloudClick: () -> Unit,
 ) {
-    FrostedGlassChrome(
+    FloatingGlassHeader(
         modifier = modifier
             .fillMaxWidth(),
         hazeState = hazeState,
-        shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp)
+        shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
+        contentPadding = PaddingValues(0.dp),
     ) {
         TopAppBar(
             colors = TopAppBarDefaults.topAppBarColors(
@@ -1118,6 +1839,15 @@ private fun MainTopBar(
                     enabled = folderControlsEnabled && hostAvailable
                 ) {
                     DragLockStateIcon(dragLocked = dragLocked)
+                }
+                CompactTopBarIconButton(
+                    onClick = onAddFolderClick,
+                    enabled = folderControlsEnabled && hostAvailable
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_folder_add),
+                        contentDescription = stringResource(R.string.main_action_add_folder)
+                    )
                 }
                 CompactTopBarIconButton(
                     onClick = onOpenWorkshop,
@@ -1807,6 +2537,21 @@ private fun formatSteamCloudBytes(bytes: Long): String {
     }
 }
 
+private fun formatLauncherByteSize(bytes: Long): String {
+    if (bytes <= 0L) {
+        return "0 B"
+    }
+    val kib = 1024.0
+    val mib = kib * 1024.0
+    val gib = mib * 1024.0
+    return when {
+        bytes >= gib -> String.format(Locale.US, "%.1f GB", bytes / gib)
+        bytes >= mib -> String.format(Locale.US, "%.1f MB", bytes / mib)
+        bytes >= kib -> String.format(Locale.US, "%.1f KB", bytes / kib)
+        else -> "$bytes B"
+    }
+}
+
 private fun formatSteamCloudTimestamp(timestampMs: Long): String {
     return DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
         .format(Date(timestampMs))
@@ -1840,27 +2585,10 @@ private fun NotificationBadge(
 }
 
 @Composable
-private fun MainBottomBarSwitcher(
+private fun ModBatchEditBottomBar(
     modifier: Modifier = Modifier,
     batchEditBarState: BatchEditBarState?,
     onHeightChanged: (Int) -> Unit,
-    hazeState: HazeState,
-    importEnabled: Boolean,
-    launchEnabled: Boolean,
-    onImportMods: () -> Unit,
-    onLaunch: () -> Unit,
-    enabledCount: Int,
-    totalCount: Int,
-    onEnabledModsClick: () -> Unit,
-    profiles: List<ModLaunchProfile>,
-    activeProfileId: String,
-    profileEnabled: Boolean,
-    onSelectProfile: (String) -> Unit,
-    onAddProfile: (String) -> Unit,
-    onRenameProfile: (String, String) -> Unit,
-    onDeleteProfile: (String) -> Unit,
-    gameRunning: Boolean,
-    hasStorageIssue: Boolean
 ) {
     AnimatedContent(
         targetState = batchEditBarState != null,
@@ -1878,7 +2606,7 @@ private fun MainBottomBarSwitcher(
             ) + fadeOut(animationSpec = tween(durationMillis = BOTTOM_BAR_SWITCH_ANIMATION_MS))
             slideIn togetherWith slideOut using SizeTransform(clip = false)
         },
-        label = "mainBottomBarSwitcher"
+        label = "modBatchEditBottomBar"
     ) { showingBatchBar ->
         if (showingBatchBar) {
             val state = batchEditBarState
@@ -1894,182 +2622,6 @@ private fun MainBottomBarSwitcher(
                     onCancel = state.onCancel
                 )
             }
-        } else {
-            MainBottomFixedActions(
-                modifier = Modifier,
-                hazeState = hazeState,
-                importEnabled = importEnabled,
-                launchEnabled = launchEnabled,
-                onImportMods = onImportMods,
-                onLaunch = onLaunch,
-                enabledCount = enabledCount,
-                totalCount = totalCount,
-                onEnabledModsClick = onEnabledModsClick,
-                profiles = profiles,
-                activeProfileId = activeProfileId,
-                profileEnabled = profileEnabled,
-                onSelectProfile = onSelectProfile,
-                onAddProfile = onAddProfile,
-                onRenameProfile = onRenameProfile,
-                onDeleteProfile = onDeleteProfile,
-                gameRunning = gameRunning,
-                hasStorageIssue = hasStorageIssue
-            )
-        }
-    }
-}
-
-@Composable
-private fun MainBottomFixedActions(
-    modifier: Modifier = Modifier,
-    hazeState: HazeState,
-    importEnabled: Boolean,
-    launchEnabled: Boolean,
-    onImportMods: () -> Unit,
-    onLaunch: () -> Unit,
-    enabledCount: Int,
-    totalCount: Int,
-    onEnabledModsClick: () -> Unit,
-    profiles: List<ModLaunchProfile>,
-    activeProfileId: String,
-    profileEnabled: Boolean,
-    onSelectProfile: (String) -> Unit,
-    onAddProfile: (String) -> Unit,
-    onRenameProfile: (String, String) -> Unit,
-    onDeleteProfile: (String) -> Unit,
-    gameRunning: Boolean,
-    hasStorageIssue: Boolean
-) {
-    FrostedGlassChrome(
-        modifier = modifier
-            .fillMaxWidth(),
-        hazeState = hazeState,
-        shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp)
-    ) {
-        val buttonShape = RoundedCornerShape(16.dp)
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding(),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            TextButton(
-                onClick = onEnabledModsClick,
-                contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.main_enabled_mods_count, enabledCount, totalCount),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-            Text(
-                text = when {
-                    hasStorageIssue -> stringResource(R.string.main_status_storage_unavailable_os_issue)
-                    gameRunning -> stringResource(R.string.main_status_game_running)
-                    else -> stringResource(R.string.main_status_mods_ok)
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Box(modifier = Modifier.fillMaxWidth()) {
-            Button(
-                onClick = onImportMods,
-                enabled = importEnabled,
-                shape = buttonShape,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.42f),
-                    contentColor = MaterialTheme.colorScheme.onSurface
-                ),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
-                contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .width(124.dp)
-                    .height(46.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.main_import_mods),
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-            Button(
-                onClick = onLaunch,
-                enabled = launchEnabled,
-                shape = buttonShape,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.78f),
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                ),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
-                contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .width(148.dp)
-                    .height(46.dp)
-            ) {
-                Text(
-                    text = if (gameRunning) {
-                        stringResource(R.string.main_restart_game)
-                    } else {
-                        stringResource(R.string.main_launch_game)
-                    },
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-        }
-        }
-        ModLaunchProfileMenu(
-            modifier = Modifier.align(Alignment.TopEnd),
-            profiles = profiles,
-            activeProfileId = activeProfileId,
-            enabled = profileEnabled,
-            onSelectProfile = onSelectProfile,
-            onAddProfile = onAddProfile,
-            onRenameProfile = onRenameProfile,
-            onDeleteProfile = onDeleteProfile
-        )
-    }
-}
-
-@Composable
-@OptIn(ExperimentalHazeMaterialsApi::class)
-private fun FrostedGlassChrome(
-    modifier: Modifier = Modifier,
-    hazeState: HazeState,
-    shape: Shape,
-    contentPadding: PaddingValues = PaddingValues(0.dp),
-    content: @Composable BoxScope.() -> Unit
-) {
-    val chromeModifier = modifier
-        .clip(shape)
-        .hazeEffect(
-            state = hazeState,
-            style = HazeMaterials.ultraThin()
-        ) {
-            blurRadius = 12.dp
-            blurredEdgeTreatment = BlurredEdgeTreatment(shape)
-        }
-    Surface(
-        modifier = chromeModifier,
-        shape = shape,
-        color = Color.Transparent,
-        border = BorderStroke(
-            width = 1.dp,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f)
-        ),
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(contentPadding)
-        ) {
-            content()
         }
     }
 }
@@ -2078,7 +2630,9 @@ private fun FrostedGlassChrome(
 private fun ColumnScope.MainContentSwitcher(
     uiState: MainScreenViewModel.UiState,
     showInitializing: Boolean,
+    contentTopInset: Dp = 0.dp,
     actionBarBottomPadding: Dp,
+    onHeaderCollapsedChange: (Boolean) -> Unit = {},
     onBatchEditBarStateChange: (BatchEditBarState?) -> Unit,
     actions: MainScreenActions
 ) {
@@ -2139,8 +2693,10 @@ private fun ColumnScope.MainContentSwitcher(
                         .fillMaxWidth()
                         .weight(1f),
                     uiState = uiState,
+                    contentTopInset = contentTopInset,
                     contentBottomInset = actionBarBottomPadding,
                     hostAvailable = actions.isHostAvailable,
+                    onHeaderCollapsedChange = onHeaderCollapsedChange,
                     onBatchEditBarStateChange = onBatchEditBarStateChange,
                     callbacks = ModFolderSectionCallbacks(
                         onToggleMod = actions.onToggleMod,

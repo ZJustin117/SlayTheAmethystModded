@@ -5,17 +5,24 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -34,8 +41,10 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -46,7 +55,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 import io.stamethyst.R
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.entryProvider
@@ -64,6 +77,7 @@ import io.stamethyst.ui.feedback.LauncherFeedbackIssuePreviewScreen
 import io.stamethyst.ui.feedback.LauncherFeedbackSubscriptionsScreen
 import io.stamethyst.ui.feedback.FeedbackSubmissionNotice
 import io.stamethyst.ui.main.LauncherMainScreen
+import io.stamethyst.ui.main.LauncherModsScreen
 import io.stamethyst.ui.main.MainScreenViewModel
 import io.stamethyst.ui.modimport.ModImportHost
 import io.stamethyst.ui.workshop.WorkshopScreen
@@ -103,6 +117,8 @@ fun LauncherContent(
     val mainUiState = mainViewModel.uiState
     val settingsUiState = settingsViewModel.uiState
     val currentRoute = navigator.backStack.lastOrNull() as? Route
+    val showLauncherDock = isLauncherDockRoute(currentRoute)
+    val launcherDockHazeState = rememberHazeState()
     val isBlockingBusyInteractionLocked =
         mainUiState.busyOperation.usesBlockingOverlay() ||
             settingsUiState.busyOperation.usesBlockingOverlay()
@@ -154,7 +170,15 @@ fun LauncherContent(
             contentColor = MaterialTheme.colorScheme.onBackground
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
-                NavDisplay(
+                Scaffold(
+                    modifier = Modifier.fillMaxSize(),
+                    contentWindowInsets = WindowInsets(0, 0, 0, 0),
+                ) { scaffoldPadding ->
+                    NavDisplay(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(scaffoldPadding)
+                            .hazeSource(state = launcherDockHazeState),
                     entryDecorators = listOf(
                         rememberSaveableStateHolderNavEntryDecorator(),
                         rememberViewModelStoreNavEntryDecorator(),
@@ -215,9 +239,35 @@ fun LauncherContent(
                             LauncherMainScreen(
                                 viewModel = mainViewModel,
                                 modifier = Modifier.fillMaxSize(),
-                                onOpenSettings = { navigator.push(Route.Settings) },
+                                onOpenSettings = { navigator.resetRoot(Route.Settings) },
                                 onOpenFeedback = { navigator.push(Route.Feedback) },
-                                onOpenWorkshop = { navigator.push(Route.Workshop) },
+                                onOpenWorkshop = { navigator.resetRoot(Route.Workshop) },
+                                feedbackUnreadCount = feedbackInboxState.unreadIssueCount,
+                                onOpenFeedbackUpdates = {
+                                    val unreadIssues = feedbackInboxState.subscriptions
+                                        .filter { it.unread }
+                                    when {
+                                        unreadIssues.size == 1 -> {
+                                            navigator.push(
+                                                Route.FeedbackConversation(unreadIssues.first().issueNumber)
+                                            )
+                                        }
+
+                                        else -> {
+                                            navigator.push(Route.FeedbackSubscriptions)
+                                        }
+                                    }
+                                }
+                            )
+                        }
+
+                        entry<Route.Mods> {
+                            LauncherModsScreen(
+                                viewModel = mainViewModel,
+                                modifier = Modifier.fillMaxSize(),
+                                onOpenSettings = { navigator.resetRoot(Route.Settings) },
+                                onOpenFeedback = { navigator.push(Route.Feedback) },
+                                onOpenWorkshop = { navigator.resetRoot(Route.Workshop) },
                                 feedbackUnreadCount = feedbackInboxState.unreadIssueCount,
                                 onOpenFeedbackUpdates = {
                                     val unreadIssues = feedbackInboxState.subscriptions
@@ -241,6 +291,7 @@ fun LauncherContent(
                             LauncherSettingsScreen(
                                 viewModel = settingsViewModel,
                                 modifier = Modifier.fillMaxSize(),
+                                showBackButton = false,
                                 feedbackSubmissionNotice = pendingFeedbackNotice,
                                 onDismissFeedbackSubmissionNotice = {
                                     pendingFeedbackNotice = null
@@ -251,6 +302,7 @@ fun LauncherContent(
                         entry<Route.Workshop> {
                             WorkshopScreen(
                                 modifier = Modifier.fillMaxSize(),
+                                showBackButton = false,
                                 onBack = { navigator.goBack() },
                                 onOpenSteamLogin = { navigator.push(Route.SteamCloudLogin) },
                                 onOpenDownloadCenter = { navigator.push(Route.WorkshopDownloadCenter) },
@@ -377,7 +429,20 @@ fun LauncherContent(
                             )
                         }
                     }
-                )
+                    )
+                }
+                if (showLauncherDock) {
+                    LauncherDockBar(
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                        hazeState = launcherDockHazeState,
+                        currentRoute = currentRoute,
+                        onSelectRoute = { route ->
+                            if (currentRoute != route || navigator.stackSize > 1) {
+                                navigator.resetRoot(route)
+                            }
+                        }
+                    )
+                }
                 if (shouldShowBlockingBusyWindow) {
                     BlockingBusyInteractionBlocker(
                         message = blockingBusyMessage?.resolve()
@@ -673,6 +738,135 @@ fun LauncherContent(
             }
         }
     }
+    }
+}
+
+@Composable
+private fun LauncherDockBar(
+    modifier: Modifier = Modifier,
+    hazeState: HazeState,
+    currentRoute: Route?,
+    onSelectRoute: (Route) -> Unit,
+) {
+    val selectedRoute = currentRoute.launcherDockRoute() ?: Route.Main
+    FrostedGlassChrome(
+        modifier = modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(start = 14.dp, end = 14.dp, bottom = 10.dp),
+        hazeState = hazeState,
+        shape = RoundedCornerShape(28.dp),
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            LauncherDockItem(
+                selected = selectedRoute == Route.Main,
+                route = Route.Main,
+                iconResId = R.drawable.ic_dock_game,
+                label = "游戏",
+                onSelectRoute = onSelectRoute,
+            )
+            LauncherDockItem(
+                selected = selectedRoute == Route.Mods,
+                route = Route.Mods,
+                iconResId = R.drawable.ic_dock_mods,
+                label = "模组",
+                onSelectRoute = onSelectRoute,
+            )
+            LauncherDockItem(
+                selected = selectedRoute == Route.Workshop,
+                route = Route.Workshop,
+                iconResId = R.drawable.ic_dock_market,
+                label = "市场",
+                onSelectRoute = onSelectRoute,
+            )
+            LauncherDockItem(
+                selected = selectedRoute == Route.Settings,
+                route = Route.Settings,
+                iconResId = R.drawable.ic_dock_settings,
+                label = "设置",
+                onSelectRoute = onSelectRoute,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RowScope.LauncherDockItem(
+    selected: Boolean,
+    route: Route,
+    @androidx.annotation.DrawableRes iconResId: Int,
+    label: String,
+    onSelectRoute: (Route) -> Unit,
+) {
+    val contentColor = if (selected) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Column(
+        modifier = Modifier
+            .weight(1f)
+            .height(58.dp)
+            .clickable { onSelectRoute(route) },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Surface(
+            shape = MaterialTheme.shapes.large,
+            color = if (selected) {
+                MaterialTheme.colorScheme.secondaryContainer
+            } else {
+                Color.Transparent
+            },
+            contentColor = contentColor,
+        ) {
+            Icon(
+                painter = painterResource(iconResId),
+                contentDescription = label,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = contentColor,
+        )
+    }
+}
+
+private fun isLauncherDockRoute(route: Route?): Boolean {
+    return route.launcherDockRoute() != null
+}
+
+private fun Route?.launcherDockRoute(): Route? {
+    return when (this) {
+        Route.Main -> Route.Main
+        Route.Mods -> Route.Mods
+        Route.Workshop -> Route.Workshop
+        Route.Settings -> Route.Settings
+        is Route.WorkshopDetail,
+        Route.WorkshopDownloadCenter,
+        Route.SteamCloudLogin,
+        Route.SteamCloudGuard,
+        Route.SteamCloudSaveSettings,
+        Route.SteamCloudSyncBlacklistSettings,
+        Route.DeveloperSettings,
+        Route.NativeLibraryMarket,
+        Route.Compatibility,
+        Route.MobileGluesSettings,
+        Route.QuickStart,
+        Route.FirstRunSetup,
+        Route.Feedback,
+        Route.FeedbackSubscriptions,
+        Route.FeedbackIssueBrowser,
+        is Route.FeedbackConversation,
+        is Route.FeedbackIssuePreview,
+        null -> null
     }
 }
 
