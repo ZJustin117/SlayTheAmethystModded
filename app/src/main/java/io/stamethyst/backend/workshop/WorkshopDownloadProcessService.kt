@@ -38,6 +38,7 @@ class WorkshopDownloadProcessService : Service() {
         const val EXTRA_HCONTENT_FILE = "io.stamethyst.extra.HCONTENT_FILE"
         const val EXTRA_DEPOT_ID = "io.stamethyst.extra.DEPOT_ID"
         const val EXTRA_JSON_METADATA = "io.stamethyst.extra.JSON_METADATA"
+        const val EXTRA_DEPENDENCIES = "io.stamethyst.extra.DEPENDENCIES"
         const val EXTRA_MESSAGE = "io.stamethyst.extra.MESSAGE"
         const val EXTRA_TASK_STATUS = "io.stamethyst.extra.TASK_STATUS"
         const val EXTRA_WRITTEN_BYTES = "io.stamethyst.extra.WRITTEN_BYTES"
@@ -59,6 +60,13 @@ class WorkshopDownloadProcessService : Service() {
         private const val CHANNEL_ID = "workshop_download"
         private const val NOTIFICATION_ID = 646570
 
+        @Volatile
+        private var activeDownloadKeySnapshot: String? = null
+
+        fun isActiveDownload(publishedFileId: ULong): Boolean {
+            return activeDownloadKeySnapshot?.substringAfter(':') == publishedFileId.toString()
+        }
+
         fun start(context: Context, details: WorkshopItemDetails, receiver: ResultReceiver? = null) {
             val appContext = context.applicationContext
             val intent = Intent(appContext, WorkshopDownloadProcessService::class.java).apply {
@@ -76,6 +84,18 @@ class WorkshopDownloadProcessService : Service() {
                 putExtra(EXTRA_HCONTENT_FILE, details.hcontentFile?.toString())
                 putExtra(EXTRA_DEPOT_ID, details.depotId?.toString())
                 putExtra(EXTRA_JSON_METADATA, details.jsonMetadata)
+                putExtra(EXTRA_DEPENDENCIES, details.dependencies.joinToString("\n") { dependency ->
+                    listOf(
+                        dependency.appId,
+                        dependency.publishedFileId,
+                        dependency.title,
+                        dependency.previewUrl,
+                        dependency.description,
+                        dependency.authorName,
+                        dependency.fileSizeBytes,
+                        dependency.updatedAtMillis,
+                    ).joinToString("\t")
+                })
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 appContext.startForegroundService(intent)
@@ -150,11 +170,14 @@ class WorkshopDownloadProcessService : Service() {
         startForeground(NOTIFICATION_ID, buildNotification("准备下载"))
         requestedStop = null
         val startingDetails = extractDetails(safeIntent)
-        WorkshopDownloadTaskStore(applicationContext).update(startingDetails.summary.publishedFileId) {
+        val startingTaskStore = WorkshopDownloadTaskStore(applicationContext)
+        startingTaskStore.clearDeletedMarker(startingDetails.summary.publishedFileId)
+        startingTaskStore.update(startingDetails.summary.publishedFileId) {
             it.copy(status = WorkshopDownloadTaskStatus.Resolving, message = "正在解析下载内容", updatedAtMillis = System.currentTimeMillis())
         }
         val thread = Thread({ runDownload(startId, safeIntent, receiver) }, "STS-WorkshopDownload")
         activeDownloadKey = safeIntent.downloadKeyOrNull()
+        activeDownloadKeySnapshot = activeDownloadKey
         workerThread = thread
         thread.start()
         return START_REDELIVER_INTENT
@@ -164,6 +187,7 @@ class WorkshopDownloadProcessService : Service() {
         val thread = workerThread
         workerThread = null
         activeDownloadKey = null
+        activeDownloadKeySnapshot = null
         requestedStop = StopReason.Cancel
         thread?.interrupt()
         super.onDestroy()
@@ -195,11 +219,13 @@ class WorkshopDownloadProcessService : Service() {
                     localJarPath = "",
                     cardState = WorkshopModCardState.Downloading,
                     statusText = "等待下载",
+                    dependencies = details.dependencies,
                 )
             )
             taskStore.update(details.summary.publishedFileId) {
                 it.copy(status = WorkshopDownloadTaskStatus.Queued, message = "等待下载", updatedAtMillis = System.currentTimeMillis())
             }
+            downloadPreviewImageIfNeeded(service, metadataStore, details)
             sendProgress(receiver, "等待下载", "Queued")
             runBlocking {
                 if (!details.hasDownloadSource()) {
@@ -209,6 +235,7 @@ class WorkshopDownloadProcessService : Service() {
                     sendProgress(receiver, "正在解析下载内容", "Resolving")
                     details = service.getDetails(details.summary.appId, details.summary.publishedFileId)
                     taskStore.update(details.summary.publishedFileId) { it.copy(details = details) }
+                    downloadPreviewImageIfNeeded(service, metadataStore, details)
                 }
                 val outputDir = File(applicationContext.filesDir, "workshop/${details.summary.appId}/${details.summary.publishedFileId}")
                 service.download(WorkshopDownloadRequest(details, outputDir)).collect { event ->
@@ -216,6 +243,7 @@ class WorkshopDownloadProcessService : Service() {
                         WorkshopDownloadEvent.Ignored -> Unit
                         is WorkshopDownloadEvent.Log -> sendProgress(receiver, event.message, null)
                         is WorkshopDownloadEvent.Progress -> {
+                            if (taskStore.isMarkedDeleted(details.summary.publishedFileId)) return@collect
                             taskStore.update(details.summary.publishedFileId) {
                                 it.copy(
                                     status = WorkshopDownloadTaskStatus.Downloading,
@@ -233,6 +261,7 @@ class WorkshopDownloadProcessService : Service() {
                             sendProgress(receiver, "正在下载", "Downloading", event.progress)
                         }
                         is WorkshopDownloadEvent.StateChanged -> {
+                            if (taskStore.isMarkedDeleted(details.summary.publishedFileId)) return@collect
                             val message = event.state.displayText()
                             updateNotification(message)
                             if (event.state != WorkshopDownloadState.Success) {
@@ -253,8 +282,13 @@ class WorkshopDownloadProcessService : Service() {
                             sendProgress(receiver, message, event.state.toTaskStatusName())
                         }
                         is WorkshopDownloadEvent.Completed -> {
+                            if (requestedStop == StopReason.Cancel || taskStore.isMarkedDeleted(details.summary.publishedFileId) || taskStore.find(details.summary.publishedFileId) == null) {
+                                cleanOutput(details)
+                                return@collect
+                            }
                             val outputDir = File(applicationContext.filesDir, "workshop/${details.summary.appId}/${details.summary.publishedFileId}")
                             val jarArtifact = findDownloadedJar(outputDir)
+                            val previewImagePath = downloadPreviewImageIfNeeded(service, metadataStore, details)
                             val message: String
                             val record = if (jarArtifact != null) {
                                 message = if (countDownloadedJars(outputDir) > 1) {
@@ -264,9 +298,10 @@ class WorkshopDownloadProcessService : Service() {
                                 }
                                 service.createInstalledRecord(details, jarArtifact)
                             } else {
-                                message = "该模组不是标准 jar 格式，请手动处理后导入，已存储到${outputDir.absolutePath}"
-                                service.createNonStandardDownloadRecord(details, outputDir)
-                            }
+                                val texturePackDir = TextureReplacerWorkshopInstaller.install(applicationContext, details, outputDir)
+                                message = "下载完成，已作为 Texture Replacer 资源包安装并启用"
+                                service.createTexturePackRecord(details, texturePackDir)
+                            }.copy(localPreviewImagePath = previewImagePath)
                             metadataStore.upsert(record)
                             taskStore.update(details.summary.publishedFileId) {
                                 it.copy(
@@ -305,7 +340,7 @@ class WorkshopDownloadProcessService : Service() {
                     metadataStore.updateState(
                         appId = details.summary.appId,
                         publishedFileId = details.summary.publishedFileId,
-                        state = WorkshopModCardState.Downloading,
+                        state = WorkshopModCardState.DownloadPaused,
                         statusText = "下载已暂停",
                     )
                     receiver?.send(RESULT_PAUSED, Bundle().apply {
@@ -348,6 +383,7 @@ class WorkshopDownloadProcessService : Service() {
             if (Thread.currentThread() === workerThread) {
                 workerThread = null
                 activeDownloadKey = null
+                activeDownloadKeySnapshot = null
             }
             stopForegroundCompat()
             stopSelf()
@@ -374,6 +410,7 @@ class WorkshopDownloadProcessService : Service() {
             hcontentFile = intent.getStringExtra(EXTRA_HCONTENT_FILE)?.toULongOrNull(),
             depotId = intent.getStringExtra(EXTRA_DEPOT_ID)?.toUIntOrNull(),
             jsonMetadata = intent.getStringExtra(EXTRA_JSON_METADATA).orEmpty(),
+            dependencies = intent.getStringExtra(EXTRA_DEPENDENCIES).orEmpty().parseDependenciesExtra(),
         )
     }
 
@@ -427,6 +464,29 @@ class WorkshopDownloadProcessService : Service() {
         val appId = getStringExtra(EXTRA_APP_ID).orEmpty()
         val publishedFileId = getStringExtra(EXTRA_PUBLISHED_FILE_ID).orEmpty()
         return if (appId.isBlank() || publishedFileId.isBlank()) null else "$appId:$publishedFileId"
+    }
+
+    private fun downloadPreviewImageIfNeeded(
+        service: WorkshopService,
+        metadataStore: WorkshopMetadataStore,
+        details: WorkshopItemDetails,
+    ): String {
+        val existing = metadataStore.findByPublishedFileId(
+            appId = details.summary.appId,
+            publishedFileId = details.summary.publishedFileId,
+        )?.localPreviewImagePath.orEmpty()
+        if (existing.isNotBlank()) return existing
+        val previewImagePath = service.downloadPreviewImage(
+            appId = details.summary.appId,
+            publishedFileId = details.summary.publishedFileId,
+            previewUrl = details.summary.previewUrl,
+        )
+        metadataStore.updatePreviewImagePath(
+            appId = details.summary.appId,
+            publishedFileId = details.summary.publishedFileId,
+            localPreviewImagePath = previewImagePath,
+        )
+        return previewImagePath
     }
 
     private fun cleanOutput(details: WorkshopItemDetails) {
@@ -516,4 +576,23 @@ private fun WorkshopDownloadState.toDownloadTaskStatus(): WorkshopDownloadTaskSt
     WorkshopDownloadState.Downloading -> WorkshopDownloadTaskStatus.Downloading
     WorkshopDownloadState.Success -> WorkshopDownloadTaskStatus.Completed
     WorkshopDownloadState.Failed -> WorkshopDownloadTaskStatus.Failed
+}
+
+private fun String.parseDependenciesExtra(): List<WorkshopItemSummary> {
+    if (isBlank()) return emptyList()
+    return lineSequence().mapNotNull { line ->
+        val parts = line.split('\t')
+        val appId = parts.getOrNull(0)?.toUIntOrNull() ?: 646570u
+        val publishedFileId = parts.getOrNull(1)?.toULongOrNull() ?: return@mapNotNull null
+        WorkshopItemSummary(
+            appId = appId,
+            publishedFileId = publishedFileId,
+            title = parts.getOrNull(2).orEmpty(),
+            previewUrl = parts.getOrNull(3).orEmpty(),
+            description = parts.getOrNull(4).orEmpty(),
+            authorName = parts.getOrNull(5).orEmpty(),
+            fileSizeBytes = parts.getOrNull(6)?.toLongOrNull() ?: 0L,
+            updatedAtMillis = parts.getOrNull(7)?.toLongOrNull() ?: 0L,
+        )
+    }.toList()
 }

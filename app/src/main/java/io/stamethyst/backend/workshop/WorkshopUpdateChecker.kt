@@ -6,8 +6,10 @@ internal class WorkshopUpdateChecker(context: Context) {
     private val service = WorkshopService(context)
     private val store = WorkshopMetadataStore(context)
 
-    suspend fun checkInstalledMods(): List<WorkshopUpdateCheckResult> {
-        return store.list().mapNotNull { record ->
+    suspend fun checkInstalledMods(): WorkshopUpdateCheckReport {
+        val results = ArrayList<WorkshopUpdateCheckResult>()
+        var failedCount = 0
+        store.list().forEach { record ->
             runCatching {
                 val details = service.getDetails(record.appId, record.publishedFileId)
                 WorkshopUpdateCheckResult(
@@ -21,7 +23,14 @@ internal class WorkshopUpdateChecker(context: Context) {
                     localUpdatedAtMillis = record.updatedAtMillis,
                     remoteVersionText = details.summary.updatedAtMillis.toString(),
                 )
-            }.getOrNull()
+            }.onSuccess { result ->
+                results.add(result)
+            }.onFailure {
+                failedCount++
+            }
         }
+        store.applyUpdateCheckResults(results)
+        store.markMissingFiles()
+        return WorkshopUpdateCheckReport(results = results, failedCount = failedCount)
     }
 }

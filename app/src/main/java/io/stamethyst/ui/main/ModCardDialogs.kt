@@ -58,6 +58,7 @@ internal fun ModActionsDialog(
     controlsEnabled: Boolean,
     onDismiss: () -> Unit,
     favorite: Boolean,
+    deleteEnabled: Boolean = controlsEnabled,
     onFavoriteChange: (Boolean) -> Unit,
     onEditPriority: () -> Unit,
     onExport: () -> Unit,
@@ -134,7 +135,7 @@ internal fun ModActionsDialog(
                     }
                     ModActionDialogListItem(
                         text = stringResource(R.string.main_mod_delete),
-                        enabled = controlsEnabled
+                        enabled = deleteEnabled
                     ) {
                         onDismiss()
                         onDelete()

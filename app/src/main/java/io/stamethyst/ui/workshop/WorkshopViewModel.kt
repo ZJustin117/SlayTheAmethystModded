@@ -47,6 +47,7 @@ internal class WorkshopViewModel : ViewModel() {
         loaded = true
         service = WorkshopService(context)
         metadataStore = WorkshopMetadataStore(context)
+        metadataStore?.markMissingFiles()
         uiState = uiState.copy(
             steamLoggedIn = service?.hasSteamAuth() == true,
             installedMods = metadataStore?.list().orEmpty(),
@@ -56,6 +57,7 @@ internal class WorkshopViewModel : ViewModel() {
     }
 
     private fun refreshLocalDownloadState() {
+        metadataStore?.markMissingFiles()
         uiState = uiState.copy(
             steamLoggedIn = service?.hasSteamAuth() == true,
             installedMods = metadataStore?.list().orEmpty(),
@@ -147,7 +149,7 @@ internal class WorkshopViewModel : ViewModel() {
 
     fun downloadSelected(context: Context) {
         val details = uiState.selected ?: return
-        startDownload(context, details.summary, details)
+        startDownloadAfterDependencyCheck(context, details.summary, details)
     }
 
     fun pauseDownload(context: Context, task: WorkshopDownloadTaskUi) {
@@ -161,7 +163,7 @@ internal class WorkshopViewModel : ViewModel() {
             WorkshopDownloadCenterStore.update(task.publishedFileId) {
                 it.copy(status = WorkshopDownloadTaskStatus.Paused, message = "下载已暂停", updatedAtMillis = System.currentTimeMillis())
             }
-            metadataStore?.updateState(details.summary.appId, details.summary.publishedFileId, WorkshopModCardState.Downloading, "下载已暂停")
+            metadataStore?.updateState(details.summary.appId, details.summary.publishedFileId, WorkshopModCardState.DownloadPaused, "下载已暂停")
         }
         uiState = uiState.copy(downloadStatus = "正在暂停", downloadInProgress = true, installedMods = metadataStore?.list().orEmpty())
     }
@@ -210,7 +212,55 @@ internal class WorkshopViewModel : ViewModel() {
         val selectedDetails = uiState.selected?.takeIf { selected ->
             selected.summary.appId == item.appId && selected.summary.publishedFileId == item.publishedFileId
         }
-        startDownload(context, item, selectedDetails)
+        if (selectedDetails != null) {
+            startDownloadAfterDependencyCheck(context, item, selectedDetails)
+            return
+        }
+        val currentService = service ?: return
+        viewModelScope.launch {
+            uiState = uiState.copy(downloadStatus = "正在检查前置模组")
+            runCatching {
+                withContext(Dispatchers.IO) { currentService.getDetails(item.appId, item.publishedFileId) }
+            }.onSuccess { details ->
+                uiState = uiState.copy(selected = details)
+                startDownloadAfterDependencyCheck(context, item, details)
+            }.onFailure { error ->
+                uiState = uiState.copy(downloadStatus = "前置检查失败：${error.message ?: error.javaClass.simpleName}")
+            }
+        }
+    }
+
+    fun confirmPendingDependencyDownload(context: Context) {
+        val pending = uiState.pendingDependencyDownload ?: return
+        uiState = uiState.copy(pendingDependencyDownload = null)
+        pending.missingDependencies.forEach { dependency -> startDownload(context, dependency) }
+        startDownload(context, pending.details.summary, pending.details)
+    }
+
+    fun dismissPendingDependencyDownload() {
+        uiState = uiState.copy(pendingDependencyDownload = null)
+    }
+
+    private fun startDownloadAfterDependencyCheck(
+        context: Context,
+        item: WorkshopItemSummary,
+        details: WorkshopItemDetails,
+    ) {
+        val missingDependencies = findMissingWorkshopDependencies(
+            dependencies = details.dependencies,
+            installedMods = metadataStore?.list().orEmpty(),
+            downloadTasks = WorkshopDownloadCenterStore.tasks,
+        )
+        if (missingDependencies.isNotEmpty()) {
+            uiState = uiState.copy(
+                pendingDependencyDownload = WorkshopPendingDependencyDownload(
+                    details = details,
+                    missingDependencies = missingDependencies,
+                ),
+            )
+            return
+        }
+        startDownload(context, item, details)
     }
 
     private fun startDownload(
@@ -238,20 +288,21 @@ internal class WorkshopViewModel : ViewModel() {
             )
         )
         metadataStore?.upsert(
-            WorkshopInstalledModRecord(
-                appId = summary.appId,
-                publishedFileId = summary.publishedFileId,
-                title = summary.title,
+                WorkshopInstalledModRecord(
+                    appId = summary.appId,
+                    publishedFileId = summary.publishedFileId,
+                    title = summary.title,
                 description = summary.description,
                 previewUrl = summary.previewUrl,
                 versionText = summary.updatedAtMillis.toString(),
                 updatedAtMillis = summary.updatedAtMillis,
                 installedAtMillis = System.currentTimeMillis(),
-                localJarPath = "",
-                cardState = WorkshopModCardState.Downloading,
-                statusText = "等待下载",
+                    localJarPath = "",
+                    cardState = WorkshopModCardState.Downloading,
+                    statusText = "等待下载",
+                    dependencies = queuedDetails.dependencies,
+                )
             )
-        )
         uiState = uiState.copy(
             downloadStatus = if (alreadyRunning) "已加入下载队列：${summary.title}" else "正在下载 ${summary.title}",
             downloadInProgress = WorkshopDownloadCenterStore.hasRunningTask() || !alreadyRunning,
@@ -359,21 +410,20 @@ internal class WorkshopViewModel : ViewModel() {
         viewModelScope.launch {
             uiState = uiState.copy(downloadStatus = "正在检查创意工坊更新", updateChecking = true)
             runCatching { withContext(Dispatchers.IO) { WorkshopUpdateChecker(context).checkInstalledMods() } }
-                .onSuccess { results ->
-                    results.filter { it.hasUpdate }.forEach { result ->
-                        metadataStore?.updateState(
-                            appId = result.appId,
-                            publishedFileId = result.publishedFileId,
-                            state = WorkshopModCardState.UpdateAvailable,
-                            statusText = "发现创意工坊更新",
-                        )
-                    }
+                .onSuccess { report ->
+                    val results = report.results
                     val updateCount = results.count { it.hasUpdate }
                     uiState = uiState.copy(
                         updateResults = results,
+                        installedMods = metadataStore?.list().orEmpty(),
                         updateChecking = false,
                         downloadStatus = if (updateCount > 0) {
-                            "发现 $updateCount 个创意工坊更新"
+                            buildString {
+                                append("发现 ").append(updateCount).append(" 个创意工坊更新")
+                                if (report.failedCount > 0) append("，").append(report.failedCount).append(" 个检查失败")
+                            }
+                        } else if (report.failedCount > 0) {
+                            "创意工坊更新检查完成，${report.failedCount} 个检查失败"
                         } else {
                             "创意工坊模组均为最新"
                         },
@@ -403,12 +453,18 @@ internal data class WorkshopUiState(
     val downloadStatus: String = "",
     val installedMods: List<WorkshopInstalledModRecord> = emptyList(),
     val updateResults: List<WorkshopUpdateCheckResult> = emptyList(),
+    val pendingDependencyDownload: WorkshopPendingDependencyDownload? = null,
     val errorMessage: String? = null,
 ) {
     companion object {
         const val PAGE_SIZE = 20
     }
 }
+
+internal data class WorkshopPendingDependencyDownload(
+    val details: WorkshopItemDetails,
+    val missingDependencies: List<WorkshopItemSummary>,
+)
 
 private fun String.toTaskStatus(): WorkshopDownloadTaskStatus? = when (this) {
     "Queued" -> WorkshopDownloadTaskStatus.Queued

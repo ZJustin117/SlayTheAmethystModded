@@ -83,6 +83,7 @@ class WorkshopServiceTest {
                       "response": {
                         "publishedfiledetails": [
                           {
+                            "publishedfileid": "123456",
                             "title": "Detailed Mod",
                             "file_url": "${downloadServer.url("/mod.jar")}",
                             "file_size": 1234,
@@ -91,7 +92,34 @@ class WorkshopServiceTest {
                             "creator_name": "Author",
                             "description": "Details",
                             "time_updated": 1710000000,
-                            "preview_url": "https://cdn.example/preview.jpg"
+                            "preview_url": "https://cdn.example/preview.jpg",
+                            "children": [
+                              { "publishedfileid": "1605833019" }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                    """.trimIndent(),
+                )
+                .build(),
+        )
+        detailsServer.enqueue(
+            MockResponse.Builder()
+                .code(200)
+                .body(
+                    """
+                    {
+                      "response": {
+                        "publishedfiledetails": [
+                          {
+                            "publishedfileid": "1605833019",
+                            "title": "BaseMod",
+                            "consumer_app_id": 646570,
+                            "creator_name": "Maintainer",
+                            "description": "Required dependency",
+                            "time_updated": 1710000100,
+                            "preview_url": "https://cdn.example/basemod.jpg"
                           }
                         ]
                       }
@@ -108,7 +136,11 @@ class WorkshopServiceTest {
 
         assertEquals("Detailed Mod", details.summary.title)
         assertEquals(downloadServer.url("/mod.jar").toString(), details.fileUrl)
-        assertEquals(1, detailsServer.requestCount)
+        assertEquals(1, details.dependencies.size)
+        assertEquals("BaseMod", details.dependencies.single().title)
+        assertEquals(1605833019uL, details.dependencies.single().publishedFileId)
+        assertEquals(2, detailsServer.requestCount)
+        assertEquals("/ISteamRemoteStorage/GetPublishedFileDetails/v1/", detailsServer.takeRequest().url.encodedPath)
         assertEquals("/ISteamRemoteStorage/GetPublishedFileDetails/v1/", detailsServer.takeRequest().url.encodedPath)
     }
 

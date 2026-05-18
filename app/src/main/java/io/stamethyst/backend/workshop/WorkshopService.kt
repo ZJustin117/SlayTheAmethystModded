@@ -70,13 +70,51 @@ internal class WorkshopService(
                 fileSizeBytes = detail.fileSize ?: 0L,
                 updatedAtMillis = (detail.timeUpdated ?: 0L) * 1000L,
             )
+            val dependencyIds = detail.children.mapNotNull { child ->
+                child.publishedFileId.toULongOrNull()
+            }.distinct()
+            val dependencyDetailsById = loadDependencyDetails(appId, dependencyIds).associateBy { childDetail ->
+                childDetail.publishedFileId.toULongOrNull()
+            }
             WorkshopItemDetails(
                 summary = summary,
                 fileUrl = detail.fileUrl,
                 hcontentFile = detail.hcontentFile?.takeIf { it > 0L }?.toULong(),
                 depotId = detail.consumerAppId?.takeIf { it > 0 }?.toUInt(),
                 jsonMetadata = payload,
+                dependencies = dependencyIds.map { dependencyId ->
+                    dependencyDetailsById[dependencyId]?.toSummary(appId, dependencyId)
+                        ?: WorkshopItemSummary(
+                            publishedFileId = dependencyId,
+                            appId = appId,
+                            title = knownWorkshopDependencyTitle(dependencyId) ?: "Workshop ID $dependencyId",
+                            previewUrl = "",
+                            description = "",
+                        )
+                },
             )
+        }
+    }
+
+    private fun loadDependencyDetails(appId: UInt, publishedFileIds: List<ULong>): List<PublishedFileDetailsDto> {
+        if (publishedFileIds.isEmpty()) return emptyList()
+        val requestBody = FormBody.Builder().apply {
+            add("itemcount", publishedFileIds.size.toString())
+            publishedFileIds.forEachIndexed { index, publishedFileId ->
+                add("publishedfileids[$index]", publishedFileId.toString())
+            }
+            add("appid", appId.toString())
+        }.build()
+        val request = Request.Builder()
+            .url("https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/".toHttpUrl())
+            .post(requestBody)
+            .build()
+        return client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return emptyList()
+            val payload = response.body?.string().orEmpty()
+            runCatching {
+                json.decodeFromString<PublishedFileDetailsEnvelope>(payload).response.publishedFileDetails
+            }.getOrDefault(emptyList())
         }
     }
 
@@ -180,6 +218,10 @@ internal class WorkshopService(
             { session, servers -> session.connectWithRefreshToken(servers, account) }
         }
 
+    fun downloadPreviewImage(appId: UInt, publishedFileId: ULong, previewUrl: String): String {
+        return WorkshopPreviewImageStore(context, client).download(appId, publishedFileId, previewUrl)
+    }
+
     fun createInstalledRecord(details: WorkshopItemDetails, artifact: WorkshopDownloadedArtifact): WorkshopInstalledModRecord {
         return WorkshopInstalledModRecord(
             appId = details.summary.appId,
@@ -193,6 +235,7 @@ internal class WorkshopService(
             localJarPath = artifact.relativePath,
             cardState = WorkshopModCardState.ImportedUnpatched,
             statusText = "等待修补",
+            dependencies = details.dependencies,
         )
     }
 
@@ -208,8 +251,30 @@ internal class WorkshopService(
             updatedAtMillis = details.summary.updatedAtMillis,
             installedAtMillis = System.currentTimeMillis(),
             localJarPath = path,
+            contentKind = WorkshopInstalledContentKind.NonStandard,
             cardState = WorkshopModCardState.NonStandardDownloaded,
             statusText = "该模组不是标准 jar 格式，请手动处理后导入，已存储到$path",
+            dependencies = details.dependencies,
+        )
+    }
+
+    fun createTexturePackRecord(details: WorkshopItemDetails, texturePackDir: File): WorkshopInstalledModRecord {
+        val path = texturePackDir.absolutePath
+        return WorkshopInstalledModRecord(
+            appId = details.summary.appId,
+            publishedFileId = details.summary.publishedFileId,
+            title = details.summary.title,
+            description = details.summary.description,
+            previewUrl = details.summary.previewUrl,
+            versionText = details.summary.updatedAtMillis.toString(),
+            updatedAtMillis = details.summary.updatedAtMillis,
+            installedAtMillis = System.currentTimeMillis(),
+            localJarPath = path,
+            contentKind = WorkshopInstalledContentKind.TexturePack,
+            texturePackPath = path,
+            cardState = WorkshopModCardState.TexturePackInstalled,
+            statusText = "已作为 Texture Replacer 资源包安装并启用",
+            dependencies = details.dependencies,
         )
     }
 
@@ -253,6 +318,7 @@ private data class PublishedFileDetailsResponse(
 
 @Serializable
 private data class PublishedFileDetailsDto(
+    @SerialName("publishedfileid") val publishedFileId: String = "",
     val title: String = "",
     @SerialName("file_url") val fileUrl: String? = null,
     @SerialName("file_size") val fileSize: Long? = null,
@@ -262,4 +328,28 @@ private data class PublishedFileDetailsDto(
     @SerialName("description") val description: String? = null,
     @SerialName("time_updated") val timeUpdated: Long? = null,
     @SerialName("preview_url") val previewUrl: String? = null,
+    val children: List<PublishedFileChildDto> = emptyList(),
 )
+
+@Serializable
+private data class PublishedFileChildDto(
+    @SerialName("publishedfileid") val publishedFileId: String = "",
+)
+
+private fun PublishedFileDetailsDto.toSummary(appId: UInt, fallbackPublishedFileId: ULong): WorkshopItemSummary = WorkshopItemSummary(
+    publishedFileId = publishedFileId.toULongOrNull() ?: fallbackPublishedFileId,
+    appId = consumerAppId?.takeIf { it > 0 }?.toUInt() ?: appId,
+    title = title.ifBlank { knownWorkshopDependencyTitle(fallbackPublishedFileId) ?: "Workshop ID $fallbackPublishedFileId" },
+    previewUrl = previewUrl.orEmpty(),
+    description = description.orEmpty(),
+    authorName = creatorName.orEmpty(),
+    fileSizeBytes = fileSize ?: 0L,
+    updatedAtMillis = (timeUpdated ?: 0L) * 1000L,
+)
+
+private fun knownWorkshopDependencyTitle(publishedFileId: ULong): String? = when (publishedFileId) {
+    1605060445uL -> "ModTheSpire"
+    1605833019uL -> "BaseMod"
+    1609158507uL -> "StSLib"
+    else -> null
+}

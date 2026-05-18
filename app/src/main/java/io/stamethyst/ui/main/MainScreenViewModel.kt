@@ -47,6 +47,13 @@ import io.stamethyst.backend.steamcloud.SteamCloudUploadPlan
 import io.stamethyst.backend.mods.StsDesktopJarPatcher
 import io.stamethyst.backend.mods.StsJarValidator
 import io.stamethyst.backend.update.UpdateMirrorManager
+import io.stamethyst.backend.workshop.WorkshopDownloadTaskRecord
+import io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus
+import io.stamethyst.backend.workshop.WorkshopDownloadTaskStore
+import io.stamethyst.backend.workshop.WorkshopInstalledModRecord
+import io.stamethyst.backend.workshop.WorkshopItemDetails
+import io.stamethyst.backend.workshop.WorkshopItemSummary
+import io.stamethyst.backend.workshop.WorkshopDownloadProcessService
 import io.stamethyst.backend.workshop.WorkshopMetadataStore
 import io.stamethyst.backend.workshop.WorkshopModCardState
 import io.stamethyst.config.BackBehavior
@@ -782,22 +789,65 @@ class MainScreenViewModel : ViewModel() {
 
     fun onRetryWorkshopDownload(host: Activity, mod: ModItemUi) {
         val workshop = mod.workshop ?: return
-        WorkshopMetadataStore(host).updateState(
-            appId = workshop.appId,
-            publishedFileId = workshop.publishedFileId,
+        val store = WorkshopMetadataStore(host)
+        val record = store.findByPublishedFileId(workshop.appId, workshop.publishedFileId)
+        if (record == null) {
+            _effects.tryEmit(Effect.ShowSnackbar(UiText.DynamicString("未找到创意工坊下载记录")))
+            return
+        }
+        val taskStore = WorkshopDownloadTaskStore(host)
+        val existingTask = taskStore.find(record.publishedFileId)
+        if (existingTask == null || existingTask.status == WorkshopDownloadTaskStatus.Completed) {
+            taskStore.upsert(record.toWorkshopDownloadTaskRecord())
+        } else {
+            taskStore.update(record.publishedFileId) { task ->
+                task.copy(
+                    status = WorkshopDownloadTaskStatus.Queued,
+                    message = "等待下载",
+                    updatedAtMillis = System.currentTimeMillis(),
+                    progressPercent = null,
+                    downloadedBytes = 0L,
+                    completedFiles = null,
+                    completedChunks = null,
+                    errorClass = "",
+                    errorMessage = "",
+                    errorStackTrace = "",
+                )
+            }
+        }
+        store.updateState(
+            appId = record.appId,
+            publishedFileId = record.publishedFileId,
             state = WorkshopModCardState.Downloading,
-            statusText = "请在市场页重新下载",
+            statusText = "等待下载",
         )
+        WorkshopDownloadProcessService.startNextQueued(host)
         refresh(host)
     }
 
     fun onUpdateWorkshopMod(host: Activity, mod: ModItemUi) {
-        val workshop = mod.workshop ?: return
-        _effects.tryEmit(
-            Effect.ShowDialog(
-                title = UiText.DynamicString("更新创意工坊模组"),
-                message = UiText.DynamicString("请到市场页重新下载 ${mod.name} 以更新。Workshop ID: ${workshop.publishedFileId}")
-            )
+        mod.workshop ?: return
+        onRetryWorkshopDownload(host, mod)
+    }
+
+    private fun WorkshopInstalledModRecord.toWorkshopDownloadTaskRecord(): WorkshopDownloadTaskRecord {
+        val summary = WorkshopItemSummary(
+            appId = appId,
+            publishedFileId = publishedFileId,
+            title = title,
+            previewUrl = previewUrl,
+            description = description,
+            updatedAtMillis = updatedAtMillis,
+        )
+        return WorkshopDownloadTaskRecord(
+            publishedFileId = publishedFileId,
+            title = title,
+            status = WorkshopDownloadTaskStatus.Queued,
+            message = "等待下载",
+            details = WorkshopItemDetails(summary = summary),
+            previewUrl = previewUrl,
+            description = description,
+            fileSizeBytes = 0L,
         )
     }
 

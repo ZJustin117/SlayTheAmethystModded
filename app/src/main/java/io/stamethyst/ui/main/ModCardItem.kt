@@ -134,6 +134,8 @@ internal fun ModCard(
     }.coerceIn(0f, 1f)
     val normalControlProgress = 1f - batchSelectionAnimationProgress
     val dragAffordanceVisible = showDragHandle && !batchSelectionMode
+    val deleteWorkshopDownloadEnabled = mod.canDeleteDownloadedWorkshopMod()
+    val actionsEnabled = fileActionsEnabled || deleteWorkshopDownloadEnabled
     val dragAffordanceProgress = if (dragAffordanceVisible) {
         (dragAffordanceAlpha?.value ?: 1f) * normalControlProgress
     } else {
@@ -279,9 +281,9 @@ internal fun ModCard(
             isExpanded = isExpanded,
             showModFileName = showModFileName,
             showActionsButton = showActionsButton,
-            actionsEnabled = fileActionsEnabled,
+            actionsEnabled = actionsEnabled,
             onActionsClick = {
-                if (fileActionsEnabled) {
+                if (actionsEnabled) {
                     showActionsDialog = true
                 }
             },
@@ -325,16 +327,20 @@ internal fun ModCard(
                     contentAlignment = Alignment.Center
                 ) {
                     val workshopState = mod.workshop?.state
-                    when (workshopState) {
-                        WorkshopModState.ImportedUnpatched -> Unit
-                        WorkshopModState.Downloading -> Unit
-                        WorkshopModState.DownloadFailed -> Unit
-                        WorkshopModState.UpdateAvailable -> Button(
-                            onClick = { callbacks.onUpdateWorkshopMod(mod) },
-                            enabled = !batchSelectionMode && selectionEnabled,
-                            modifier = Modifier.graphicsLayer { alpha = normalControlProgress }
-                        ) { Text("可更新") }
-                        else -> Checkbox(
+                    val showEnableCheckbox = mod.installed && when (workshopState) {
+                        WorkshopModState.ImportedUnpatched,
+                        WorkshopModState.Downloading,
+                        WorkshopModState.DownloadPaused,
+                        WorkshopModState.DownloadFailed,
+                        WorkshopModState.NonStandardDownloaded,
+                        WorkshopModState.TexturePackInstalled,
+                        WorkshopModState.FileMissing -> false
+                        WorkshopModState.ImportedPatched,
+                        WorkshopModState.UpdateAvailable,
+                        null -> true
+                    }
+                    if (showEnableCheckbox) {
+                        Checkbox(
                             checked = mod.enabled,
                             onCheckedChange = { checked ->
                                 if (!batchSelectionMode && selectionEnabled) {
@@ -400,6 +406,36 @@ internal fun ModCard(
             ) {
                 Text("重试")
             }
+            WorkshopModState.DownloadPaused -> Button(
+                onClick = { callbacks.onRetryWorkshopDownload(mod) },
+                enabled = !batchSelectionMode,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp)
+                    .graphicsLayer { alpha = normalControlProgress }
+            ) {
+                Text("继续下载")
+            }
+            WorkshopModState.FileMissing -> Button(
+                onClick = { callbacks.onRetryWorkshopDownload(mod) },
+                enabled = !batchSelectionMode,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp)
+                    .graphicsLayer { alpha = normalControlProgress }
+            ) {
+                Text("重新下载")
+            }
+            WorkshopModState.UpdateAvailable -> Button(
+                onClick = { callbacks.onUpdateWorkshopMod(mod) },
+                enabled = !batchSelectionMode,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp)
+                    .graphicsLayer { alpha = normalControlProgress }
+            ) {
+                Text("更新")
+            }
             WorkshopModState.NonStandardDownloaded -> OutlinedButton(
                 onClick = { showActionsDialog = true },
                 enabled = !batchSelectionMode,
@@ -410,12 +446,37 @@ internal fun ModCard(
             ) {
                 Text("手动处理")
             }
-            WorkshopModState.Downloading -> LinearProgressIndicator(
+            WorkshopModState.TexturePackInstalled -> OutlinedButton(
+                onClick = { showActionsDialog = true },
+                enabled = !batchSelectionMode,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 10.dp)
                     .graphicsLayer { alpha = normalControlProgress }
-            )
+            ) {
+                Text("查看文件")
+            }
+            WorkshopModState.Downloading -> {
+                val progress = mod.workshop.downloadProgressPercent
+                    ?.coerceIn(0, 100)
+                    ?.let { it / 100f }
+                if (progress != null) {
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp)
+                            .graphicsLayer { alpha = normalControlProgress }
+                    )
+                } else {
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp)
+                            .graphicsLayer { alpha = normalControlProgress }
+                    )
+                }
+            }
             else -> Unit
         }
     }
@@ -465,6 +526,7 @@ internal fun ModCard(
         controlsEnabled = fileActionsEnabled,
         onDismiss = { showActionsDialog = false },
         favorite = mod.favorite,
+        deleteEnabled = actionsEnabled,
         onFavoriteChange = { favorite -> callbacks.onSetFavorite(mod, favorite) },
         onEditPriority = { showPriorityDialog = true },
         onExport = { callbacks.onExportMod(mod) },
@@ -515,6 +577,20 @@ internal fun ModCard(
             callbacks.onRenameModFile(mod, newFileName)
         }
     )
+}
+
+private fun ModItemUi.canDeleteDownloadedWorkshopMod(): Boolean {
+    if (installed) return false
+    return when (workshop?.state) {
+        WorkshopModState.Downloading,
+        WorkshopModState.DownloadPaused,
+        WorkshopModState.DownloadFailed,
+        WorkshopModState.ImportedUnpatched,
+        WorkshopModState.NonStandardDownloaded,
+        WorkshopModState.TexturePackInstalled,
+        WorkshopModState.FileMissing -> true
+        else -> false
+    }
 }
 
 private fun buildModCardDragOverlayAnchor(

@@ -76,6 +76,20 @@ object RuntimePaths {
     fun modsDir(context: Context): File = File(stsRoot(context), "mods")
 
     @JvmStatic
+    fun texturePacksDir(context: Context): File = File(stsRoot(context), "texPacks")
+
+    @JvmStatic
+    fun texturePackDir(context: Context, publishedFileId: ULong): File =
+        File(texturePacksDir(context), publishedFileId.toString())
+
+    @JvmStatic
+    fun modTheSpireConfigDir(context: Context): File = File(stsHome(context), ".config/ModTheSpire")
+
+    @JvmStatic
+    fun textureReplacerPackOrderFile(context: Context): File =
+        File(modTheSpireConfigDir(context), "texturereplacer/pack_order.json")
+
+    @JvmStatic
     fun optionalModsLibraryDir(context: Context): File = File(stsRoot(context), "mods_library")
 
     @JvmStatic

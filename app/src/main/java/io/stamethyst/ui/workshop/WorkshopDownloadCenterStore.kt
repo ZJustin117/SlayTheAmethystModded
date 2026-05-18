@@ -6,9 +6,8 @@ import io.stamethyst.backend.workshop.WorkshopDownloadTaskRecord
 import io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus
 import io.stamethyst.backend.workshop.WorkshopDownloadTaskStore
 import io.stamethyst.backend.workshop.WorkshopItemDetails
-import io.stamethyst.backend.workshop.isActiveDownload
-import io.stamethyst.backend.workshop.isRunningDownload
-import io.stamethyst.backend.workshop.isStoppingDownload
+import io.stamethyst.backend.workshop.WorkshopMetadataStore
+import io.stamethyst.backend.workshop.WorkshopModCardState
 
 internal object WorkshopDownloadCenterStore {
     val tasks = mutableStateListOf<WorkshopDownloadTaskUi>()
@@ -18,7 +17,8 @@ internal object WorkshopDownloadCenterStore {
     fun initialize(context: Context) {
         if (!loaded) {
             loaded = true
-            store = WorkshopDownloadTaskStore(context).also { it.recoverInterruptedTasks() }
+            store = WorkshopDownloadTaskStore(context)
+            recoverInterruptedDownloads(context)
         }
         refresh()
     }
@@ -49,6 +49,23 @@ internal object WorkshopDownloadCenterStore {
     fun hasRunningTask(): Boolean = store?.hasRunningTask() == true
 
     fun nextQueuedTask(): WorkshopDownloadTaskUi? = store?.nextQueuedTask()?.toUi()
+
+    private fun recoverInterruptedDownloads(context: Context) {
+        val recovered = store?.recoverInterruptedTasksWithResult { task ->
+            !io.stamethyst.backend.workshop.WorkshopDownloadProcessService.isActiveDownload(task.publishedFileId)
+        }.orEmpty()
+        if (recovered.isEmpty()) return
+        val metadataStore = WorkshopMetadataStore(context)
+        recovered.forEach { task ->
+            val summary = task.details.summary
+            metadataStore.updateState(
+                appId = summary.appId,
+                publishedFileId = summary.publishedFileId,
+                state = WorkshopModCardState.DownloadPaused,
+                statusText = task.message.ifBlank { "下载已暂停，可继续" },
+            )
+        }
+    }
 }
 
 internal data class WorkshopDownloadTaskUi(

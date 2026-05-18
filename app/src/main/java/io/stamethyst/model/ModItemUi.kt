@@ -28,14 +28,19 @@ data class WorkshopModUi(
     val publishedFileId: ULong,
     val state: WorkshopModState,
     val statusText: String = "",
-    val localJarPath: String = ""
+    val localJarPath: String = "",
+    val localPreviewImagePath: String = "",
+    val downloadProgressPercent: Int? = null,
 )
 
 enum class WorkshopModState {
     ImportedUnpatched,
     ImportedPatched,
     Downloading,
+    DownloadPaused,
     DownloadFailed,
     NonStandardDownloaded,
-    UpdateAvailable
+    TexturePackInstalled,
+    UpdateAvailable,
+    FileMissing
 }

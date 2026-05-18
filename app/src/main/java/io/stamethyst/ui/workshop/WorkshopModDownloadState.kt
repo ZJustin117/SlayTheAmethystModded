@@ -3,7 +3,8 @@ package io.stamethyst.ui.workshop
 import io.stamethyst.backend.workshop.WorkshopInstalledModRecord
 import io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus
 import io.stamethyst.backend.workshop.WorkshopItemSummary
-import io.stamethyst.backend.workshop.WorkshopModCardState
+import io.stamethyst.backend.workshop.WorkshopModStateResolver
+import io.stamethyst.backend.workshop.WorkshopResolvedModStateKind
 
 internal enum class WorkshopModDownloadState(
     val statusLabel: String,
@@ -26,40 +27,31 @@ internal fun resolveWorkshopModDownloadState(
     downloadTasks: List<WorkshopDownloadTaskUi>,
 ): WorkshopModDownloadState {
     val task = downloadTasks.firstOrNull { it.publishedFileId == item.publishedFileId }
-    when (task?.status) {
-        WorkshopDownloadTaskStatus.Queued -> return WorkshopModDownloadState.Queued
-        WorkshopDownloadTaskStatus.Resolving,
-        WorkshopDownloadTaskStatus.Downloading -> return WorkshopModDownloadState.Downloading
-        WorkshopDownloadTaskStatus.Pausing,
-        WorkshopDownloadTaskStatus.Paused -> return WorkshopModDownloadState.Paused
-        WorkshopDownloadTaskStatus.Cancelling -> return WorkshopModDownloadState.Cancelling
-        WorkshopDownloadTaskStatus.Completed -> return WorkshopModDownloadState.Downloaded
-        WorkshopDownloadTaskStatus.Failed -> return WorkshopModDownloadState.DownloadFailed
-        WorkshopDownloadTaskStatus.Cancelled,
-        null -> Unit
-    }
-
     val installed = installedMods.firstOrNull {
         it.appId == item.appId && it.publishedFileId == item.publishedFileId
-    } ?: return WorkshopModDownloadState.NotDownloaded
-
-    return when (installed.cardState) {
-        WorkshopModCardState.Downloading -> WorkshopModDownloadState.Downloading
-        WorkshopModCardState.DownloadFailed -> WorkshopModDownloadState.DownloadFailed
-        WorkshopModCardState.NonStandardDownloaded -> WorkshopModDownloadState.Downloaded
-        WorkshopModCardState.UpdateAvailable -> WorkshopModDownloadState.UpdateAvailable
-        WorkshopModCardState.ImportedPatched,
-        WorkshopModCardState.ImportedUnpatched -> {
-            if (item.updatedAtMillis > 0L &&
-                installed.updatedAtMillis > 0L &&
-                item.updatedAtMillis > installed.updatedAtMillis
-            ) {
-                WorkshopModDownloadState.UpdateAvailable
-            } else {
-                WorkshopModDownloadState.Downloaded
-            }
-        }
     }
+    val resolved = WorkshopModStateResolver.resolve(
+        record = installed,
+        taskStatus = task?.status,
+        taskMessage = task?.message.orEmpty(),
+        remoteUpdatedAtMillis = item.updatedAtMillis,
+    )
+    return resolved.kind.toWorkshopModDownloadState()
+}
+
+private fun WorkshopResolvedModStateKind.toWorkshopModDownloadState(): WorkshopModDownloadState = when (this) {
+    WorkshopResolvedModStateKind.NotDownloaded -> WorkshopModDownloadState.NotDownloaded
+    WorkshopResolvedModStateKind.ImportedUnpatched,
+    WorkshopResolvedModStateKind.ImportedPatched,
+    WorkshopResolvedModStateKind.NonStandardDownloaded,
+    WorkshopResolvedModStateKind.TexturePackInstalled -> WorkshopModDownloadState.Downloaded
+    WorkshopResolvedModStateKind.Queued -> WorkshopModDownloadState.Queued
+    WorkshopResolvedModStateKind.Downloading -> WorkshopModDownloadState.Downloading
+    WorkshopResolvedModStateKind.DownloadPaused -> WorkshopModDownloadState.Paused
+    WorkshopResolvedModStateKind.Cancelling -> WorkshopModDownloadState.Cancelling
+    WorkshopResolvedModStateKind.DownloadFailed,
+    WorkshopResolvedModStateKind.FileMissing -> WorkshopModDownloadState.DownloadFailed
+    WorkshopResolvedModStateKind.UpdateAvailable -> WorkshopModDownloadState.UpdateAvailable
 }
 
 internal fun WorkshopDownloadTaskStatus.isActiveWorkshopDownload(): Boolean = when (this) {

@@ -33,6 +33,7 @@ data class WorkshopItemDetails(
     val hcontentFile: ULong? = null,
     val depotId: UInt? = null,
     val jsonMetadata: String = "",
+    val dependencies: List<WorkshopItemSummary> = emptyList(),
 )
 
 data class WorkshopDownloadRequest(
@@ -70,17 +71,30 @@ data class WorkshopInstalledModRecord(
     val updatedAtMillis: Long,
     val installedAtMillis: Long,
     val localJarPath: String,
+    val contentKind: WorkshopInstalledContentKind = WorkshopInstalledContentKind.JarMod,
+    val texturePackPath: String = "",
     val cardState: WorkshopModCardState = WorkshopModCardState.ImportedUnpatched,
     val statusText: String = "",
+    val localPreviewImagePath: String = "",
+    val dependencies: List<WorkshopItemSummary> = emptyList(),
 )
+
+enum class WorkshopInstalledContentKind {
+    JarMod,
+    TexturePack,
+    NonStandard,
+}
 
 enum class WorkshopModCardState {
     ImportedUnpatched,
     ImportedPatched,
     Downloading,
+    DownloadPaused,
     DownloadFailed,
     NonStandardDownloaded,
+    TexturePackInstalled,
     UpdateAvailable,
+    FileMissing,
 }
 
 data class WorkshopUpdateCheckResult(
@@ -90,4 +104,9 @@ data class WorkshopUpdateCheckResult(
     val remoteUpdatedAtMillis: Long,
     val localUpdatedAtMillis: Long,
     val remoteVersionText: String,
+)
+
+data class WorkshopUpdateCheckReport(
+    val results: List<WorkshopUpdateCheckResult>,
+    val failedCount: Int,
 )

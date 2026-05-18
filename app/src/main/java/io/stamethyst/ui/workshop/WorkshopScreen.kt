@@ -8,8 +8,8 @@ import android.util.LruCache
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +27,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -227,6 +228,18 @@ internal fun WorkshopScreen(
             },
         )
     }
+
+    state.pendingDependencyDownload?.let { pending ->
+        MissingWorkshopDependenciesDialog(
+            modTitle = pending.details.summary.title,
+            missingDependencies = pending.missingDependencies,
+            onDismiss = { viewModel.dismissPendingDependencyDownload() },
+            onConfirm = {
+                requestNotificationPermissionIfNeeded()
+                viewModel.confirmPendingDependencyDownload(context.applicationContext)
+            },
+        )
+    }
 }
 
 @Composable
@@ -390,6 +403,7 @@ private fun WorkshopItemCard(
             WorkshopDownloadActionButton(
                 state = downloadState,
                 onClick = onDownload,
+                iconOnly = true,
             )
         }
     }
@@ -400,8 +414,22 @@ internal fun WorkshopDownloadActionButton(
     state: WorkshopModDownloadState,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    iconOnly: Boolean = false,
 ) {
     val enabled = state.canStartDownload
+    if (iconOnly) {
+        IconButton(
+            modifier = modifier.size(48.dp),
+            enabled = enabled,
+            onClick = onClick,
+        ) {
+            Icon(
+                painter = painterResource(state.actionIconRes),
+                contentDescription = state.actionLabel,
+            )
+        }
+        return
+    }
     when (state) {
         WorkshopModDownloadState.Downloaded -> OutlinedButton(
             modifier = modifier,
@@ -439,7 +467,49 @@ internal fun WorkshopDownloadActionButton(
 }
 
 @Composable
-internal fun WorkshopPreviewImage(url: String, contentDescription: String) {
+internal fun MissingWorkshopDependenciesDialog(
+    modTitle: String,
+    missingDependencies: List<WorkshopItemSummary>,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("安装前置模组？") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("$modTitle 需要以下未安装前置，是否一并加入下载队列？")
+                missingDependencies.forEach { dependency ->
+                    Text(
+                        text = "${dependency.title.ifBlank { "Workshop ID ${dependency.publishedFileId}" }} (${dependency.publishedFileId})",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
+        },
+        confirmButton = { Button(onClick = onConfirm) { Text("安装并下载") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    )
+}
+
+private val WorkshopModDownloadState.actionIconRes: Int
+    get() = when (this) {
+        WorkshopModDownloadState.Downloaded -> R.drawable.ic_workshop_installed
+        WorkshopModDownloadState.NotDownloaded -> R.drawable.ic_workshop_download
+        WorkshopModDownloadState.UpdateAvailable -> R.drawable.ic_workshop_update
+        WorkshopModDownloadState.Queued -> R.drawable.ic_workshop_queue
+        WorkshopModDownloadState.Downloading -> R.drawable.ic_workshop_downloading
+        WorkshopModDownloadState.Paused -> R.drawable.ic_workshop_paused
+        WorkshopModDownloadState.Cancelling -> R.drawable.ic_workshop_cancelling
+        WorkshopModDownloadState.DownloadFailed -> R.drawable.ic_workshop_retry
+    }
+
+@Composable
+internal fun WorkshopPreviewImage(
+    url: String,
+    contentDescription: String,
+    modifier: Modifier = Modifier.size(72.dp),
+) {
     val imageState by produceState<PreviewImageState>(initialValue = PreviewImageState.Loading, key1 = url) {
         value = when {
             url.isBlank() -> PreviewImageState.Failed
@@ -449,8 +519,7 @@ internal fun WorkshopPreviewImage(url: String, contentDescription: String) {
         }
     }
     Box(
-        modifier = Modifier
-            .size(72.dp)
+        modifier = modifier
             .clip(CardDefaults.shape)
             .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
