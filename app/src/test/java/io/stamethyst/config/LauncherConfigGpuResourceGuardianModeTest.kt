@@ -13,7 +13,19 @@ class LauncherConfigGpuResourceGuardianModeTest {
     }
 
     @Test
+    fun gpuResourceGuardian_veryLowMemoryDefaultLegacy() {
+        assertEquals(
+            GpuResourceGuardianMode.LEGACY,
+            LauncherConfig.resolveDefaultGpuResourceGuardianMode(8L * 1024L * 1024L * 1024L)
+        )
+    }
+
+    @Test
     fun gpuResourceGuardian_lowMemoryDefaultAggressive() {
+        assertEquals(
+            GpuResourceGuardianMode.AGGRESSIVE,
+            LauncherConfig.resolveDefaultGpuResourceGuardianMode(9L * 1024L * 1024L * 1024L)
+        )
         assertEquals(
             GpuResourceGuardianMode.AGGRESSIVE,
             LauncherConfig.resolveDefaultGpuResourceGuardianMode(12L * 1024L * 1024L * 1024L)

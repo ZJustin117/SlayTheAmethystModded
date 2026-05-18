@@ -143,6 +143,8 @@ object LauncherConfig {
     private const val PREF_KEY_EXPECTED_BACK_EXIT_AT_MS = "expected_back_exit_at_ms"
     private const val PREF_KEY_EXPECTED_BACK_EXIT_RESTART_AT_MS = "expected_back_exit_restart_at_ms"
     private const val EXPECTED_BACK_EXIT_VALID_WINDOW_MS = 30_000L
+    private const val GPU_RESOURCE_GUARDIAN_LEGACY_MAX_MEMORY_BYTES =
+        8L * 1024L * 1024L * 1024L
     private const val GPU_RESOURCE_GUARDIAN_AGGRESSIVE_MAX_MEMORY_BYTES =
         12L * 1024L * 1024L * 1024L
 
@@ -222,6 +224,8 @@ object LauncherConfig {
     const val MIN_TEXTURE_PRESSURE_DOWNSCALE_DIVISOR = 2
     const val MAX_TEXTURE_PRESSURE_DOWNSCALE_DIVISOR = 4
     val DEFAULT_GPU_RESOURCE_GUARDIAN_MODE: GpuResourceGuardianMode = GpuResourceGuardianMode.SAFE
+    val DEFAULT_LEGACY_GPU_RESOURCE_GUARDIAN_MODE: GpuResourceGuardianMode =
+        GpuResourceGuardianMode.LEGACY
     val DEFAULT_LOW_MEMORY_GPU_RESOURCE_GUARDIAN_MODE: GpuResourceGuardianMode =
         GpuResourceGuardianMode.AGGRESSIVE
     const val DEFAULT_HINA_CHARACTER_RENDER_COMPAT_ENABLED = true
@@ -965,10 +969,13 @@ object LauncherConfig {
     }
 
     fun resolveDefaultGpuResourceGuardianMode(totalMemoryBytes: Long): GpuResourceGuardianMode {
-        return if (totalMemoryBytes > 0L && totalMemoryBytes <= GPU_RESOURCE_GUARDIAN_AGGRESSIVE_MAX_MEMORY_BYTES) {
-            DEFAULT_LOW_MEMORY_GPU_RESOURCE_GUARDIAN_MODE
-        } else {
-            DEFAULT_GPU_RESOURCE_GUARDIAN_MODE
+        return when {
+            totalMemoryBytes <= 0L -> DEFAULT_GPU_RESOURCE_GUARDIAN_MODE
+            totalMemoryBytes <= GPU_RESOURCE_GUARDIAN_LEGACY_MAX_MEMORY_BYTES ->
+                DEFAULT_LEGACY_GPU_RESOURCE_GUARDIAN_MODE
+            totalMemoryBytes <= GPU_RESOURCE_GUARDIAN_AGGRESSIVE_MAX_MEMORY_BYTES ->
+                DEFAULT_LOW_MEMORY_GPU_RESOURCE_GUARDIAN_MODE
+            else -> DEFAULT_GPU_RESOURCE_GUARDIAN_MODE
         }
     }
 
