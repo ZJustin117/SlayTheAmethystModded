@@ -22,6 +22,9 @@ internal data class MainScreenActions(
     val onExportMod: (ModItemUi) -> Unit = {},
     val onShareMod: (ModItemUi) -> Unit = {},
     val onRenameModFile: (ModItemUi, String) -> Unit = { _, _ -> },
+    val onPatchWorkshopMod: (ModItemUi) -> Unit = {},
+    val onRetryWorkshopDownload: (ModItemUi) -> Unit = {},
+    val onUpdateWorkshopMod: (ModItemUi) -> Unit = {},
     val onToggleMod: (ModItemUi, Boolean) -> Unit = { _, _ -> },
     val onSetPriority: (ModItemUi, Int?) -> Unit = { _, _ -> },
     val onSetModFavorite: (ModItemUi, Boolean) -> Unit = { _, _ -> },
@@ -89,6 +92,9 @@ internal fun rememberMainScreenActions(
                 onExportMod = { mod -> viewModel.onExportMod(activity, mod) },
                 onShareMod = { mod -> viewModel.onShareMod(activity, mod) },
                 onRenameModFile = { mod, newFileName -> viewModel.onRenameModFile(activity, mod, newFileName) },
+                onPatchWorkshopMod = { mod -> viewModel.onPatchWorkshopMod(activity, mod) },
+                onRetryWorkshopDownload = { mod -> viewModel.onRetryWorkshopDownload(activity, mod) },
+                onUpdateWorkshopMod = { mod -> viewModel.onUpdateWorkshopMod(activity, mod) },
                 onToggleMod = { mod, checked -> viewModel.onToggleMod(activity, mod, checked) },
                 onSetPriority = { mod, priority ->
                     viewModel.onSetPriority(activity, mod, priority)

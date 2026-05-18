@@ -7,7 +7,13 @@ import java.util.concurrent.atomic.AtomicLong
 
 internal data class ModImportRequest(
     val id: Long,
-    val uris: List<Uri>
+    val uris: List<Uri>,
+    val workshopSource: WorkshopImportSource? = null,
+)
+
+internal data class WorkshopImportSource(
+    val appId: UInt,
+    val publishedFileId: ULong,
 )
 
 internal object ModImportRequestBus {
@@ -15,14 +21,15 @@ internal object ModImportRequestBus {
     private val _request = MutableStateFlow<ModImportRequest?>(null)
     val request: StateFlow<ModImportRequest?> = _request
 
-    fun requestImport(uris: List<Uri>) {
+    fun requestImport(uris: List<Uri>, workshopSource: WorkshopImportSource? = null) {
         val normalized = uris.filterNotNull()
         if (normalized.isEmpty()) {
             return
         }
         _request.value = ModImportRequest(
             id = nextId.getAndIncrement(),
-            uris = normalized
+            uris = normalized,
+            workshopSource = workshopSource,
         )
     }
 

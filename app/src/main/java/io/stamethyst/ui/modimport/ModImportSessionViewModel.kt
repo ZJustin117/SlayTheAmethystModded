@@ -47,6 +47,7 @@ internal data class ModImportUiState(
     val folderOptions: List<ModImportFolderOptionUi> = emptyList(),
     val progress: ModImportExecutionProgress? = null,
     val report: ModImportExecutionReport? = null,
+    val workshopSource: WorkshopImportSource? = null,
     val errorMessage: String? = null
 ) {
     val canImport: Boolean
@@ -76,9 +77,9 @@ internal class ModImportSessionViewModel : ViewModel() {
         }
     }
 
-    fun start(context: Context, uris: List<Uri>) {
+    fun start(context: Context, uris: List<Uri>, workshopSource: WorkshopImportSource? = null) {
         if (uris.isEmpty()) return
-        uiState = ModImportUiState(visible = true, step = ModImportStep.Scanning, scanning = true)
+        uiState = ModImportUiState(visible = true, step = ModImportStep.Scanning, scanning = true, workshopSource = workshopSource)
         val requestToken = System.nanoTime()
         activeRequestToken = requestToken
         executor.execute {

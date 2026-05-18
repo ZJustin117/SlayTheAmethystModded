@@ -1,7 +1,12 @@
 package io.stamethyst.ui.workshop
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
+import android.os.Build
 import android.util.LruCache
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -32,7 +37,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -57,6 +61,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.core.content.ContextCompat
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import io.stamethyst.R
@@ -79,6 +84,14 @@ internal fun WorkshopScreen(
     val context = LocalContext.current
     val viewModel: WorkshopViewModel = viewModel()
     val state = viewModel.uiState
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
     val listState = rememberLazyListState()
     val density = LocalDensity.current
     val headerHazeState = rememberHazeState()
@@ -127,7 +140,6 @@ internal fun WorkshopScreen(
                 WorkshopStatusHeader(
                     state = state,
                     onOpenSteamLogin = onOpenSteamLogin,
-                    onAutoImportChanged = { viewModel.setAutoImport(context.applicationContext, it) },
                 )
             }
 
@@ -170,9 +182,19 @@ internal fun WorkshopScreen(
                 }
                 else -> {
                     items(state.items, key = { it.publishedFileId.toString() }) { item ->
+                        val downloadState = resolveWorkshopModDownloadState(
+                            item = item,
+                            installedMods = state.installedMods,
+                            downloadTasks = WorkshopDownloadCenterStore.tasks,
+                        )
                         WorkshopItemCard(
                             item = item,
+                            downloadState = downloadState,
                             onClick = { onOpenDetails(item) },
+                            onDownload = {
+                                requestNotificationPermissionIfNeeded()
+                                viewModel.download(context.applicationContext, item)
+                            },
                         )
                     }
                     item {
@@ -230,7 +252,7 @@ private fun WorkshopHeaderPinnedContent(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = "浏览、下载并导入 Slay the Spire 模组",
+                text = "浏览并下载 Slay the Spire 模组",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -278,21 +300,15 @@ private fun BrowsePaginationFooter(
 private fun WorkshopStatusHeader(
     state: WorkshopUiState,
     onOpenSteamLogin: () -> Unit,
-    onAutoImportChanged: (Boolean) -> Unit,
 ) {
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("下载后自动导入", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        text = if (state.autoImportEnabled) "下载完成后会替换同 modid 的旧模组" else "下载完成后会等待你手动导入",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Switch(checked = state.autoImportEnabled, onCheckedChange = onAutoImportChanged)
-            }
+            Text("下载状态会同步到模组页", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                text = "下载完成后可在模组页查看状态、安装或重试。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             if (!state.steamLoggedIn) {
                 Text(
                     text = "未检测到启动器 Steam 登录。公开条目可浏览，受限下载需要先登录。",
@@ -342,7 +358,9 @@ private fun SearchPanel(
 @Composable
 private fun WorkshopItemCard(
     item: WorkshopItemSummary,
+    downloadState: WorkshopModDownloadState,
     onClick: () -> Unit,
+    onDownload: () -> Unit,
 ) {
     Card(
         modifier = Modifier
@@ -369,12 +387,59 @@ private fun WorkshopItemCard(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            WorkshopDownloadActionButton(
+                state = downloadState,
+                onClick = onDownload,
+            )
         }
     }
 }
 
 @Composable
-private fun WorkshopPreviewImage(url: String, contentDescription: String) {
+internal fun WorkshopDownloadActionButton(
+    state: WorkshopModDownloadState,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val enabled = state.canStartDownload
+    when (state) {
+        WorkshopModDownloadState.Downloaded -> OutlinedButton(
+            modifier = modifier,
+            enabled = false,
+            onClick = onClick,
+        ) { Text(state.actionLabel) }
+        WorkshopModDownloadState.NotDownloaded -> Button(
+            modifier = modifier,
+            enabled = enabled,
+            onClick = onClick,
+        ) { Text(state.actionLabel) }
+        WorkshopModDownloadState.UpdateAvailable -> Button(
+            modifier = modifier,
+            enabled = enabled,
+            onClick = onClick,
+        ) { Text(state.actionLabel) }
+        WorkshopModDownloadState.Paused -> Button(
+            modifier = modifier,
+            enabled = enabled,
+            onClick = onClick,
+        ) { Text(state.actionLabel) }
+        WorkshopModDownloadState.DownloadFailed -> Button(
+            modifier = modifier,
+            enabled = enabled,
+            onClick = onClick,
+        ) { Text(state.actionLabel) }
+        WorkshopModDownloadState.Queued,
+        WorkshopModDownloadState.Cancelling,
+        WorkshopModDownloadState.Downloading -> OutlinedButton(
+            modifier = modifier,
+            enabled = false,
+            onClick = onClick,
+        ) { Text(state.actionLabel) }
+    }
+}
+
+@Composable
+internal fun WorkshopPreviewImage(url: String, contentDescription: String) {
     val imageState by produceState<PreviewImageState>(initialValue = PreviewImageState.Loading, key1 = url) {
         value = when {
             url.isBlank() -> PreviewImageState.Failed

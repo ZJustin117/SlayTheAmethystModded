@@ -13,7 +13,8 @@ internal object WorkshopMetadataCodec {
         .put("updatedAtMillis", record.updatedAtMillis)
         .put("installedAtMillis", record.installedAtMillis)
         .put("localJarPath", record.localJarPath)
-        .put("autoImported", record.autoImported)
+        .put("cardState", record.cardState.name)
+        .put("statusText", record.statusText)
 
     fun fromJson(json: JSONObject): WorkshopInstalledModRecord = WorkshopInstalledModRecord(
         appId = json.optLong("appId").toUInt(),
@@ -25,6 +26,9 @@ internal object WorkshopMetadataCodec {
         updatedAtMillis = json.optLong("updatedAtMillis"),
         installedAtMillis = json.optLong("installedAtMillis"),
         localJarPath = json.optString("localJarPath"),
-        autoImported = json.optBoolean("autoImported")
+        cardState = json.optString("cardState").let { raw ->
+            runCatching { WorkshopModCardState.valueOf(raw) }.getOrDefault(WorkshopModCardState.ImportedUnpatched)
+        },
+        statusText = json.optString("statusText")
     )
 }

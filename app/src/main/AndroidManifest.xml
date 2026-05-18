@@ -3,6 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <queries>
@@ -77,6 +79,12 @@
             android:name="io.stamethyst.backend.diag.LauncherLogcatCaptureService"
             android:exported="false"
             android:process=":logcat" />
+
+        <service
+            android:name="io.stamethyst.backend.workshop.WorkshopDownloadProcessService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"
+            android:process=":workshopdownload" />
 
         <activity
             android:name="net.kdt.pojavlaunch.ExitActivity"

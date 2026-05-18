@@ -1,7 +1,10 @@
 package io.stamethyst.ui.workshop
 
 import android.content.Context
-import android.app.Activity
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.ResultReceiver
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -9,22 +12,21 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.stamethyst.backend.workshop.WorkshopBrowseQuery
+import io.stamethyst.backend.workshop.WorkshopDownloadProcessService
+import io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus
+import io.stamethyst.backend.workshop.WorkshopInstalledModRecord
 import io.stamethyst.backend.workshop.WorkshopItemDetails
 import io.stamethyst.backend.workshop.WorkshopItemSummary
 import io.stamethyst.backend.workshop.WorkshopMetadataStore
+import io.stamethyst.backend.workshop.WorkshopModCardState
 import io.stamethyst.backend.workshop.WorkshopService
-import io.stamethyst.backend.workshop.WorkshopSettingsRepository
-import io.stamethyst.backend.workshop.WorkshopDownloadedArtifact
-import io.stamethyst.backend.workshop.WorkshopDownloadRequest
-import io.stamethyst.backend.workshop.WorkshopInstalledModRecord
 import io.stamethyst.backend.workshop.WorkshopUpdateCheckResult
 import io.stamethyst.backend.workshop.WorkshopUpdateChecker
+import io.stamethyst.backend.workshop.isRunningDownload
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import io.stamethyst.ui.settings.DuplicateModImportReplaceOptions
-import io.stamethyst.ui.settings.SettingsFileService
 
 @Stable
 internal class WorkshopViewModel : ViewModel() {
@@ -33,22 +35,31 @@ internal class WorkshopViewModel : ViewModel() {
 
     private var service: WorkshopService? = null
     private var metadataStore: WorkshopMetadataStore? = null
-    private var settings: WorkshopSettingsRepository? = null
     private var loaded = false
     private var activeQueryText: String = ""
 
     fun load(context: Context) {
-        if (loaded) return
+        WorkshopDownloadCenterStore.initialize(context)
+        if (loaded) {
+            refreshLocalDownloadState()
+            return
+        }
         loaded = true
         service = WorkshopService(context)
         metadataStore = WorkshopMetadataStore(context)
-        settings = WorkshopSettingsRepository(context)
         uiState = uiState.copy(
             steamLoggedIn = service?.hasSteamAuth() == true,
-            autoImportEnabled = settings?.isAutoImportEnabled() ?: true,
             installedMods = metadataStore?.list().orEmpty(),
         )
+        WorkshopDownloadProcessService.startNextQueued(context)
         search(context, "")
+    }
+
+    private fun refreshLocalDownloadState() {
+        uiState = uiState.copy(
+            steamLoggedIn = service?.hasSteamAuth() == true,
+            installedMods = metadataStore?.list().orEmpty(),
+        )
     }
 
     fun search(context: Context, queryText: String) {
@@ -135,77 +146,213 @@ internal class WorkshopViewModel : ViewModel() {
     }
 
     fun downloadSelected(context: Context) {
-        val currentService = service ?: return
         val details = uiState.selected ?: return
-        viewModelScope.launch {
-            WorkshopDownloadCenterStore.upsert(
-                WorkshopDownloadTaskUi(
-                    publishedFileId = details.summary.publishedFileId,
-                    title = details.summary.title,
-                    status = WorkshopDownloadTaskStatus.Queued,
-                    message = "等待下载",
-                    details = details,
-                )
+        startDownload(context, details.summary, details)
+    }
+
+    fun pauseDownload(context: Context, task: WorkshopDownloadTaskUi) {
+        val details = task.details
+        if (task.status.isRunningDownload()) {
+            WorkshopDownloadCenterStore.update(task.publishedFileId) {
+                it.copy(status = WorkshopDownloadTaskStatus.Pausing, message = "正在暂停", updatedAtMillis = System.currentTimeMillis())
+            }
+            WorkshopDownloadProcessService.pause(context, details.summary.appId, details.summary.publishedFileId, createDownloadResultReceiver(context.applicationContext, details.summary))
+        } else {
+            WorkshopDownloadCenterStore.update(task.publishedFileId) {
+                it.copy(status = WorkshopDownloadTaskStatus.Paused, message = "下载已暂停", updatedAtMillis = System.currentTimeMillis())
+            }
+            metadataStore?.updateState(details.summary.appId, details.summary.publishedFileId, WorkshopModCardState.Downloading, "下载已暂停")
+        }
+        uiState = uiState.copy(downloadStatus = "正在暂停", downloadInProgress = true, installedMods = metadataStore?.list().orEmpty())
+    }
+
+    fun resumeDownload(context: Context, task: WorkshopDownloadTaskUi) {
+        restartDownload(context, task, "继续下载")
+    }
+
+    fun retryDownload(context: Context, task: WorkshopDownloadTaskUi) {
+        restartDownload(context, task, "重新下载")
+    }
+
+    fun cancelDownload(context: Context, task: WorkshopDownloadTaskUi) {
+        val details = task.details
+        if (task.status.isRunningDownload()) {
+            WorkshopDownloadCenterStore.update(task.publishedFileId) {
+                it.copy(status = WorkshopDownloadTaskStatus.Cancelling, message = "正在取消", updatedAtMillis = System.currentTimeMillis())
+            }
+            WorkshopDownloadProcessService.cancel(context, details.summary.appId, details.summary.publishedFileId, createDownloadResultReceiver(context.applicationContext, details.summary))
+            uiState = uiState.copy(downloadStatus = "正在取消", downloadInProgress = true, installedMods = metadataStore?.list().orEmpty())
+            return
+        }
+        WorkshopDownloadCenterStore.remove(task.publishedFileId)
+        metadataStore?.remove(details.summary.appId, details.summary.publishedFileId)
+        File(context.filesDir, "workshop/${details.summary.appId}/${details.summary.publishedFileId}").deleteRecursively()
+        uiState = uiState.copy(downloadStatus = "下载已取消", downloadInProgress = false, installedMods = metadataStore?.list().orEmpty())
+        if (!task.status.isRunningDownload()) WorkshopDownloadProcessService.startNextQueued(context)
+    }
+
+    fun download(context: Context, item: WorkshopItemSummary) {
+        val existingTask = WorkshopDownloadCenterStore.find(item.publishedFileId)
+        if (existingTask?.status == WorkshopDownloadTaskStatus.Paused) {
+            resumeDownload(context, existingTask)
+            return
+        }
+        if (existingTask?.status == WorkshopDownloadTaskStatus.Failed || existingTask?.status == WorkshopDownloadTaskStatus.Cancelled) {
+            retryDownload(context, existingTask)
+            return
+        }
+        val state = resolveWorkshopModDownloadState(
+            item = item,
+            installedMods = metadataStore?.list().orEmpty(),
+            downloadTasks = WorkshopDownloadCenterStore.tasks,
+        )
+        if (!state.canStartDownload) return
+        val selectedDetails = uiState.selected?.takeIf { selected ->
+            selected.summary.appId == item.appId && selected.summary.publishedFileId == item.publishedFileId
+        }
+        startDownload(context, item, selectedDetails)
+    }
+
+    private fun startDownload(
+        context: Context,
+        summary: WorkshopItemSummary,
+        details: WorkshopItemDetails? = null,
+    ) {
+        val alreadyRunning = WorkshopDownloadCenterStore.hasRunningTask()
+        val queuedDetails = details ?: WorkshopItemDetails(summary = summary)
+        WorkshopDownloadCenterStore.upsert(
+            WorkshopDownloadTaskUi(
+                publishedFileId = summary.publishedFileId,
+                title = summary.title,
+                status = WorkshopDownloadTaskStatus.Queued,
+                message = if (alreadyRunning) "已加入下载队列" else "等待下载",
+                details = queuedDetails,
+                previewUrl = summary.previewUrl,
+                description = summary.description,
+                authorName = summary.authorName,
+                fileSizeBytes = summary.fileSizeBytes,
+                totalBytes = summary.fileSizeBytes.takeIf { it > 0L },
+                errorClass = "",
+                errorMessage = "",
+                errorStackTrace = "",
             )
-            uiState = uiState.copy(downloadStatus = "正在下载 ${details.summary.title}", downloadInProgress = true)
-            val outputDir = File(context.filesDir, "workshop/${details.summary.appId}/${details.summary.publishedFileId}")
-            runCatching {
-                withContext(Dispatchers.IO) {
-                    currentService.download(WorkshopDownloadRequest(details, outputDir)).collect { event ->
-                        when (event) {
-                            io.stamethyst.backend.workshop.WorkshopDownloadEvent.Ignored -> Unit
-                            is io.stamethyst.backend.workshop.WorkshopDownloadEvent.Log -> {
-                                WorkshopDownloadCenterStore.update(details.summary.publishedFileId) {
-                                    it.copy(message = event.message, updatedAtMillis = System.currentTimeMillis())
-                                }
-                            }
-                            is io.stamethyst.backend.workshop.WorkshopDownloadEvent.StateChanged -> {
-                                val status = event.state.toTaskStatus()
-                                WorkshopDownloadCenterStore.update(details.summary.publishedFileId) {
-                                    it.copy(status = status, message = event.state.displayText(), updatedAtMillis = System.currentTimeMillis())
-                                }
-                                uiState = uiState.copy(downloadStatus = event.state.displayText())
-                            }
-                            is io.stamethyst.backend.workshop.WorkshopDownloadEvent.Completed -> {
-                                handleCompletedDownload(context, details, event.files.firstOrNull())
-                            }
-                            is io.stamethyst.backend.workshop.WorkshopDownloadEvent.Failed -> {
-                                error(
-                                    buildString {
-                                        append(event.failure.message)
-                                        if (event.failure.detail.isNotBlank()) {
-                                            append(": ")
-                                            append(event.failure.detail)
-                                        }
-                                    }
-                                )
-                            }
-                        }
-                    }
-                }
-            }.onFailure { error ->
-                WorkshopDownloadCenterStore.update(details.summary.publishedFileId) {
+        )
+        metadataStore?.upsert(
+            WorkshopInstalledModRecord(
+                appId = summary.appId,
+                publishedFileId = summary.publishedFileId,
+                title = summary.title,
+                description = summary.description,
+                previewUrl = summary.previewUrl,
+                versionText = summary.updatedAtMillis.toString(),
+                updatedAtMillis = summary.updatedAtMillis,
+                installedAtMillis = System.currentTimeMillis(),
+                localJarPath = "",
+                cardState = WorkshopModCardState.Downloading,
+                statusText = "等待下载",
+            )
+        )
+        uiState = uiState.copy(
+            downloadStatus = if (alreadyRunning) "已加入下载队列：${summary.title}" else "正在下载 ${summary.title}",
+            downloadInProgress = WorkshopDownloadCenterStore.hasRunningTask() || !alreadyRunning,
+            installedMods = metadataStore?.list().orEmpty(),
+        )
+        WorkshopDownloadProcessService.startNextQueued(context)
+    }
+
+    private fun restartDownload(context: Context, task: WorkshopDownloadTaskUi, message: String) {
+        val details = task.details
+        WorkshopDownloadCenterStore.upsert(
+            task.copy(
+                status = WorkshopDownloadTaskStatus.Queued,
+                message = if (WorkshopDownloadCenterStore.hasRunningTask()) "已加入下载队列" else message,
+                updatedAtMillis = System.currentTimeMillis(),
+                progressPercent = null,
+                downloadedBytes = 0L,
+                completedFiles = null,
+                completedChunks = null,
+                errorClass = "",
+                errorMessage = "",
+                errorStackTrace = "",
+            )
+        )
+        metadataStore?.updateState(details.summary.appId, details.summary.publishedFileId, WorkshopModCardState.Downloading, "等待下载")
+        WorkshopDownloadProcessService.startNextQueued(context)
+    }
+
+    private fun createDownloadResultReceiver(context: Context, summary: WorkshopItemSummary): ResultReceiver = object : ResultReceiver(Handler(Looper.getMainLooper())) {
+        override fun onReceiveResult(resultCode: Int, resultData: Bundle) {
+            val message = resultData.getString(WorkshopDownloadProcessService.EXTRA_MESSAGE).orEmpty()
+            val status = resultData.getString(WorkshopDownloadProcessService.EXTRA_TASK_STATUS)?.toTaskStatus()
+            if (status != null || message.isNotBlank()) {
+                WorkshopDownloadCenterStore.refresh()
+                WorkshopDownloadCenterStore.update(summary.publishedFileId) {
                     it.copy(
-                        status = WorkshopDownloadTaskStatus.Failed,
-                        message = "下载失败：${error.message ?: error.javaClass.simpleName}",
+                        status = status ?: it.status,
+                        message = message.ifBlank { it.message },
                         updatedAtMillis = System.currentTimeMillis(),
+                        progressPercent = resultData.optionalInt(WorkshopDownloadProcessService.EXTRA_PROGRESS_PERCENT) ?: it.progressPercent,
+                        downloadedBytes = resultData.optionalLong(WorkshopDownloadProcessService.EXTRA_WRITTEN_BYTES) ?: it.downloadedBytes,
+                        totalBytes = resultData.optionalLong(WorkshopDownloadProcessService.EXTRA_TOTAL_BYTES) ?: it.totalBytes,
+                        completedFiles = resultData.optionalInt(WorkshopDownloadProcessService.EXTRA_COMPLETED_FILES) ?: it.completedFiles,
+                        totalFiles = resultData.optionalInt(WorkshopDownloadProcessService.EXTRA_TOTAL_FILES) ?: it.totalFiles,
+                        completedChunks = resultData.optionalInt(WorkshopDownloadProcessService.EXTRA_COMPLETED_CHUNKS) ?: it.completedChunks,
+                        totalChunks = resultData.optionalInt(WorkshopDownloadProcessService.EXTRA_TOTAL_CHUNKS) ?: it.totalChunks,
+                        errorClass = resultData.getString(WorkshopDownloadProcessService.EXTRA_ERROR_CLASS).orEmpty().ifBlank { it.errorClass },
+                        errorMessage = resultData.getString(WorkshopDownloadProcessService.EXTRA_ERROR_MESSAGE).orEmpty().ifBlank { it.errorMessage },
+                        errorStackTrace = resultData.getString(WorkshopDownloadProcessService.EXTRA_ERROR_STACKTRACE).orEmpty().ifBlank { it.errorStackTrace },
                     )
                 }
-                uiState = uiState.copy(
-                    downloadStatus = "下载失败：${error.message ?: error.javaClass.simpleName}",
-                    downloadInProgress = false,
-                )
+            }
+            when (resultCode) {
+                WorkshopDownloadProcessService.RESULT_PROGRESS -> {
+                    if (message.isNotBlank()) uiState = uiState.copy(downloadStatus = message)
+                }
+                WorkshopDownloadProcessService.RESULT_COMPLETED -> {
+                    WorkshopDownloadCenterStore.update(summary.publishedFileId) {
+                        it.copy(
+                            status = WorkshopDownloadTaskStatus.Completed,
+                            message = message.ifBlank { "下载完成" },
+                            progressPercent = 100,
+                            downloadedBytes = (it.totalBytes ?: it.downloadedBytes).coerceAtLeast(it.downloadedBytes),
+                            completedFiles = it.totalFiles ?: it.completedFiles,
+                            updatedAtMillis = System.currentTimeMillis(),
+                        )
+                    }
+                    uiState = uiState.copy(
+                        downloadStatus = message.ifBlank { "下载完成" },
+                        downloadInProgress = false,
+                        installedMods = metadataStore?.list().orEmpty(),
+                    )
+                    WorkshopDownloadCenterStore.refresh()
+                }
+                WorkshopDownloadProcessService.RESULT_FAILURE -> {
+                    uiState = uiState.copy(
+                        downloadStatus = message.ifBlank { "下载失败" },
+                        downloadInProgress = false,
+                        installedMods = metadataStore?.list().orEmpty(),
+                    )
+                    WorkshopDownloadCenterStore.refresh()
+                }
+                WorkshopDownloadProcessService.RESULT_PAUSED -> {
+                    uiState = uiState.copy(
+                        downloadStatus = message.ifBlank { "下载已暂停" },
+                        downloadInProgress = false,
+                        installedMods = metadataStore?.list().orEmpty(),
+                    )
+                    WorkshopDownloadCenterStore.refresh()
+                }
+                WorkshopDownloadProcessService.RESULT_CANCELLED -> {
+                    WorkshopDownloadCenterStore.remove(summary.publishedFileId)
+                    uiState = uiState.copy(
+                        downloadStatus = message.ifBlank { "下载已取消" },
+                        downloadInProgress = false,
+                        installedMods = metadataStore?.list().orEmpty(),
+                    )
+                    WorkshopDownloadCenterStore.refresh()
+                }
             }
         }
-    }
-
-    fun setAutoImport(context: Context, enabled: Boolean) {
-        settings?.setAutoImportEnabled(enabled)
-        uiState = uiState.copy(autoImportEnabled = enabled)
-    }
-
-    fun setSelectedForImport(details: WorkshopItemDetails) {
-        uiState = uiState.copy(selected = details)
     }
 
     fun checkUpdates(context: Context) {
@@ -213,6 +360,14 @@ internal class WorkshopViewModel : ViewModel() {
             uiState = uiState.copy(downloadStatus = "正在检查创意工坊更新", updateChecking = true)
             runCatching { withContext(Dispatchers.IO) { WorkshopUpdateChecker(context).checkInstalledMods() } }
                 .onSuccess { results ->
+                    results.filter { it.hasUpdate }.forEach { result ->
+                        metadataStore?.updateState(
+                            appId = result.appId,
+                            publishedFileId = result.publishedFileId,
+                            state = WorkshopModCardState.UpdateAvailable,
+                            statusText = "发现创意工坊更新",
+                        )
+                    }
                     val updateCount = results.count { it.hasUpdate }
                     uiState = uiState.copy(
                         updateResults = results,
@@ -232,120 +387,6 @@ internal class WorkshopViewModel : ViewModel() {
                 }
         }
     }
-
-    fun manualImport(context: Context) {
-        val details = uiState.selected ?: return
-        viewModelScope.launch {
-            val jar = withContext(Dispatchers.IO) {
-                val outputDir = File(context.filesDir, "workshop/${details.summary.appId}/${details.summary.publishedFileId}")
-                outputDir.listFiles()?.firstOrNull { it.extension.equals("jar", ignoreCase = true) }
-            } ?: run {
-                uiState = uiState.copy(downloadStatus = "未找到可导入的 jar 文件")
-                return@launch
-            }
-            importJar(context, jar, details, autoImported = false)
-        }
-    }
-
-    private suspend fun handleCompletedDownload(
-        context: Context,
-        details: WorkshopItemDetails,
-        artifact: WorkshopDownloadedArtifact?,
-    ) {
-        if (artifact == null) {
-            uiState = uiState.copy(downloadStatus = "下载完成但未发现可导入文件")
-            return
-        }
-        val autoImport = settings?.isAutoImportEnabled() ?: true
-        val record = service?.createInstalledRecord(details, artifact, autoImport) ?: return
-        metadataStore?.upsert(record)
-        WorkshopDownloadCenterStore.update(details.summary.publishedFileId) {
-            it.copy(
-                status = if (autoImport) WorkshopDownloadTaskStatus.Importing else WorkshopDownloadTaskStatus.WaitingImport,
-                message = if (autoImport) "下载完成，正在自动导入" else "下载完成，等待手动导入",
-                updatedAtMillis = System.currentTimeMillis(),
-                canManualImport = !autoImport,
-            )
-        }
-        uiState = uiState.copy(
-            downloadStatus = if (autoImport) "已下载并准备自动导入" else "已下载，等待手动导入",
-            downloadInProgress = false,
-            pendingManualImportTitle = if (autoImport) null else details.summary.title,
-            installedMods = metadataStore?.list().orEmpty(),
-        )
-        if (autoImport) {
-            val outputDir = File(context.filesDir, "workshop/${details.summary.appId}/${details.summary.publishedFileId}")
-            val jar = File(outputDir, artifact.relativePath)
-            importJar(context, jar, details, autoImported = true)
-        }
-    }
-
-    private fun importJar(
-        context: Context,
-        jar: File,
-        details: WorkshopItemDetails,
-        autoImported: Boolean,
-    ) {
-        val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", jar)
-        val activity = context as? Activity
-        if (activity == null) {
-            io.stamethyst.ui.modimport.ModImportRequestBus.requestImport(listOf(uri))
-            return
-        }
-        runCatching {
-            val result = SettingsFileService.importModJar(
-                host = activity,
-                uri = uri,
-                replaceExistingDuplicates = true,
-                duplicateReplaceOptions = DuplicateModImportReplaceOptions(
-                    renameToPreviousFileName = true,
-                    moveToPreviousFolder = true,
-                ),
-            )
-            metadataStore?.upsert(
-                WorkshopInstalledModRecord(
-                    appId = details.summary.appId,
-                    publishedFileId = details.summary.publishedFileId,
-                    title = details.summary.title,
-                    description = details.summary.description,
-                    previewUrl = details.summary.previewUrl,
-                    versionText = details.summary.updatedAtMillis.toString(),
-                    updatedAtMillis = details.summary.updatedAtMillis,
-                    installedAtMillis = System.currentTimeMillis(),
-                    localJarPath = result.storagePath,
-                    autoImported = autoImported,
-                )
-            )
-            uiState = uiState.copy(
-                downloadStatus = if (autoImported) "已自动导入 ${result.modName}" else "已导入 ${result.modName}",
-                downloadInProgress = false,
-                pendingManualImportTitle = null,
-                installedMods = metadataStore?.list().orEmpty(),
-            )
-            WorkshopDownloadCenterStore.update(details.summary.publishedFileId) {
-                it.copy(
-                    status = WorkshopDownloadTaskStatus.Imported,
-                    message = if (autoImported) "已自动导入 ${result.modName}" else "已导入 ${result.modName}",
-                    updatedAtMillis = System.currentTimeMillis(),
-                    canManualImport = false,
-                )
-            }
-        }.onFailure { error ->
-            uiState = uiState.copy(
-                downloadStatus = "导入失败：${error.message ?: error.javaClass.simpleName}",
-                downloadInProgress = false,
-                pendingManualImportTitle = details.summary.title,
-            )
-            WorkshopDownloadCenterStore.update(details.summary.publishedFileId) {
-                it.copy(
-                    status = WorkshopDownloadTaskStatus.Failed,
-                    message = "导入失败：${error.message ?: error.javaClass.simpleName}",
-                    updatedAtMillis = System.currentTimeMillis(),
-                    canManualImport = true,
-                )
-            }
-        }
-    }
 }
 
 internal data class WorkshopUiState(
@@ -357,11 +398,9 @@ internal data class WorkshopUiState(
     val downloadInProgress: Boolean = false,
     val updateChecking: Boolean = false,
     val steamLoggedIn: Boolean = false,
-    val autoImportEnabled: Boolean = true,
     val items: List<WorkshopItemSummary> = emptyList(),
     val selected: WorkshopItemDetails? = null,
     val downloadStatus: String = "",
-    val pendingManualImportTitle: String? = null,
     val installedMods: List<WorkshopInstalledModRecord> = emptyList(),
     val updateResults: List<WorkshopUpdateCheckResult> = emptyList(),
     val errorMessage: String? = null,
@@ -371,16 +410,19 @@ internal data class WorkshopUiState(
     }
 }
 
-private fun io.stamethyst.backend.workshop.WorkshopDownloadState.displayText(): String = when (this) {
-    io.stamethyst.backend.workshop.WorkshopDownloadState.Resolving -> "正在解析下载内容"
-    io.stamethyst.backend.workshop.WorkshopDownloadState.Downloading -> "正在下载"
-    io.stamethyst.backend.workshop.WorkshopDownloadState.Success -> "下载完成"
-    io.stamethyst.backend.workshop.WorkshopDownloadState.Failed -> "下载失败"
+private fun String.toTaskStatus(): WorkshopDownloadTaskStatus? = when (this) {
+    "Queued" -> WorkshopDownloadTaskStatus.Queued
+    "Resolving" -> WorkshopDownloadTaskStatus.Resolving
+    "Downloading" -> WorkshopDownloadTaskStatus.Downloading
+    "Pausing" -> WorkshopDownloadTaskStatus.Pausing
+    "Cancelling" -> WorkshopDownloadTaskStatus.Cancelling
+    "Paused" -> WorkshopDownloadTaskStatus.Paused
+    "Completed" -> WorkshopDownloadTaskStatus.Completed
+    "Failed" -> WorkshopDownloadTaskStatus.Failed
+    "Cancelled" -> WorkshopDownloadTaskStatus.Cancelled
+    else -> null
 }
 
-private fun io.stamethyst.backend.workshop.WorkshopDownloadState.toTaskStatus(): WorkshopDownloadTaskStatus = when (this) {
-    io.stamethyst.backend.workshop.WorkshopDownloadState.Resolving -> WorkshopDownloadTaskStatus.Resolving
-    io.stamethyst.backend.workshop.WorkshopDownloadState.Downloading -> WorkshopDownloadTaskStatus.Downloading
-    io.stamethyst.backend.workshop.WorkshopDownloadState.Success -> WorkshopDownloadTaskStatus.WaitingImport
-    io.stamethyst.backend.workshop.WorkshopDownloadState.Failed -> WorkshopDownloadTaskStatus.Failed
-}
+private fun Bundle.optionalInt(key: String): Int? = if (containsKey(key)) getInt(key) else null
+
+private fun Bundle.optionalLong(key: String): Long? = if (containsKey(key)) getLong(key) else null

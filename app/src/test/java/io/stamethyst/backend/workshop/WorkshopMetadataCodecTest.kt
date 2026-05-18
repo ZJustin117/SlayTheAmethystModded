@@ -16,7 +16,6 @@ class WorkshopMetadataCodecTest {
             updatedAtMillis = 1_710_000_000_000L,
             installedAtMillis = 1_710_000_100_000L,
             localJarPath = "mods/BaseMod.jar",
-            autoImported = true,
         )
 
         val decoded = WorkshopMetadataCodec.fromJson(WorkshopMetadataCodec.toJson(record))

@@ -54,7 +54,6 @@ class WorkshopMetadataStoreTest {
         updatedAtMillis = updatedAtMillis,
         installedAtMillis = updatedAtMillis + 10L,
         localJarPath = "mods/$title.jar",
-        autoImported = true,
     )
 
     private class TestRoots private constructor(

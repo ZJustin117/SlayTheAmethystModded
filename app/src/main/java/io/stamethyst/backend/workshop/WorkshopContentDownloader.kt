@@ -37,8 +37,17 @@ internal class SteamPipeWorkshopContentDownloader(
                     WorkshopDownloadFailure(message = event.message)
                 )
                 is DownloadEvent.LogAppended -> WorkshopDownloadEvent.Log(event.line)
-                is DownloadEvent.FileCompleted,
-                is DownloadEvent.Progress -> WorkshopDownloadEvent.Ignored
+                is DownloadEvent.Progress -> WorkshopDownloadEvent.Progress(
+                    WorkshopDownloadProgress(
+                        writtenBytes = event.writtenBytes,
+                        totalBytes = event.totalBytes,
+                        completedChunks = event.completedChunks,
+                        totalChunks = event.totalChunks,
+                        completedFiles = event.completedFiles,
+                        totalFiles = event.totalFiles,
+                    )
+                )
+                is DownloadEvent.FileCompleted -> WorkshopDownloadEvent.Ignored
             }
         }
     }

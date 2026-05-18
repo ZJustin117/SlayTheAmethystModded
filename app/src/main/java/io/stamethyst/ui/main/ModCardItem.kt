@@ -19,8 +19,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -55,6 +58,7 @@ import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
 import io.stamethyst.R
 import io.stamethyst.model.ModItemUi
+import io.stamethyst.model.WorkshopModState
 import io.stamethyst.ui.haptics.LauncherHaptics
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -78,6 +82,9 @@ internal data class ModCardCallbacks(
     val onExportMod: (ModItemUi) -> Unit = {},
     val onShareMod: (ModItemUi) -> Unit = {},
     val onRenameModFile: (ModItemUi, String) -> Unit = { _, _ -> },
+    val onPatchWorkshopMod: (ModItemUi) -> Unit = {},
+    val onRetryWorkshopDownload: (ModItemUi) -> Unit = {},
+    val onUpdateWorkshopMod: (ModItemUi) -> Unit = {},
     val onDragStart: (ModCardDragStartInfo) -> Unit = {},
     val onDragCancel: () -> Unit = {},
     val onMoveFolderPickerRequest: (ModItemUi) -> Unit = {},
@@ -317,23 +324,34 @@ internal fun ModCard(
                         .clipToBounds(),
                     contentAlignment = Alignment.Center
                 ) {
-                    Checkbox(
-                        checked = mod.enabled,
-                        onCheckedChange = { checked ->
-                            if (!batchSelectionMode && selectionEnabled) {
-                                if (checked != mod.enabled) {
-                                    LauncherHaptics.vibrateToggle(context)
+                    val workshopState = mod.workshop?.state
+                    when (workshopState) {
+                        WorkshopModState.ImportedUnpatched -> Unit
+                        WorkshopModState.Downloading -> Unit
+                        WorkshopModState.DownloadFailed -> Unit
+                        WorkshopModState.UpdateAvailable -> Button(
+                            onClick = { callbacks.onUpdateWorkshopMod(mod) },
+                            enabled = !batchSelectionMode && selectionEnabled,
+                            modifier = Modifier.graphicsLayer { alpha = normalControlProgress }
+                        ) { Text("可更新") }
+                        else -> Checkbox(
+                            checked = mod.enabled,
+                            onCheckedChange = { checked ->
+                                if (!batchSelectionMode && selectionEnabled) {
+                                    if (checked != mod.enabled) {
+                                        LauncherHaptics.vibrateToggle(context)
+                                    }
+                                    callbacks.onToggleMod(mod, checked)
                                 }
-                                callbacks.onToggleMod(mod, checked)
+                            },
+                            enabled = !batchSelectionMode && selectionEnabled,
+                            modifier = Modifier.graphicsLayer {
+                                alpha = normalControlProgress
+                                scaleX = 0.86f + alpha * 0.14f
+                                scaleY = 0.86f + alpha * 0.14f
                             }
-                        },
-                        enabled = !batchSelectionMode && selectionEnabled,
-                        modifier = Modifier.graphicsLayer {
-                            alpha = normalControlProgress
-                            scaleX = 0.86f + alpha * 0.14f
-                            scaleY = 0.86f + alpha * 0.14f
-                        }
-                    )
+                        )
+                    }
                 }
                 if (showDragHandle) {
                     Box(
@@ -361,6 +379,45 @@ internal fun ModCard(
                 }
             }
         )
+        when (mod.workshop?.state) {
+            WorkshopModState.ImportedUnpatched -> Button(
+                onClick = { callbacks.onPatchWorkshopMod(mod) },
+                enabled = !batchSelectionMode,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp)
+                    .graphicsLayer { alpha = normalControlProgress }
+            ) {
+                Text("安装")
+            }
+            WorkshopModState.DownloadFailed -> Button(
+                onClick = { callbacks.onRetryWorkshopDownload(mod) },
+                enabled = !batchSelectionMode,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp)
+                    .graphicsLayer { alpha = normalControlProgress }
+            ) {
+                Text("重试")
+            }
+            WorkshopModState.NonStandardDownloaded -> OutlinedButton(
+                onClick = { showActionsDialog = true },
+                enabled = !batchSelectionMode,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp)
+                    .graphicsLayer { alpha = normalControlProgress }
+            ) {
+                Text("手动处理")
+            }
+            WorkshopModState.Downloading -> LinearProgressIndicator(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp)
+                    .graphicsLayer { alpha = normalControlProgress }
+            )
+            else -> Unit
+        }
     }
 
     if (showSuggestionDialog && !suggestionText.isNullOrBlank()) {

@@ -6,6 +6,7 @@ import io.stamethyst.backend.steamcloud.SteamCloudAuthStore
 import io.stamethyst.backend.steamcloud.SteamCloudAuthStore.AuthSnapshot
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -83,17 +84,47 @@ internal class WorkshopService(
         emit(WorkshopDownloadEvent.StateChanged(WorkshopDownloadState.Resolving))
         val details = request.details
         val outputFile = File(request.outputDir, sanitizeFileName(details.summary.title) + ".jar")
+        val tempFile = File(request.outputDir, outputFile.name + ".tmp")
         request.outputDir.mkdirs()
         when {
             !details.fileUrl.isNullOrBlank() -> {
                 emit(WorkshopDownloadEvent.StateChanged(WorkshopDownloadState.Downloading))
-                val req = Request.Builder().url(details.fileUrl).build()
-                client.newCall(req).execute().use { response ->
-                    if (!response.isSuccessful) error("Workshop download failed: ${response.code}")
-                    val body = response.body ?: error("Workshop download body empty")
-                    FileOutputStream(outputFile, false).use { output ->
-                        body.byteStream().use { input -> input.copyTo(output) }
+                try {
+                    val req = Request.Builder().url(details.fileUrl).build()
+                    client.newCall(req).execute().use { response ->
+                        if (!response.isSuccessful) error("Workshop download failed: ${response.code}")
+                        val body = response.body ?: error("Workshop download body empty")
+                        FileOutputStream(tempFile, false).use { output ->
+                            body.byteStream().use { input ->
+                                val totalBytes = body.contentLength().takeIf { it > 0L }
+                                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                                var writtenBytes = 0L
+                                while (true) {
+                                    if (Thread.currentThread().isInterrupted) throw InterruptedException("Workshop download interrupted")
+                                    val read = input.read(buffer)
+                                    if (read < 0) break
+                                    if (read == 0) continue
+                                    output.write(buffer, 0, read)
+                                    writtenBytes += read
+                                    emit(
+                                        WorkshopDownloadEvent.Progress(
+                                            WorkshopDownloadProgress(
+                                                writtenBytes = writtenBytes,
+                                                totalBytes = totalBytes,
+                                                completedFiles = 0,
+                                                totalFiles = 1,
+                                            )
+                                        )
+                                    )
+                                }
+                            }
+                        }
                     }
+                    if (outputFile.exists() && !outputFile.delete()) throw IOException("Failed to replace existing workshop file")
+                    if (!tempFile.renameTo(outputFile)) throw IOException("Failed to finalize workshop download")
+                } catch (throwable: Throwable) {
+                    tempFile.delete()
+                    throw throwable
                 }
                 emit(WorkshopDownloadEvent.Completed(listOf(WorkshopDownloadedArtifact(outputFile.name, outputFile.length(), outputFile.lastModified()))))
                 emit(WorkshopDownloadEvent.StateChanged(WorkshopDownloadState.Success))
@@ -149,7 +180,7 @@ internal class WorkshopService(
             { session, servers -> session.connectWithRefreshToken(servers, account) }
         }
 
-    fun createInstalledRecord(details: WorkshopItemDetails, artifact: WorkshopDownloadedArtifact, autoImported: Boolean): WorkshopInstalledModRecord {
+    fun createInstalledRecord(details: WorkshopItemDetails, artifact: WorkshopDownloadedArtifact): WorkshopInstalledModRecord {
         return WorkshopInstalledModRecord(
             appId = details.summary.appId,
             publishedFileId = details.summary.publishedFileId,
@@ -160,7 +191,25 @@ internal class WorkshopService(
             updatedAtMillis = details.summary.updatedAtMillis,
             installedAtMillis = System.currentTimeMillis(),
             localJarPath = artifact.relativePath,
-            autoImported = autoImported,
+            cardState = WorkshopModCardState.ImportedUnpatched,
+            statusText = "等待修补",
+        )
+    }
+
+    fun createNonStandardDownloadRecord(details: WorkshopItemDetails, outputDir: File): WorkshopInstalledModRecord {
+        val path = outputDir.absolutePath
+        return WorkshopInstalledModRecord(
+            appId = details.summary.appId,
+            publishedFileId = details.summary.publishedFileId,
+            title = details.summary.title,
+            description = details.summary.description,
+            previewUrl = details.summary.previewUrl,
+            versionText = details.summary.updatedAtMillis.toString(),
+            updatedAtMillis = details.summary.updatedAtMillis,
+            installedAtMillis = System.currentTimeMillis(),
+            localJarPath = path,
+            cardState = WorkshopModCardState.NonStandardDownloaded,
+            statusText = "该模组不是标准 jar 格式，请手动处理后导入，已存储到$path",
         )
     }
 
@@ -187,6 +236,7 @@ internal sealed interface WorkshopDownloadEvent {
     data object Ignored : WorkshopDownloadEvent
     data class StateChanged(val state: WorkshopDownloadState) : WorkshopDownloadEvent
     data class Log(val message: String) : WorkshopDownloadEvent
+    data class Progress(val progress: WorkshopDownloadProgress) : WorkshopDownloadEvent
     data class Completed(val files: List<WorkshopDownloadedArtifact>) : WorkshopDownloadEvent
     data class Failed(val failure: WorkshopDownloadFailure) : WorkshopDownloadEvent
 }

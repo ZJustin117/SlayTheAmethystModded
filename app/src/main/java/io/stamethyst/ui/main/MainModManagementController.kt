@@ -12,8 +12,13 @@ import io.stamethyst.backend.mods.AtlasOfflineDownscaleStrategy
 import io.stamethyst.backend.mods.ImportedModPatchRegistry
 import io.stamethyst.backend.mods.ModManager
 import io.stamethyst.backend.mods.MtsLaunchManifestValidator
+import io.stamethyst.backend.workshop.WorkshopInstalledModRecord
+import io.stamethyst.backend.workshop.WorkshopMetadataStore
+import io.stamethyst.backend.workshop.WorkshopModCardState
 import io.stamethyst.config.RuntimePaths
 import io.stamethyst.model.ModItemUi
+import io.stamethyst.model.WorkshopModState
+import io.stamethyst.model.WorkshopModUi
 import io.stamethyst.ui.LauncherTransientNoticeDuration
 import io.stamethyst.ui.UiText
 import io.stamethyst.ui.UiBusyOperation
@@ -138,8 +143,9 @@ internal class MainModManagementController(
             pendingSelectionInitialized = true
         }
         optionalModsSnapshot.clear()
+        val workshopCards = loadWorkshopCardItems(host, optionalMods)
         optionalModsSnapshot.addAll(
-            optionalMods.map { mod ->
+            (optionalMods + workshopCards).map { mod ->
                 val highlighted = mod.newlyImported && !isPendingOptionalModEnabled(mod)
                 mod.copy(enabled = false, newlyImported = highlighted)
             }
@@ -1450,6 +1456,53 @@ internal class MainModManagementController(
                 newlyImported = NewlyImportedModHighlightStore.contains(mod.jarFile.absolutePath)
             )
         }
+    }
+
+    private fun loadWorkshopCardItems(host: Activity, installedMods: List<ModItemUi>): List<ModItemUi> {
+        val installedPaths = installedMods.map { it.storagePath }.toSet()
+        return WorkshopMetadataStore(host).list()
+            .filter { record -> record.localJarPath.isBlank() || !installedPaths.contains(record.localJarPath) }
+            .map { record -> record.toWorkshopModItem(host) }
+    }
+
+    private fun WorkshopInstalledModRecord.toWorkshopModItem(host: Activity): ModItemUi {
+        val absoluteJarPath = resolveWorkshopJarPath(host, this)
+        val state = when (cardState) {
+            WorkshopModCardState.ImportedPatched -> WorkshopModState.ImportedPatched
+            WorkshopModCardState.Downloading -> WorkshopModState.Downloading
+            WorkshopModCardState.DownloadFailed -> WorkshopModState.DownloadFailed
+            WorkshopModCardState.NonStandardDownloaded -> WorkshopModState.NonStandardDownloaded
+            WorkshopModCardState.UpdateAvailable -> WorkshopModState.UpdateAvailable
+            WorkshopModCardState.ImportedUnpatched -> WorkshopModState.ImportedUnpatched
+        }
+        return ModItemUi(
+            modId = "workshop:${publishedFileId}",
+            manifestModId = "workshop:${publishedFileId}",
+            storagePath = "workshop:${appId}:${publishedFileId}",
+            name = title,
+            version = versionText,
+            description = description,
+            dependencies = emptyList(),
+            required = false,
+            installed = state == WorkshopModState.ImportedPatched,
+            enabled = false,
+            explicitPriority = null,
+            effectivePriority = null,
+            workshop = WorkshopModUi(
+                appId = appId,
+                publishedFileId = publishedFileId,
+                state = state,
+                statusText = statusText,
+                localJarPath = absoluteJarPath
+            )
+        )
+    }
+
+    private fun resolveWorkshopJarPath(host: Activity, record: WorkshopInstalledModRecord): String {
+        val path = record.localJarPath.trim()
+        if (path.isEmpty()) return ""
+        val file = File(path)
+        return if (file.isAbsolute) path else File(host.filesDir, "workshop/${record.appId}/${record.publishedFileId}/$path").absolutePath
     }
 
     private fun normalizeModId(modId: String?): String {

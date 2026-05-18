@@ -44,6 +44,36 @@ internal class WorkshopMetadataStore(context: Context) {
     fun findByPublishedFileId(appId: UInt, publishedFileId: ULong): WorkshopInstalledModRecord? =
         load().firstOrNull { it.appId == appId && it.publishedFileId == publishedFileId }
 
+    fun updateState(appId: UInt, publishedFileId: ULong, state: WorkshopModCardState, statusText: String) {
+        val records = load().map { record ->
+            if (record.appId == appId && record.publishedFileId == publishedFileId) {
+                record.copy(cardState = state, statusText = statusText)
+            } else {
+                record
+            }
+        }
+        save(records)
+    }
+
+    fun remove(appId: UInt, publishedFileId: ULong) {
+        save(load().filterNot { it.appId == appId && it.publishedFileId == publishedFileId })
+    }
+
+    fun markPatched(appId: UInt, publishedFileId: ULong, localJarPath: String, statusText: String) {
+        val records = load().map { record ->
+            if (record.appId == appId && record.publishedFileId == publishedFileId) {
+                record.copy(
+                    localJarPath = localJarPath,
+                    cardState = WorkshopModCardState.ImportedPatched,
+                    statusText = statusText,
+                )
+            } else {
+                record
+            }
+        }
+        save(records)
+    }
+
     fun list(): List<WorkshopInstalledModRecord> = load()
 
 }

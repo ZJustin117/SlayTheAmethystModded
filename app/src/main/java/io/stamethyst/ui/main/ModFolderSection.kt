@@ -1007,6 +1007,9 @@ internal fun ModFolderSection(
                                     onRenameModFile = { item, fileName ->
                                         latestCallbacks.value.onRenameModFile(item, fileName)
                                     },
+                                    onPatchWorkshopMod = { latestCallbacks.value.onPatchWorkshopMod(it) },
+                                    onRetryWorkshopDownload = { latestCallbacks.value.onRetryWorkshopDownload(it) },
+                                    onUpdateWorkshopMod = { latestCallbacks.value.onUpdateWorkshopMod(it) },
                                     onDragStart = { dragInfo ->
                                         val currentMod = latestMod.value
                                         dragCoordinator.startModDrag(

@@ -36,6 +36,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.activity.compose.LocalActivity
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -83,6 +85,7 @@ import io.stamethyst.ui.modimport.ModImportHost
 import io.stamethyst.ui.workshop.WorkshopScreen
 import io.stamethyst.ui.workshop.WorkshopDownloadCenterScreen
 import io.stamethyst.ui.workshop.WorkshopDetailScreen
+import io.stamethyst.ui.workshop.WorkshopViewModel
 import io.stamethyst.ui.quickstart.QuickStartScreen
 import io.stamethyst.ui.settings.LauncherFirstRunSetupScreen
 import io.stamethyst.ui.settings.LauncherDeveloperSettingsScreen
@@ -329,9 +332,15 @@ fun LauncherContent(
                         }
 
                         entry<Route.WorkshopDownloadCenter> {
+                            val workshopViewModel: WorkshopViewModel = viewModel()
+                            val context = LocalContext.current
                             WorkshopDownloadCenterScreen(
                                 modifier = Modifier.fillMaxSize(),
                                 onBack = { navigator.goBack() },
+                                onPause = { workshopViewModel.pauseDownload(context.applicationContext, it) },
+                                onResume = { workshopViewModel.resumeDownload(context.applicationContext, it) },
+                                onCancel = { workshopViewModel.cancelDownload(context.applicationContext, it) },
+                                onRetry = { workshopViewModel.retryDownload(context.applicationContext, it) },
                             )
                         }
 

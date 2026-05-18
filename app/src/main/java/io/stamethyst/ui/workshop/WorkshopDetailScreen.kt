@@ -1,5 +1,10 @@
 package io.stamethyst.ui.workshop
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,7 +16,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -31,6 +35,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.stamethyst.backend.workshop.WorkshopItemDetails
 
@@ -46,6 +51,14 @@ internal fun WorkshopDetailScreen(
     val context = LocalContext.current
     val viewModel: WorkshopViewModel = viewModel()
     val state = viewModel.uiState
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
 
     LaunchedEffect(appId, publishedFileId) {
         viewModel.load(context.applicationContext)
@@ -93,19 +106,29 @@ internal fun WorkshopDetailScreen(
                     }
                 }
                 state.selected?.summary?.publishedFileId == publishedFileId -> {
+                    val details = state.selected
+                    val downloadState = resolveWorkshopModDownloadState(
+                        item = details.summary,
+                        installedMods = state.installedMods,
+                        downloadTasks = WorkshopDownloadCenterStore.tasks,
+                    )
+                    val downloadTask = WorkshopDownloadCenterStore.tasks.firstOrNull {
+                        it.publishedFileId == publishedFileId
+                    }
                     item {
                         DetailContentCard(
-                            details = state.selected,
-                            downloading = state.downloadInProgress,
-                            onDownload = { viewModel.downloadSelected(context) },
+                            details = details,
+                            downloadState = downloadState,
+                            onDownload = {
+                                requestNotificationPermissionIfNeeded()
+                                viewModel.downloadSelected(context)
+                            },
                         )
                     }
                     item {
                         DetailDownloadStatusCard(
-                            status = state.downloadStatus,
-                            downloading = state.downloadInProgress,
-                            waitingImportTitle = state.pendingManualImportTitle,
-                            onManualImport = { viewModel.manualImport(context) },
+                            status = downloadTask?.message.orEmpty(),
+                            downloadState = downloadState,
                             onOpenDownloadCenter = onOpenDownloadCenter,
                         )
                     }
@@ -121,14 +144,23 @@ internal fun WorkshopDetailScreen(
 @Composable
 private fun DetailContentCard(
     details: WorkshopItemDetails,
-    downloading: Boolean,
+    downloadState: WorkshopModDownloadState,
     onDownload: () -> Unit,
 ) {
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(details.summary.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            if (details.summary.authorName.isNotBlank()) {
-                Text(details.summary.authorName, color = MaterialTheme.colorScheme.onPrimaryContainer)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                WorkshopPreviewImage(
+                    url = details.summary.previewUrl,
+                    contentDescription = "${details.summary.title} 预览图",
+                )
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(details.summary.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    if (details.summary.authorName.isNotBlank()) {
+                        Text(details.summary.authorName, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    }
+                    AssistChip(onClick = {}, label = { Text(downloadState.statusLabel) })
+                }
             }
             if (details.summary.description.isNotBlank()) {
                 Text(details.summary.description, color = MaterialTheme.colorScheme.onPrimaryContainer)
@@ -138,9 +170,11 @@ private fun DetailContentCard(
                 if (details.hcontentFile != null) AssistChip(onClick = {}, label = { Text("Steam 内容") })
                 if (!details.fileUrl.isNullOrBlank()) AssistChip(onClick = {}, label = { Text("直链") })
             }
-            Button(enabled = !downloading, onClick = onDownload) {
-                Text(if (downloading) "下载中" else "下载并导入")
-            }
+            WorkshopDownloadActionButton(
+                state = downloadState,
+                onClick = onDownload,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }
@@ -148,19 +182,15 @@ private fun DetailContentCard(
 @Composable
 private fun DetailDownloadStatusCard(
     status: String,
-    downloading: Boolean,
-    waitingImportTitle: String?,
-    onManualImport: () -> Unit,
+    downloadState: WorkshopModDownloadState,
     onOpenDownloadCenter: () -> Unit,
 ) {
     Card {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("下载状态", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(status.ifBlank { "尚未开始下载" }, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (downloading) LinearProgressIndicator(Modifier.fillMaxWidth())
-            waitingImportTitle?.let {
-                Button(onClick = onManualImport) { Text("导入 $it") }
-            }
+            Text(downloadState.statusLabel, style = MaterialTheme.typography.bodyMedium)
+            Text(status.ifBlank { downloadState.statusLabel }, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (downloadState == WorkshopModDownloadState.Downloading) LinearProgressIndicator(Modifier.fillMaxWidth())
             OutlinedButton(onClick = onOpenDownloadCenter) { Text("查看下载中心") }
         }
     }

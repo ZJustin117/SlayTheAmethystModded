@@ -51,6 +51,15 @@ data class WorkshopDownloadFailure(
     val detail: String = "",
 )
 
+data class WorkshopDownloadProgress(
+    val writtenBytes: Long,
+    val totalBytes: Long? = null,
+    val completedChunks: Int? = null,
+    val totalChunks: Int? = null,
+    val completedFiles: Int? = null,
+    val totalFiles: Int? = null,
+)
+
 data class WorkshopInstalledModRecord(
     val appId: UInt,
     val publishedFileId: ULong,
@@ -61,8 +70,18 @@ data class WorkshopInstalledModRecord(
     val updatedAtMillis: Long,
     val installedAtMillis: Long,
     val localJarPath: String,
-    val autoImported: Boolean,
+    val cardState: WorkshopModCardState = WorkshopModCardState.ImportedUnpatched,
+    val statusText: String = "",
 )
+
+enum class WorkshopModCardState {
+    ImportedUnpatched,
+    ImportedPatched,
+    Downloading,
+    DownloadFailed,
+    NonStandardDownloaded,
+    UpdateAvailable,
+}
 
 data class WorkshopUpdateCheckResult(
     val appId: UInt,

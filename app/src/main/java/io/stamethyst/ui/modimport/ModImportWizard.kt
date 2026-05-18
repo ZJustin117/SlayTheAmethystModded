@@ -64,6 +64,7 @@ import io.stamethyst.backend.mods.importing.ImportPatchPlan
 import io.stamethyst.backend.mods.importing.ImportPatchResult
 import io.stamethyst.backend.mods.importing.ModImportItemPlan
 import io.stamethyst.backend.mods.importing.ModImportPlan
+import io.stamethyst.backend.workshop.WorkshopMetadataStore
 
 @Composable
 internal fun ModImportHost(
@@ -79,7 +80,7 @@ internal fun ModImportHost(
     LaunchedEffect(request?.id) {
         val currentRequest = request ?: return@LaunchedEffect
         ModImportRequestBus.consume(currentRequest.id)
-        viewModel.start(context, currentRequest.uris)
+        viewModel.start(context, currentRequest.uris, currentRequest.workshopSource)
     }
 
     if (uiState.visible) {
@@ -97,6 +98,16 @@ internal fun ModImportHost(
             onSetTargetFolder = viewModel::setTargetFolder,
             onExecute = {
                 viewModel.execute(context) {
+                    val source = viewModel.uiState.workshopSource
+                    val imported = viewModel.uiState.report?.importedResults?.firstOrNull()
+                    if (source != null && imported?.storagePath != null) {
+                        WorkshopMetadataStore(context).markPatched(
+                            appId = source.appId,
+                            publishedFileId = source.publishedFileId,
+                            localJarPath = imported.storagePath,
+                            statusText = "已安装 ${imported.modName}",
+                        )
+                    }
                     activity?.runOnUiThread(onImportCompleted)
                 }
             }

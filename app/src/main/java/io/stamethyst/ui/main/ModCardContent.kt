@@ -32,6 +32,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.stamethyst.R
 import io.stamethyst.model.ModItemUi
+import io.stamethyst.model.WorkshopModState
 
 @Composable
 internal fun ModCardBodyContent(
@@ -104,6 +105,14 @@ internal fun ModCardBodyContent(
                     Spacer(modifier = Modifier.width(6.dp))
                     NewImportBadge()
                 }
+                mod.workshop?.takeIf {
+                    it.state != WorkshopModState.ImportedUnpatched &&
+                        it.state != WorkshopModState.DownloadFailed &&
+                        it.state != WorkshopModState.Downloading
+                }?.let { workshop ->
+                    Spacer(modifier = Modifier.width(6.dp))
+                    WorkshopStateBadge(workshop.state)
+                }
                 val effectivePriority = mod.effectivePriority
                 if (effectivePriority != null) {
                     Spacer(modifier = Modifier.width(6.dp))
@@ -132,6 +141,15 @@ internal fun ModCardBodyContent(
         maxLines = if (isExpanded) Int.MAX_VALUE else 2,
         overflow = TextOverflow.Ellipsis
     )
+    val workshopStatus = mod.workshop?.statusText.orEmpty()
+    if (workshopStatus.isNotBlank()) {
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = workshopStatus,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary
+        )
+    }
     if (isExpanded && dependencies.isNotEmpty()) {
         Spacer(modifier = Modifier.height(2.dp))
         Text(
@@ -236,6 +254,29 @@ private fun NewImportBadge() {
     ) {
         Text(
             text = stringResource(R.string.main_mod_new_import_badge),
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+        )
+    }
+}
+
+@Composable
+private fun WorkshopStateBadge(state: WorkshopModState) {
+    val text = when (state) {
+        WorkshopModState.ImportedUnpatched -> "待修补"
+        WorkshopModState.ImportedPatched -> "工坊"
+        WorkshopModState.Downloading -> "下载中"
+        WorkshopModState.DownloadFailed -> "下载失败"
+        WorkshopModState.NonStandardDownloaded -> "需手动处理"
+        WorkshopModState.UpdateAvailable -> "可更新"
+    }
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        shape = RoundedCornerShape(999.dp)
+    ) {
+        Text(
+            text = text,
             style = MaterialTheme.typography.labelSmall,
             modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
         )

@@ -47,6 +47,8 @@ import io.stamethyst.backend.steamcloud.SteamCloudUploadPlan
 import io.stamethyst.backend.mods.StsDesktopJarPatcher
 import io.stamethyst.backend.mods.StsJarValidator
 import io.stamethyst.backend.update.UpdateMirrorManager
+import io.stamethyst.backend.workshop.WorkshopMetadataStore
+import io.stamethyst.backend.workshop.WorkshopModCardState
 import io.stamethyst.config.BackBehavior
 import io.stamethyst.config.RuntimePaths
 import io.stamethyst.config.SteamCloudSaveMode
@@ -759,6 +761,44 @@ class MainScreenViewModel : ViewModel() {
         if (enabled && modManagementController.clearEnabledNewlyImportedHighlights()) {
             republish(host)
         }
+    }
+
+    fun onPatchWorkshopMod(host: Activity, mod: ModItemUi) {
+        val workshop = mod.workshop ?: return
+        val jar = File(workshop.localJarPath)
+        if (!jar.isFile) {
+            _effects.tryEmit(Effect.ShowSnackbar(UiText.DynamicString("未找到已下载的工坊 jar 文件")))
+            return
+        }
+        val uri = androidx.core.content.FileProvider.getUriForFile(host, "${host.packageName}.fileprovider", jar)
+        io.stamethyst.ui.modimport.ModImportRequestBus.requestImport(
+            uris = listOf(uri),
+            workshopSource = io.stamethyst.ui.modimport.WorkshopImportSource(
+                appId = workshop.appId,
+                publishedFileId = workshop.publishedFileId,
+            )
+        )
+    }
+
+    fun onRetryWorkshopDownload(host: Activity, mod: ModItemUi) {
+        val workshop = mod.workshop ?: return
+        WorkshopMetadataStore(host).updateState(
+            appId = workshop.appId,
+            publishedFileId = workshop.publishedFileId,
+            state = WorkshopModCardState.Downloading,
+            statusText = "请在市场页重新下载",
+        )
+        refresh(host)
+    }
+
+    fun onUpdateWorkshopMod(host: Activity, mod: ModItemUi) {
+        val workshop = mod.workshop ?: return
+        _effects.tryEmit(
+            Effect.ShowDialog(
+                title = UiText.DynamicString("更新创意工坊模组"),
+                message = UiText.DynamicString("请到市场页重新下载 ${mod.name} 以更新。Workshop ID: ${workshop.publishedFileId}")
+            )
+        )
     }
 
     fun addModLaunchProfile(host: Activity, name: String) {
