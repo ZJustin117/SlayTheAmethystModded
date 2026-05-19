@@ -126,7 +126,7 @@ internal object ModImportExecutor {
             )
         )
         val report = ModImportExecutionReport(results)
-        NewlyImportedModHighlightStore.mark(report.importedResults.mapNotNull { it.storagePath })
+        NewlyImportedModHighlightStore.mark(context, report.importedResults.mapNotNull { it.storagePath })
         return report
     }
 
@@ -140,6 +140,8 @@ internal object ModImportExecutor {
     ): ModImportExecutionItemResult {
         val workingJar = File(plan.session.sessionDir, "working-${item.source.index}.jar")
         var activeWorkingJar = workingJar
+        var committedTarget: File? = null
+        var commitMarker: File? = null
         return try {
             progress.step(
                 item = item,
@@ -207,27 +209,19 @@ internal object ModImportExecutor {
             } else {
                 DuplicateReusePlan()
             }
-            if (replaceExisting) {
-                progress.step(
-                    item = item,
-                    message = context.getString(R.string.mod_import_progress_replace_existing, item.source.displayName)
-                )
-                ModManager.removeExistingOptionalModsForImport(
-                    context = context,
-                    normalizedModId = item.normalizedModId,
-                    launchModId = finalLaunchModId,
-                    excludedPath = activeWorkingJar.absolutePath
-                )
-            }
             val targetName = reuse.targetFileName
                 ?.takeIf { it.isNotBlank() }
                 ?: item.source.displayName.ifBlank { "${item.normalizedModId}.jar" }
             val target = ModManager.resolveStorageFileForImportedMod(context, targetName)
+            commitMarker = importCommitMarker(target)
+            writeImportCommitMarker(commitMarker, target)
             progress.step(
                 item = item,
                 message = context.getString(R.string.mod_import_progress_write_file, target.name)
             )
             moveFileReplacing(activeWorkingJar, target)
+            committedTarget = target
+            activeWorkingJar = target
             val targetPath = target.absolutePath
             progress.step(
                 item = item,
@@ -261,6 +255,20 @@ internal object ModImportExecutor {
                 storagePath = targetPath,
                 patchInfo = buildLegacyPatchInfo(item, patchResults)
             )
+            commitMarker.delete()
+            commitMarker = null
+            if (replaceExisting) {
+                progress.step(
+                    item = item,
+                    message = context.getString(R.string.mod_import_progress_replace_existing, item.source.displayName)
+                )
+                ModManager.removeExistingOptionalModsForImport(
+                    context = context,
+                    normalizedModId = item.normalizedModId,
+                    launchModId = finalLaunchModId,
+                    excludedPath = target.absolutePath
+                )
+            }
             progress.step(
                 item = item,
                 message = context.getString(R.string.mod_import_progress_item_complete, item.source.displayName)
@@ -276,10 +284,14 @@ internal object ModImportExecutor {
                 patchResults = patchResults
             )
         } catch (error: Throwable) {
+            commitMarker?.let { marker ->
+                committedTarget?.delete()
+                marker.delete()
+            }
             if (workingJar.exists()) {
                 workingJar.delete()
             }
-            if (activeWorkingJar != workingJar && activeWorkingJar.exists()) {
+            if (activeWorkingJar != workingJar && committedTarget == null && activeWorkingJar.exists()) {
                 activeWorkingJar.delete()
             }
             ModImportExecutionItemResult(
@@ -479,14 +491,39 @@ internal object ModImportExecutor {
         if (source.renameTo(target)) {
             return
         }
+        val temp = File(
+            parent ?: throw IOException("Target has no parent: ${target.absolutePath}"),
+            ".${target.name}.${System.nanoTime()}.importing"
+        )
+        if (temp.exists() && !temp.delete()) {
+            throw IOException("Failed to clear stale temporary import file: ${temp.absolutePath}")
+        }
         FileInputStream(source).use { input ->
-            FileOutputStream(target, false).use { output ->
+            FileOutputStream(temp, false).use { output ->
                 input.copyTo(output)
                 output.fd.sync()
             }
         }
+        if (!temp.renameTo(target)) {
+            temp.delete()
+            throw IOException("Failed to commit imported mod file: ${target.absolutePath}")
+        }
         if (!source.delete()) {
+            target.delete()
             throw IOException("Failed to delete temporary import file: ${source.absolutePath}")
         }
+    }
+
+    private fun importCommitMarker(target: File): File {
+        val parent = target.parentFile ?: throw IOException("Target has no parent: ${target.absolutePath}")
+        return File(parent, ".${target.name}.importing.marker")
+    }
+
+    private fun writeImportCommitMarker(marker: File, target: File) {
+        val parent = marker.parentFile
+        if (parent != null && !parent.exists() && !parent.mkdirs()) {
+            throw IOException("Failed to create directory: ${parent.absolutePath}")
+        }
+        marker.writeText(target.name, Charsets.UTF_8)
     }
 }

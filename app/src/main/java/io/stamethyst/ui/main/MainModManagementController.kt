@@ -136,6 +136,7 @@ internal class MainModManagementController(
         folderStateStore.reload(host)
         favoriteModKeys.clear()
         favoriteModKeys.addAll(FavoriteModStore.loadFavoriteKeys(host))
+        NewlyImportedModHighlightStore.reload(host)
         if (!storageAccessible) {
             return
         }
@@ -258,11 +259,11 @@ internal class MainModManagementController(
         ModManager.replaceEnabledOptionalModIds(host, LinkedHashSet(pendingEnabledOptionalModIds))
     }
 
-    fun clearEnabledNewlyImportedHighlights(): Boolean {
+    fun clearEnabledNewlyImportedHighlights(host: Activity): Boolean {
         var changed = false
         resolveOptionalModsWithPendingSelection().forEach { mod ->
             if (mod.enabled && mod.newlyImported) {
-                changed = clearNewlyImportedHighlightForStoragePath(mod.storagePath) || changed
+                changed = clearNewlyImportedHighlightForMod(host, mod) || changed
             }
         }
         if (changed) {
@@ -271,8 +272,8 @@ internal class MainModManagementController(
         return changed
     }
 
-    fun clearNewlyImportedHighlights() {
-        if (NewlyImportedModHighlightStore.clearAll()) {
+    fun clearNewlyImportedHighlights(host: Activity) {
+        if (NewlyImportedModHighlightStore.clearAll(host)) {
             markOptionalModsWithPendingSelectionDirty()
         }
     }
@@ -593,7 +594,7 @@ internal class MainModManagementController(
                 val deleted = ModManager.deleteOptionalModByStoragePath(host, mod.storagePath)
                 host.runOnUiThread {
                     setBusy(false, null)
-                    clearPendingSelectionForMod(mod)
+                    clearPendingSelectionForMod(host, mod)
                     removeFolderAssignmentForDeletedMod(mod)
                     refresh(host, storageAccessible = true)
                     emitSnackbar(
@@ -701,7 +702,7 @@ internal class MainModManagementController(
             host.runOnUiThread {
                 setBusy(false, null)
                 candidates.forEach { mod ->
-                    clearPendingSelectionForMod(mod)
+                    clearPendingSelectionForMod(host, mod)
                     removeFolderAssignmentForDeletedMod(mod)
                 }
                 refresh(host, storageAccessible = true)
@@ -875,8 +876,8 @@ internal class MainModManagementController(
                 host.runOnUiThread {
                     setBusy(false, null)
                     replacePendingSelectionForRenamedMod(mod, renamedFile.absolutePath)
-                    if (NewlyImportedModHighlightStore.clear(mod.storagePath)) {
-                        NewlyImportedModHighlightStore.mark(listOf(renamedFile.absolutePath))
+                    if (NewlyImportedModHighlightStore.clear(host, mod.storagePath)) {
+                        NewlyImportedModHighlightStore.mark(host, listOf(renamedFile.absolutePath))
                     }
                     clearAssignmentForMod(mod)
                     if (!assignedFolderId.isNullOrBlank()) {
@@ -938,7 +939,7 @@ internal class MainModManagementController(
                         )
                     )
                 } else {
-                    setPendingOptionalModEnabled(mod, false)
+                    setPendingOptionalModEnabled(host, mod, false)
                 }
             }
         } catch (error: Throwable) {
@@ -1195,7 +1196,7 @@ internal class MainModManagementController(
                 excludedIds = exclusionIds
             )
             if (dependents.isEmpty()) {
-                setPendingOptionalModEnabled(mod, false)
+                setPendingOptionalModEnabled(host, mod, false)
             } else {
                 blocked[resolveModDisplayName(mod)] = dependents
             }
@@ -1256,7 +1257,7 @@ internal class MainModManagementController(
             }
 
             val wasEnabled = isModIdEnabled(enabledIds, current)
-            setPendingOptionalModEnabled(current, true)
+            setPendingOptionalModEnabled(host, current, true)
 
             val normalizedCurrentModId = normalizeModId(current.modId)
             if (normalizedCurrentModId.isNotEmpty()) {
@@ -1492,7 +1493,10 @@ internal class MainModManagementController(
                 explicitPriority = mod.explicitPriority,
                 effectivePriority = mod.effectivePriority,
                 importPatchDetails = importPatchDetails,
-                newlyImported = NewlyImportedModHighlightStore.contains(mod.jarFile.absolutePath),
+                newlyImported = NewlyImportedModHighlightStore.contains(mod.jarFile.absolutePath) ||
+                    workshopRecord?.let { record ->
+                        NewlyImportedModHighlightStore.contains("workshop:${record.appId}:${record.publishedFileId}")
+                    } == true,
                 workshop = workshopRecord?.let { record ->
                     record.toWorkshopModUi(
                         host = host,
@@ -1520,7 +1524,7 @@ internal class MainModManagementController(
                 WorkshopMetadataStore(host).remove(workshop.appId, workshop.publishedFileId)
                 host.runOnUiThread {
                     setBusy(false, null)
-                    clearPendingSelectionForMod(mod)
+                    clearPendingSelectionForMod(host, mod)
                     removeFolderAssignmentForDeletedMod(mod)
                     refresh(host, storageAccessible = true)
                     emitSnackbar(
@@ -1583,8 +1587,15 @@ internal class MainModManagementController(
             enabled = false,
             explicitPriority = null,
             effectivePriority = null,
+            newlyImported = isNewlyImportedWorkshopRecord(this, absoluteJarPath),
             workshop = workshop.copy(localJarPath = absoluteJarPath)
         )
+    }
+
+    private fun isNewlyImportedWorkshopRecord(record: WorkshopInstalledModRecord, absoluteJarPath: String): Boolean {
+        val workshopToken = "workshop:${record.appId}:${record.publishedFileId}"
+        return NewlyImportedModHighlightStore.contains(workshopToken) ||
+            absoluteJarPath.isNotBlank() && NewlyImportedModHighlightStore.contains(absoluteJarPath)
     }
 
     private fun WorkshopInstalledModRecord.toWorkshopModUi(
@@ -1732,11 +1743,11 @@ internal class MainModManagementController(
         return storedId != null && favoriteModKeys.contains(storedId)
     }
 
-    private fun setPendingOptionalModEnabled(mod: ModItemUi, enabled: Boolean) {
+    private fun setPendingOptionalModEnabled(host: Activity, mod: ModItemUi, enabled: Boolean) {
         val storedId = resolveStoredOptionalModId(mod)
         var changed = false
         if (storedId != null) {
-            if (enabled && clearNewlyImportedHighlightForStoragePath(storedId)) {
+            if (enabled && clearNewlyImportedHighlightForMod(host, mod)) {
                 changed = true
             }
             if (enabled) {
@@ -1754,20 +1765,31 @@ internal class MainModManagementController(
         }
     }
 
-    private fun clearNewlyImportedHighlightForStoragePath(storagePath: String): Boolean {
+    private fun clearNewlyImportedHighlightForStoragePath(host: Activity, storagePath: String): Boolean {
         val normalized = storagePath.trim()
         if (normalized.isEmpty()) {
             return false
         }
         var changed = false
         resolveModStoragePathCandidates(normalized).forEach { candidate ->
-            changed = NewlyImportedModHighlightStore.clear(candidate) || changed
+            changed = NewlyImportedModHighlightStore.clear(host, candidate) || changed
         }
         return changed
     }
 
-    private fun clearPendingSelectionForMod(mod: ModItemUi) {
-        setPendingOptionalModEnabled(mod, false)
+    private fun clearNewlyImportedHighlightForMod(host: Activity, mod: ModItemUi): Boolean {
+        var changed = clearNewlyImportedHighlightForStoragePath(host, mod.storagePath)
+        mod.workshop?.let { workshop ->
+            changed = NewlyImportedModHighlightStore.clear(
+                host,
+                "workshop:${workshop.appId}:${workshop.publishedFileId}"
+            ) || changed
+        }
+        return changed
+    }
+
+    private fun clearPendingSelectionForMod(host: Activity, mod: ModItemUi) {
+        setPendingOptionalModEnabled(host, mod, false)
     }
 
     private fun replacePendingSelectionForRenamedMod(mod: ModItemUi, newStoragePath: String) {

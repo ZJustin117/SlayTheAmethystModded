@@ -16,6 +16,7 @@ import io.stamethyst.backend.render.VirtualResolutionMode
 import io.stamethyst.backend.update.UpdateMirrorManager
 import io.stamethyst.backend.update.LauncherUpdateVersioning
 import io.stamethyst.backend.update.UpdateSource
+import io.stamethyst.backend.workshop.SteamLanguagePreference
 import io.stamethyst.config.BackBehavior
 import io.stamethyst.config.GpuResourceGuardianMode
 import io.stamethyst.config.LauncherThemeColor
@@ -95,7 +96,9 @@ internal object SettingsRepository {
     data class MarketSnapshot(
         val workshopMaxConcurrentDownloads: Int,
         val workshopDownloadThreads: Int,
-        val workshopWattAccelerationEnabled: Boolean
+        val workshopWattAccelerationEnabled: Boolean,
+        val workshopSteamLanguage: SteamLanguagePreference,
+        val workshopAutoImportEnabled: Boolean,
     )
 
     data class CompatibilitySnapshot(
@@ -196,7 +199,9 @@ internal object SettingsRepository {
             market = MarketSnapshot(
                 workshopMaxConcurrentDownloads = LauncherPreferences.readWorkshopMaxConcurrentDownloads(context),
                 workshopDownloadThreads = LauncherPreferences.readWorkshopDownloadThreads(context),
-                workshopWattAccelerationEnabled = LauncherPreferences.isWorkshopWattAccelerationEnabled(context)
+                workshopWattAccelerationEnabled = LauncherPreferences.isWorkshopWattAccelerationEnabled(context),
+                workshopSteamLanguage = LauncherPreferences.readWorkshopSteamLanguage(context),
+                workshopAutoImportEnabled = LauncherPreferences.isWorkshopAutoImportEnabled(context),
             ),
             compatibility = CompatibilitySnapshot(
                 globalAtlasFilterCompatEnabled =
@@ -376,6 +381,14 @@ internal object SettingsRepository {
         LauncherPreferences.setWorkshopWattAccelerationEnabled(
             context,
             LauncherPreferences.DEFAULT_WORKSHOP_WATT_ACCELERATION_ENABLED
+        )
+        LauncherPreferences.saveWorkshopSteamLanguage(
+            context,
+            LauncherPreferences.DEFAULT_WORKSHOP_STEAM_LANGUAGE
+        )
+        LauncherPreferences.setWorkshopAutoImportEnabled(
+            context,
+            LauncherPreferences.DEFAULT_WORKSHOP_AUTO_IMPORT_ENABLED
         )
         CompatibilitySettings.resetToDefaults(context)
     }

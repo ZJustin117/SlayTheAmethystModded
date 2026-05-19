@@ -126,6 +126,7 @@ internal fun ModCard(
     var showRenameDisplayModeWarningDialog by remember(mod.storagePath) { mutableStateOf(false) }
     var showSuggestionDialog by remember(mod.storagePath, suggestionText) { mutableStateOf(false) }
     var showImportPatchDialog by remember(mod.storagePath, mod.importPatchDetails) { mutableStateOf(false) }
+    var showWorkshopUpdateConfirmDialog by remember(mod.storagePath) { mutableStateOf(false) }
     val cardShape = RoundedCornerShape(10.dp)
     val batchSelectionAnimationProgress = if (batchSelectionMode) {
         batchSelectionProgress?.value ?: 1f
@@ -296,6 +297,8 @@ internal fun ModCard(
             },
             importPatchBadgeEnabled = true,
             onImportPatchClick = { showImportPatchDialog = true },
+            updateBadgeEnabled = !batchSelectionMode,
+            onUpdateBadgeClick = { showWorkshopUpdateConfirmDialog = true },
             headerLeading = {
                 Box(
                     modifier = Modifier
@@ -426,16 +429,6 @@ internal fun ModCard(
             ) {
                 Text("重新下载")
             }
-            WorkshopModState.UpdateAvailable -> Button(
-                onClick = { callbacks.onUpdateWorkshopMod(mod) },
-                enabled = !batchSelectionMode,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 10.dp)
-                    .graphicsLayer { alpha = normalControlProgress }
-            ) {
-                Text("更新")
-            }
             WorkshopModState.NonStandardDownloaded -> OutlinedButton(
                 onClick = { showActionsDialog = true },
                 enabled = !batchSelectionMode,
@@ -516,6 +509,33 @@ internal fun ModCard(
             confirmButton = {
                 TextButton(onClick = { showImportPatchDialog = false }) {
                     Text(text = stringResource(R.string.common_action_confirm))
+                }
+            }
+        )
+    }
+
+    if (showWorkshopUpdateConfirmDialog && mod.workshop?.state == WorkshopModState.UpdateAvailable) {
+        AlertDialog(
+            onDismissRequest = { showWorkshopUpdateConfirmDialog = false },
+            title = { Text("更新创意工坊模组") },
+            text = {
+                Text(
+                    text = "将重新下载并覆盖当前安装的 ${resolveModDisplayName(mod, showModFileName = false)}。更新过程中请不要启动游戏。"
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showWorkshopUpdateConfirmDialog = false
+                        callbacks.onUpdateWorkshopMod(mod)
+                    }
+                ) {
+                    Text("更新")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showWorkshopUpdateConfirmDialog = false }) {
+                    Text(stringResource(R.string.main_folder_dialog_cancel))
                 }
             }
         )
@@ -691,6 +711,8 @@ internal fun DraggingModCardOverlay(
                 onSuggestionClick = {},
                 importPatchBadgeEnabled = false,
                 onImportPatchClick = {},
+                updateBadgeEnabled = false,
+                onUpdateBadgeClick = {},
                 headerTrailing = {
                     Checkbox(
                         checked = mod.enabled,

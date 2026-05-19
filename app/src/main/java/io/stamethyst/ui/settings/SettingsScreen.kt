@@ -98,6 +98,7 @@ import io.stamethyst.backend.render.RendererBackend
 import io.stamethyst.backend.render.RendererSelectionMode
 import io.stamethyst.backend.render.VirtualResolutionMode
 import io.stamethyst.backend.update.UpdateSource
+import io.stamethyst.backend.workshop.SteamLanguagePreference
 import io.stamethyst.config.BackBehavior
 import io.stamethyst.config.GpuResourceGuardianMode
 import io.stamethyst.config.LauncherThemeColor
@@ -172,6 +173,13 @@ fun LauncherSettingsScreen(
         onWorkshopWattAccelerationChanged = { enabled ->
             viewModel.onWorkshopWattAccelerationChanged(activity, enabled)
         },
+        onWorkshopSteamLanguageChanged = { language ->
+            viewModel.onWorkshopSteamLanguageChanged(activity, language)
+        },
+        onWorkshopAutoImportChanged = { enabled ->
+            viewModel.onWorkshopAutoImportChanged(activity, enabled)
+        },
+        onClearWorkshopPreviewCache = { viewModel.onClearWorkshopPreviewCache(activity) },
         onRenderScaleSelected = { value -> viewModel.onRenderScaleSelected(activity, value) },
         onTargetFpsSelected = { fps -> viewModel.onTargetFpsSelected(activity, fps) },
         onVirtualResolutionModeChanged = { mode ->
@@ -424,6 +432,9 @@ private fun LauncherSettingsScreenContent(
     onWorkshopMaxConcurrentDownloadsChanged: (Int) -> Unit = {},
     onWorkshopDownloadThreadsChanged: (Int) -> Unit = {},
     onWorkshopWattAccelerationChanged: (Boolean) -> Unit = {},
+    onWorkshopSteamLanguageChanged: (SteamLanguagePreference) -> Unit = {},
+    onWorkshopAutoImportChanged: (Boolean) -> Unit = {},
+    onClearWorkshopPreviewCache: () -> Unit = {},
     onRenderScaleSelected: (Float) -> Unit = {},
     onTargetFpsSelected: (Int) -> Unit = {},
     onVirtualResolutionModeChanged: (VirtualResolutionMode) -> Unit = {},
@@ -587,6 +598,9 @@ private fun LauncherSettingsScreenContent(
                         onWorkshopMaxConcurrentDownloadsChanged = onWorkshopMaxConcurrentDownloadsChanged,
                         onWorkshopDownloadThreadsChanged = onWorkshopDownloadThreadsChanged,
                         onWorkshopWattAccelerationChanged = onWorkshopWattAccelerationChanged,
+                        onWorkshopSteamLanguageChanged = onWorkshopSteamLanguageChanged,
+                        onWorkshopAutoImportChanged = onWorkshopAutoImportChanged,
+                        onClearWorkshopPreviewCache = onClearWorkshopPreviewCache,
                     )
                 }
             }
@@ -780,6 +794,9 @@ private fun SettingsMarketSection(
     onWorkshopMaxConcurrentDownloadsChanged: (Int) -> Unit,
     onWorkshopDownloadThreadsChanged: (Int) -> Unit,
     onWorkshopWattAccelerationChanged: (Boolean) -> Unit,
+    onWorkshopSteamLanguageChanged: (SteamLanguagePreference) -> Unit,
+    onWorkshopAutoImportChanged: (Boolean) -> Unit,
+    onClearWorkshopPreviewCache: () -> Unit,
 ) {
     Text(
         text = stringResource(R.string.settings_market_intro),
@@ -814,6 +831,32 @@ private fun SettingsMarketSection(
         disabledText = stringResource(R.string.settings_market_workshop_acceleration_disabled_title),
         description = stringResource(R.string.settings_market_workshop_acceleration_desc),
         onCheckedChange = onWorkshopWattAccelerationChanged,
+    )
+    Spacer(modifier = Modifier.size(8.dp))
+    SettingsDropdownField(
+        label = stringResource(R.string.settings_market_workshop_language_title),
+        valueText = uiState.workshopSteamLanguage.displayName,
+        enabled = !uiState.busy,
+        supportingText = stringResource(R.string.settings_market_workshop_language_desc),
+        options = SteamLanguagePreference.entries,
+        optionLabel = { it.displayName },
+        onOptionSelected = onWorkshopSteamLanguageChanged,
+    )
+    Spacer(modifier = Modifier.size(8.dp))
+    SwitchSettingRow(
+        checked = uiState.workshopAutoImportEnabled,
+        enabled = !uiState.busy,
+        enabledText = stringResource(R.string.settings_market_workshop_auto_import_enabled_title),
+        disabledText = stringResource(R.string.settings_market_workshop_auto_import_disabled_title),
+        description = stringResource(R.string.settings_market_workshop_auto_import_desc),
+        onCheckedChange = onWorkshopAutoImportChanged,
+    )
+    Spacer(modifier = Modifier.size(8.dp))
+    SettingsActionListItem(
+        title = stringResource(R.string.settings_market_clear_preview_cache_title),
+        supportingText = stringResource(R.string.settings_market_clear_preview_cache_desc),
+        enabled = !uiState.busy,
+        onClick = onClearWorkshopPreviewCache,
     )
 }
 

@@ -134,6 +134,9 @@ object LauncherConfig {
     private const val PREF_KEY_WORKSHOP_DOWNLOAD_THREADS = "workshop_download_threads"
     private const val PREF_KEY_WORKSHOP_WATT_ACCELERATION_ENABLED =
         "workshop_watt_acceleration_enabled"
+    private const val PREF_KEY_WORKSHOP_STEAM_LANGUAGE = "workshop_steam_language"
+    private const val PREF_KEY_WORKSHOP_AUTO_IMPORT_ENABLED = "workshop_auto_import_enabled"
+    private const val PREF_KEY_LAST_WORKSHOP_UPDATE_CHECK_AT_MS = "last_workshop_update_check_at_ms"
     private const val PREF_KEY_STEAM_CLOUD_SAVE_MODE = "steam_cloud_save_mode"
     private const val PREF_KEY_STEAM_CLOUD_SYNC_BLACKLIST_PATHS =
         "steam_cloud_sync_blacklist_paths"
@@ -214,6 +217,8 @@ object LauncherConfig {
     const val MIN_WORKSHOP_DOWNLOAD_THREADS = 1
     const val MAX_WORKSHOP_DOWNLOAD_THREADS = 8
     const val DEFAULT_WORKSHOP_WATT_ACCELERATION_ENABLED = true
+    const val DEFAULT_WORKSHOP_STEAM_LANGUAGE = "schinese"
+    const val DEFAULT_WORKSHOP_AUTO_IMPORT_ENABLED = true
     val DEFAULT_STEAM_CLOUD_SAVE_MODE: SteamCloudSaveMode = SteamCloudSaveMode.DEFAULT
     val DEFAULT_STEAM_CLOUD_SYNC_BLACKLIST_PATHS: Set<String> =
         SteamCloudSyncBlacklist.defaultLocalRelativePaths()
@@ -1198,7 +1203,7 @@ object LauncherConfig {
 
     fun readWorkshopMaxConcurrentDownloads(context: Context): Int {
         return normalizeWorkshopMaxConcurrentDownloads(
-            prefs(context).getInt(
+            prefs(context, crossProcess = true).getInt(
                 PREF_KEY_WORKSHOP_MAX_CONCURRENT_DOWNLOADS,
                 DEFAULT_WORKSHOP_MAX_CONCURRENT_DOWNLOADS
             )
@@ -1206,7 +1211,7 @@ object LauncherConfig {
     }
 
     fun saveWorkshopMaxConcurrentDownloads(context: Context, value: Int) {
-        prefs(context).edit {
+        prefs(context, crossProcess = true).edit(commit = true) {
             putInt(PREF_KEY_WORKSHOP_MAX_CONCURRENT_DOWNLOADS, normalizeWorkshopMaxConcurrentDownloads(value))
         }
     }
@@ -1217,26 +1222,62 @@ object LauncherConfig {
 
     fun readWorkshopDownloadThreads(context: Context): Int {
         return normalizeWorkshopDownloadThreads(
-            prefs(context).getInt(PREF_KEY_WORKSHOP_DOWNLOAD_THREADS, DEFAULT_WORKSHOP_DOWNLOAD_THREADS)
+            prefs(context, crossProcess = true).getInt(PREF_KEY_WORKSHOP_DOWNLOAD_THREADS, DEFAULT_WORKSHOP_DOWNLOAD_THREADS)
         )
     }
 
     fun saveWorkshopDownloadThreads(context: Context, value: Int) {
-        prefs(context).edit {
+        prefs(context, crossProcess = true).edit(commit = true) {
             putInt(PREF_KEY_WORKSHOP_DOWNLOAD_THREADS, normalizeWorkshopDownloadThreads(value))
         }
     }
 
     fun isWorkshopWattAccelerationEnabled(context: Context): Boolean {
-        return prefs(context).getBoolean(
+        return prefs(context, crossProcess = true).getBoolean(
             PREF_KEY_WORKSHOP_WATT_ACCELERATION_ENABLED,
             DEFAULT_WORKSHOP_WATT_ACCELERATION_ENABLED
         )
     }
 
     fun setWorkshopWattAccelerationEnabled(context: Context, enabled: Boolean) {
-        prefs(context).edit {
+        prefs(context, crossProcess = true).edit(commit = true) {
             putBoolean(PREF_KEY_WORKSHOP_WATT_ACCELERATION_ENABLED, enabled)
+        }
+    }
+
+    fun readWorkshopSteamLanguage(context: Context): String {
+        return prefs(context, crossProcess = true).getString(
+            PREF_KEY_WORKSHOP_STEAM_LANGUAGE,
+            DEFAULT_WORKSHOP_STEAM_LANGUAGE
+        ) ?: DEFAULT_WORKSHOP_STEAM_LANGUAGE
+    }
+
+    fun saveWorkshopSteamLanguage(context: Context, value: String) {
+        prefs(context, crossProcess = true).edit(commit = true) {
+            putString(PREF_KEY_WORKSHOP_STEAM_LANGUAGE, value.trim().ifBlank { DEFAULT_WORKSHOP_STEAM_LANGUAGE })
+        }
+    }
+
+    fun isWorkshopAutoImportEnabled(context: Context): Boolean {
+        return prefs(context, crossProcess = true).getBoolean(
+            PREF_KEY_WORKSHOP_AUTO_IMPORT_ENABLED,
+            DEFAULT_WORKSHOP_AUTO_IMPORT_ENABLED
+        )
+    }
+
+    fun setWorkshopAutoImportEnabled(context: Context, enabled: Boolean) {
+        prefs(context, crossProcess = true).edit(commit = true) {
+            putBoolean(PREF_KEY_WORKSHOP_AUTO_IMPORT_ENABLED, enabled)
+        }
+    }
+
+    fun readLastWorkshopUpdateCheckAtMs(context: Context): Long {
+        return prefs(context).getLong(PREF_KEY_LAST_WORKSHOP_UPDATE_CHECK_AT_MS, 0L)
+    }
+
+    fun saveLastWorkshopUpdateCheckAtMs(context: Context, timestampMs: Long) {
+        prefs(context).edit {
+            putLong(PREF_KEY_LAST_WORKSHOP_UPDATE_CHECK_AT_MS, timestampMs)
         }
     }
 
@@ -1917,8 +1958,15 @@ object LauncherConfig {
         return File(RuntimePaths.preferencesDir(context), GAMEPLAY_SETTINGS_FILE_NAME)
     }
 
-    private fun prefs(context: Context) =
-        context.getSharedPreferences(PREF_NAME_LAUNCHER, Context.MODE_PRIVATE)
+    @Suppress("DEPRECATION")
+    private fun prefs(context: Context, crossProcess: Boolean = false): SharedPreferences {
+        val mode = if (crossProcess) {
+            Context.MODE_PRIVATE or Context.MODE_MULTI_PROCESS
+        } else {
+            Context.MODE_PRIVATE
+        }
+        return context.getSharedPreferences(PREF_NAME_LAUNCHER, mode)
+    }
 
     private const val LEGACY_PREF_KEY_STEAM_CLOUD_AUTO_PULL_BEFORE_LAUNCH_ENABLED =
         "steam_cloud_auto_pull_before_launch_enabled"

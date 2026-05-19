@@ -16,6 +16,14 @@
     <string name="settings_market_workshop_acceleration_enabled_title">Workshop acceleration: Enabled</string>
     <string name="settings_market_workshop_acceleration_disabled_title">Workshop acceleration: Disabled</string>
     <string name="settings_market_workshop_acceleration_desc">Uses Watt Toolkit routes for Steam Workshop, Store/CDN, and preview image requests.</string>
+    <string name="settings_market_workshop_language_title">Workshop language</string>
+    <string name="settings_market_workshop_language_desc">Controls Steam Workshop browse/search language and SteamPipe metadata language.</string>
+    <string name="settings_market_workshop_auto_import_enabled_title">Workshop auto import: Enabled</string>
+    <string name="settings_market_workshop_auto_import_disabled_title">Workshop auto import: Disabled</string>
+    <string name="settings_market_workshop_auto_import_desc">Automatically imports downloaded Workshop jar mods. If disabled, downloaded jars stay in the Workshop card until you import them manually.</string>
+    <string name="settings_market_clear_preview_cache_title">Clear cover cache</string>
+    <string name="settings_market_clear_preview_cache_desc">Removes cached Workshop mod cover images stored on this device. Covers will be downloaded again when shown.</string>
+    <string name="settings_market_clear_preview_cache_done">Cleared %1$d cached cover images.</string>
     <string name="sts_crash_dialog_title">Game crashed</string>
     <string name="sts_crash_detail_format">Game crashed.\n%1$s</string>
     <string name="sts_normal_exit">Game process exited unexpectedly, exit code %1$d.</string>
@@ -373,6 +381,7 @@ Do you still want to continue?</string>
     <string name="main_mod_new_import_badge">New</string>
     <string name="main_mod_favorite_badge">Liked</string>
     <string name="main_mod_favorite_badge_content_description">Special favorite mod</string>
+    <string name="main_mod_workshop_badge_content_description">Steam Workshop mod</string>
     <string name="main_mod_move_folder_dialog_title_format">Move %1$s to folder</string>
     <string name="main_mod_move_folder_current_format">%1$s (current)</string>
     <string name="main_batch_move_dialog_title_format">Move %1$d selected mods to folder</string>

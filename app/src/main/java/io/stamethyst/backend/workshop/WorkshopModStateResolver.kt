@@ -28,7 +28,7 @@ object WorkshopModStateResolver {
         remoteUpdatedAtMillis: Long = 0L,
     ): WorkshopResolvedModState {
         val taskState = resolveTaskState(taskStatus, taskMessage)
-        if (taskState != null && record?.cardState != WorkshopModCardState.UpdateAvailable) {
+        if (taskState != null && (record?.cardState != WorkshopModCardState.UpdateAvailable || taskStatus?.isActiveDownload() == true)) {
             return taskState
         }
         if (record == null) {

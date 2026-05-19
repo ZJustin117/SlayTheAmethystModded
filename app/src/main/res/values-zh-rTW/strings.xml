@@ -16,6 +16,14 @@
     <string name="settings_market_workshop_acceleration_enabled_title">創意工坊加速：已開啟</string>
     <string name="settings_market_workshop_acceleration_disabled_title">創意工坊加速：已關閉</string>
     <string name="settings_market_workshop_acceleration_desc">對 Steam 創意工坊、商店/CDN 和預覽圖請求使用 Watt Toolkit 路由。</string>
+    <string name="settings_market_workshop_language_title">創意工坊語言</string>
+    <string name="settings_market_workshop_language_desc">控制 Steam 創意工坊瀏覽/搜尋語言，以及 SteamPipe 中繼資料語言。</string>
+    <string name="settings_market_workshop_auto_import_enabled_title">工坊自動匯入：已開啟</string>
+    <string name="settings_market_workshop_auto_import_disabled_title">工坊自動匯入：已關閉</string>
+    <string name="settings_market_workshop_auto_import_desc">下載到標準 jar 模組後自動匯入。關閉後會保留在工坊卡片中，手動點選匯入。</string>
+    <string name="settings_market_clear_preview_cache_title">清除封面快取</string>
+    <string name="settings_market_clear_preview_cache_desc">刪除本機已快取的創意工坊模組封面。下次顯示時會重新下載。</string>
+    <string name="settings_market_clear_preview_cache_done">已清除 %1$d 張封面快取。</string>
     <string name="sts_crash_dialog_title">遊戲已崩潰</string>
     <string name="sts_crash_detail_format">遊戲已崩潰。\n%1$s</string>
     <string name="sts_normal_exit">遊戲程序異常退出，退出碼 %1$d。</string>
@@ -373,6 +381,7 @@
     <string name="main_mod_new_import_badge">新</string>
     <string name="main_mod_favorite_badge">喜歡</string>
     <string name="main_mod_favorite_badge_content_description">特別喜歡的模組</string>
+    <string name="main_mod_workshop_badge_content_description">Steam 創意工坊模組</string>
     <string name="main_mod_move_folder_dialog_title_format">移動 %1$s 到資料夾</string>
     <string name="main_mod_move_folder_current_format">%1$s（當前）</string>
     <string name="main_batch_move_dialog_title_format">將 %1$d 個已選模組移動到資料夾</string>

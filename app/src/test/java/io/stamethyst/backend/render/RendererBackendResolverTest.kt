@@ -97,6 +97,7 @@ class RendererBackendResolverTest {
             manualBackend = RendererBackend.OPENGL_ES3_DESKTOPGL_ZINK_KOPPER,
             runtimeInfo = runtimeInfo(
                 libraries = setOf(
+                    "libc++_shared.so",
                     "libmobileglues.so",
                     "libgl4es_114.so",
                     "libglxshim.so",

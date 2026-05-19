@@ -1,10 +1,15 @@
 package io.stamethyst.backend.mods
 
+import android.app.Application
+import android.content.Context
+import android.content.ContextWrapper
+import io.stamethyst.config.RuntimePaths
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 
@@ -94,5 +99,44 @@ class OptionalModStorageCoordinatorTest {
             Files.readAllBytes(libraryBeta.toPath()),
             Files.readAllBytes(runtimeModsDir.toPath().resolve("Beta.jar"))
         )
+    }
+
+    @Test
+    fun ensureOptionalModLibraryReady_removesInterruptedImportTargetAndMarker() {
+        val roots = TestRoots.create("optional-mod-storage-interrupted-import-test")
+        val libraryDir = RuntimePaths.optionalModsLibraryDir(roots.context).apply { mkdirs() }
+        val target = Files.write(libraryDir.toPath().resolve("HalfImported.jar"), byteArrayOf(1, 2, 3)).toFile()
+        val marker = libraryDir.toPath().resolve(".HalfImported.jar.importing.marker").toFile()
+        marker.writeText(target.name, StandardCharsets.UTF_8)
+        val scratch = Files.write(libraryDir.toPath().resolve(".HalfImported.jar.123.importing"), byteArrayOf(9)).toFile()
+
+        OptionalModStorageCoordinator.ensureOptionalModLibraryReady(roots.context)
+
+        assertFalse(target.exists())
+        assertFalse(marker.exists())
+        assertFalse(scratch.exists())
+    }
+
+    private class TestRoots private constructor(
+        val rootDir: File,
+        val context: Context
+    ) {
+        companion object {
+            fun create(prefix: String): TestRoots {
+                val rootDir = Files.createTempDirectory(prefix).toFile()
+                val filesDir = File(rootDir, "internal-files").apply { mkdirs() }
+                val externalFilesDir = File(rootDir, "external-files").apply { mkdirs() }
+                return TestRoots(
+                    rootDir = rootDir,
+                    context = object : ContextWrapper(Application()) {
+                        override fun getFilesDir(): File = filesDir
+
+                        override fun getExternalFilesDir(type: String?): File = externalFilesDir
+
+                        override fun getPackageName(): String = "io.stamethyst.test"
+                    }
+                )
+            }
+        }
     }
 }

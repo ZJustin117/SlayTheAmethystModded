@@ -56,6 +56,7 @@ private fun List<WorkshopItemSummary>.toJsonArray(): JSONArray = JSONArray().als
                 .put("authorName", item.authorName)
                 .put("fileSizeBytes", item.fileSizeBytes)
                 .put("updatedAtMillis", item.updatedAtMillis)
+                .put("downloadCount", item.downloadCount)
         )
     }
 }
@@ -76,6 +77,7 @@ private fun JSONArray?.toWorkshopSummaries(): List<WorkshopItemSummary> {
                     authorName = item.optString("authorName"),
                     fileSizeBytes = item.optLong("fileSizeBytes"),
                     updatedAtMillis = item.optLong("updatedAtMillis"),
+                    downloadCount = item.optLong("downloadCount"),
                 )
             )
         }

@@ -114,7 +114,7 @@ internal object ModImportFlowCoordinator {
                 val compressedArchiveList = batchResult.compressedArchives
                 val invalidModJars = batchResult.invalidModJars
                 val patchedResults = batchResult.patchedResults
-                NewlyImportedModHighlightStore.mark(batchResult.importedResults.map { it.storagePath })
+                NewlyImportedModHighlightStore.mark(host, batchResult.importedResults.map { it.storagePath })
                 host.runOnUiThread {
                     clearBusy(callbacks)
                     if (blockedList.isNotEmpty()) {

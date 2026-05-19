@@ -24,6 +24,7 @@ import io.stamethyst.backend.workshop.WorkshopModCardState
 import io.stamethyst.backend.workshop.WorkshopService
 import io.stamethyst.backend.workshop.WorkshopUpdateCheckResult
 import io.stamethyst.backend.workshop.WorkshopUpdateChecker
+import io.stamethyst.backend.workshop.isActiveDownload
 import io.stamethyst.backend.workshop.isRunningDownload
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -39,8 +40,8 @@ internal class WorkshopViewModel : ViewModel() {
     private var metadataStore: WorkshopMetadataStore? = null
     private var loaded = false
     private var activeQueryText: String = ""
-    private var activeSort: WorkshopBrowseSort = WorkshopBrowseSort.TextSearch
-    private var activeTimeFilter: WorkshopBrowseTimeFilter = WorkshopBrowseTimeFilter.ThreeMonths
+    private var activeSort: WorkshopBrowseSort = WorkshopBrowseSort.MostPopular
+    private var activeTimeFilter: WorkshopBrowseTimeFilter = WorkshopBrowseTimeFilter.OneWeek
 
     fun load(context: Context) {
         WorkshopDownloadCenterStore.initialize(context)
@@ -62,10 +63,17 @@ internal class WorkshopViewModel : ViewModel() {
 
     private fun refreshLocalDownloadState() {
         metadataStore?.markMissingFiles()
+        WorkshopDownloadCenterStore.refresh()
         uiState = uiState.copy(
             steamLoggedIn = service?.hasSteamAuth() == true,
             installedMods = metadataStore?.list().orEmpty(),
+            downloadInProgress = WorkshopDownloadCenterStore.tasks.any { it.status.isActiveDownload() },
         )
+    }
+
+    fun refreshDownloadState(context: Context) {
+        WorkshopDownloadCenterStore.initialize(context)
+        refreshLocalDownloadState()
     }
 
     fun search(context: Context, queryText: String) {
@@ -85,6 +93,16 @@ internal class WorkshopViewModel : ViewModel() {
         loadBrowsePage(context, queryText = queryText, page = 1, append = false)
     }
 
+    fun refreshBrowse(context: Context) {
+        loadBrowsePage(
+            context = context,
+            queryText = activeQueryText,
+            page = 1,
+            append = false,
+            clearItems = false,
+        )
+    }
+
     fun loadNextPage(context: Context) {
         val state = uiState
         if (state.browseLoading || state.loadingMore || !state.hasMorePages) return
@@ -96,6 +114,7 @@ internal class WorkshopViewModel : ViewModel() {
         queryText: String,
         page: Int,
         append: Boolean,
+        clearItems: Boolean = true,
     ) {
         val currentService = service ?: return
         viewModelScope.launch {
@@ -106,7 +125,7 @@ internal class WorkshopViewModel : ViewModel() {
                     browseLoading = true,
                     loadingMore = false,
                     errorMessage = null,
-                    items = emptyList(),
+                    items = if (clearItems) emptyList() else uiState.items,
                     nextPage = 1,
                     hasMorePages = true,
                 )
@@ -130,11 +149,8 @@ internal class WorkshopViewModel : ViewModel() {
                     browseLoading = false,
                     loadingMore = false,
                     items = merged,
-                    selected = uiState.selected?.takeIf { selected ->
-                        merged.any { it.publishedFileId == selected.summary.publishedFileId }
-                    },
                     nextPage = page + 1,
-                    hasMorePages = result.items.size >= WorkshopUiState.PAGE_SIZE,
+                    hasMorePages = result.hasNextPage,
                     errorMessage = if (merged.isEmpty()) "未找到创意工坊条目" else null,
                 )
             }.onFailure { error ->
@@ -154,13 +170,110 @@ internal class WorkshopViewModel : ViewModel() {
     fun loadDetails(context: Context, appId: UInt, publishedFileId: ULong) {
         val currentService = service ?: return
         viewModelScope.launch {
-            uiState = uiState.copy(detailLoadingId = publishedFileId, errorMessage = null)
+            uiState = uiState.copy(
+                detailLoadingId = publishedFileId,
+                errorMessage = null,
+                commentLoadingId = null,
+                commentErrorMessage = null,
+            )
             runCatching {
                 withContext(Dispatchers.IO) { currentService.getDetails(appId, publishedFileId) }
             }.onSuccess { details ->
-                uiState = uiState.copy(selected = details, detailLoadingId = null, errorMessage = null)
+                val shouldLoadComments = details.shouldLoadWorkshopComments()
+                uiState = uiState.copy(
+                    selected = details,
+                    detailLoadingId = null,
+                    errorMessage = null,
+                    commentLoadingId = if (shouldLoadComments) publishedFileId else null,
+                    commentErrorMessage = details.commentUnavailableMessage(),
+                )
+                if (shouldLoadComments) {
+                    loadWorkshopCommentsPage(context, appId, publishedFileId, page = 1)
+                }
             }.onFailure { error ->
                 uiState = uiState.copy(detailLoadingId = null, errorMessage = error.message ?: error.javaClass.simpleName)
+            }
+        }
+    }
+
+    fun loadPreviousWorkshopCommentsPage(context: Context) {
+        shiftWorkshopCommentsPage(context, delta = -1)
+    }
+
+    fun loadNextWorkshopCommentsPage(context: Context) {
+        shiftWorkshopCommentsPage(context, delta = 1)
+    }
+
+    fun retryWorkshopCommentsPage(context: Context) {
+        val details = uiState.selected ?: return
+        if (uiState.detailLoadingId != null || uiState.commentLoadingId != null) return
+        loadWorkshopCommentsPage(
+            context = context,
+            appId = details.summary.appId,
+            publishedFileId = details.summary.publishedFileId,
+            page = details.commentPage.coerceAtLeast(1),
+        )
+    }
+
+    private fun shiftWorkshopCommentsPage(context: Context, delta: Int) {
+        val details = uiState.selected ?: return
+        if (uiState.detailLoadingId != null || uiState.commentLoadingId != null) return
+        val targetPage = (details.commentPage + delta).coerceAtLeast(1)
+        if (targetPage == details.commentPage) return
+        if (delta < 0 && !details.hasPreviousCommentPage) return
+        if (delta > 0 && !details.hasNextCommentPage) return
+        loadWorkshopCommentsPage(
+            context = context,
+            appId = details.summary.appId,
+            publishedFileId = details.summary.publishedFileId,
+            page = targetPage,
+        )
+    }
+
+    private fun loadWorkshopCommentsPage(
+        context: Context,
+        appId: UInt,
+        publishedFileId: ULong,
+        page: Int,
+    ) {
+        val currentService = service ?: return
+        val detailSnapshot = uiState.selected?.takeIf { details ->
+            details.summary.appId == appId && details.summary.publishedFileId == publishedFileId
+        } ?: return
+        val commentUnavailableMessage = detailSnapshot.commentUnavailableMessage()
+        if (!detailSnapshot.shouldLoadWorkshopComments()) {
+            uiState = uiState.copy(
+                commentLoadingId = null,
+                commentErrorMessage = commentUnavailableMessage,
+            )
+            return
+        }
+
+        uiState = uiState.copy(commentLoadingId = publishedFileId, commentErrorMessage = null)
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) { currentService.getCommentsPage(detailSnapshot, page) }
+            }.onSuccess { commentPage ->
+                uiState = uiState.copy(
+                    selected = uiState.selected?.takeIf { current ->
+                        current.summary.appId == appId && current.summary.publishedFileId == publishedFileId
+                    }?.copy(
+                        commentsUrl = commentPage.commentsUrl,
+                        commentCount = commentPage.commentCount,
+                        commentPage = commentPage.page,
+                        commentTotalPages = commentPage.totalPages,
+                        hasPreviousCommentPage = commentPage.hasPreviousPage,
+                        hasNextCommentPage = commentPage.hasNextPage,
+                        comments = commentPage.comments,
+                    ) ?: uiState.selected,
+                    commentLoadingId = null,
+                    commentErrorMessage = null,
+                )
+            }.onFailure { error ->
+                uiState = uiState.copy(
+                    commentLoadingId = null,
+                    commentErrorMessage = error.message ?: "加载评论失败。",
+                )
             }
         }
     }
@@ -472,10 +585,12 @@ internal data class WorkshopUiState(
     val installedMods: List<WorkshopInstalledModRecord> = emptyList(),
     val updateResults: List<WorkshopUpdateCheckResult> = emptyList(),
     val pendingDependencyDownload: WorkshopPendingDependencyDownload? = null,
+    val commentLoadingId: ULong? = null,
+    val commentErrorMessage: String? = null,
     val errorMessage: String? = null,
 ) {
     companion object {
-        const val PAGE_SIZE = 20
+        const val PAGE_SIZE = 30
     }
 }
 
@@ -483,6 +598,15 @@ internal data class WorkshopPendingDependencyDownload(
     val details: WorkshopItemDetails,
     val missingDependencies: List<WorkshopItemSummary>,
 )
+
+private fun WorkshopItemDetails.shouldLoadWorkshopComments(): Boolean =
+    commentThreadContext != null && commentCount != 0L
+
+private fun WorkshopItemDetails.commentUnavailableMessage(): String? = when {
+    commentThreadContext == null -> "暂时无法读取 Steam 评论区。"
+    commentCount == 0L -> null
+    else -> null
+}
 
 private fun String.toTaskStatus(): WorkshopDownloadTaskStatus? = when (this) {
     "Queued" -> WorkshopDownloadTaskStatus.Queued

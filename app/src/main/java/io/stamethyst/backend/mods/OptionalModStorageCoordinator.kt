@@ -21,6 +21,7 @@ internal object OptionalModStorageCoordinator {
     fun ensureOptionalModLibraryReady(context: Context) {
         val libraryDir = RuntimePaths.optionalModsLibraryDir(context)
         ensureDirectory(libraryDir)
+        cleanupInterruptedImports(libraryDir)
         val migrationMarker = RuntimePaths.optionalModsLibraryMigrationMarker(context)
         if (migrationMarker.isFile) {
             return
@@ -193,6 +194,26 @@ internal object OptionalModStorageCoordinator {
             .filterNot { isReservedJarName(it.name) }
             .sortedWith(compareBy<File>({ it.name.lowercase(Locale.ROOT) }, { it.name }, { it.absolutePath }))
             .toList()
+    }
+
+    private fun cleanupInterruptedImports(libraryDir: File) {
+        val files = libraryDir.listFiles() ?: return
+        files.forEach { file ->
+            if (!file.isFile) {
+                return@forEach
+            }
+            val name = file.name
+            when {
+                name.endsWith(".importing.marker") -> {
+                    val targetName = runCatching { file.readText(StandardCharsets.UTF_8).trim() }.getOrDefault("")
+                    if (targetName.isNotEmpty() && File(targetName).name == targetName) {
+                        File(libraryDir, targetName).delete()
+                    }
+                    file.delete()
+                }
+                name.contains(".importing") && name.startsWith(".") -> file.delete()
+            }
+        }
     }
 
     @Throws(IOException::class)

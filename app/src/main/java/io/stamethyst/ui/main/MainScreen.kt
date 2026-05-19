@@ -69,6 +69,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -101,10 +102,14 @@ import io.stamethyst.backend.render.RendererBackendResolver
 import io.stamethyst.backend.steamcloud.SteamCloudSyncDirection
 import io.stamethyst.backend.steamcloud.SteamCloudUserWarning
 import io.stamethyst.backend.steamcloud.SteamCloudUploadPlan
+import io.stamethyst.backend.workshop.WorkshopUpdateCheckCoordinator
+import io.stamethyst.backend.workshop.WorkshopUpdateCheckUiState
 import io.stamethyst.ui.CollapsibleFloatingGlassHeader
 import io.stamethyst.ui.FloatingGlassHeader
 import io.stamethyst.ui.LauncherTransientNoticeBus
+import io.stamethyst.ui.UiText
 import io.stamethyst.model.ModItemUi
+import io.stamethyst.model.WorkshopModState
 import io.stamethyst.ui.Icons
 import io.stamethyst.ui.resolve
 import io.stamethyst.ui.icon.Settings
@@ -123,6 +128,8 @@ private enum class SteamCloudConflictResolutionChoice {
     USE_LOCAL,
     USE_CLOUD,
 }
+
+private const val GAME_PAGE_CARD_ENTRANCE_DURATION_MS = 320
 
 @Composable
 private fun LauncherGamePage(
@@ -149,11 +156,22 @@ private fun LauncherGamePage(
     val gameHeaderHazeState = rememberHazeState()
     val density = LocalDensity.current
     val scrollState = rememberScrollState()
+    var showGamePageCards by remember { mutableStateOf(false) }
+    val gamePageCardsEntrance by animateFloatAsState(
+        targetValue = if (showGamePageCards) 1f else 0f,
+        animationSpec = tween(durationMillis = GAME_PAGE_CARD_ENTRANCE_DURATION_MS),
+        label = "gamePageCardsEntrance"
+    )
     var gameHeaderHeightPx by remember { mutableIntStateOf(0) }
     val gameHeaderCollapsed = scrollState.value > with(density) { 24.dp.roundToPx() }
     val measuredGameHeaderHeight = with(density) { gameHeaderHeightPx.toDp() }
     val gameHeaderContentTopInset =
         (if (gameHeaderHeightPx == 0) 88.dp else measuredGameHeaderHeight) + 16.dp
+    val gamePageCardEntranceOffsetPx = with(density) { 14.dp.toPx() }
+
+    LaunchedEffect(Unit) {
+        showGamePageCards = true
+    }
 
     Box(
         modifier = modifier
@@ -181,10 +199,6 @@ private fun LauncherGamePage(
                 }
             }
 
-            if (uiState.initializing) {
-                LoadingStateCard()
-            }
-
             uiState.storageIssue?.let { issue ->
                 StorageIssueCard(
                     issue = issue,
@@ -193,19 +207,26 @@ private fun LauncherGamePage(
                 )
             }
 
-            GameStatusHeroCard(
-                enabledModCount = enabledMods.size,
-                totalModCount = uiState.optionalMods.size,
-                enabledModBytes = enabledModBytes,
-                gameRunning = uiState.gameProcessRunning,
-                hasStorageIssue = uiState.storageIssue != null,
-                onEnabledModsClick = onEnabledModsClick,
-            )
+            Column(
+                modifier = Modifier.graphicsLayer {
+                    translationY = gamePageCardEntranceOffsetPx * (1f - gamePageCardsEntrance)
+                },
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                GameStatusHeroCard(
+                    enabledModCount = enabledMods.size,
+                    totalModCount = uiState.optionalMods.size,
+                    enabledModBytes = enabledModBytes,
+                    gameRunning = uiState.gameProcessRunning,
+                    hasStorageIssue = uiState.storageIssue != null,
+                    onEnabledModsClick = onEnabledModsClick,
+                )
 
-            SteamCloudOverviewCard(
-                indicator = steamCloudIndicator,
-                onClick = onSteamCloudClick,
-            )
+                SteamCloudOverviewCard(
+                    indicator = steamCloudIndicator,
+                    onClick = onSteamCloudClick,
+                )
+            }
         }
 
         GameLaunchActionBar(
@@ -259,7 +280,7 @@ private fun GameHeader(
         iconContainerColor = MaterialTheme.colorScheme.primaryContainer,
         iconContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
         title = stringResource(R.string.main_app_title),
-        subtitle = "启动器 v${BuildConfig.VERSION_NAME}",
+        subtitle = "v${BuildConfig.VERSION_NAME}",
         iconSize = 30.dp,
     ) {
         if (steamCloudIndicator.visible) {
@@ -428,8 +449,10 @@ private fun ModsHeaderPinnedContent(
     dragLocked: Boolean,
     hostAvailable: Boolean,
     feedbackUnreadCount: Int,
+    workshopUpdateCheckState: WorkshopUpdateCheckUiState,
     onToggleDragLocked: () -> Unit,
     onAddFolderClick: () -> Unit,
+    onCheckWorkshopUpdates: () -> Unit,
     onOpenFeedbackUpdates: () -> Unit,
 ) {
     val canEditFolders = folderControlsEnabled && hostAvailable
@@ -439,39 +462,77 @@ private fun ModsHeaderPinnedContent(
         iconContainerColor = MaterialTheme.colorScheme.secondaryContainer,
         iconContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
         title = "模组",
-        subtitle = "文件夹、导入和方案切换",
+        subtitle = "",
         iconSize = 28.dp,
     ) {
-        if (feedbackUnreadCount > 0) {
-            CompactTopBarIconButton(
-                onClick = onOpenFeedbackUpdates,
-                enabled = true,
-            ) {
-                NotificationBadge(
-                    count = feedbackUnreadCount,
-                    badgeShape = RoundedCornerShape(999.dp),
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (feedbackUnreadCount > 0) {
+                CompactTopBarIconButton(
+                    onClick = onOpenFeedbackUpdates,
+                    enabled = true,
                 ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_feedback_updates),
-                        contentDescription = stringResource(R.string.main_feedback_updates_content_description),
-                    )
+                    NotificationBadge(
+                        count = feedbackUnreadCount,
+                        badgeShape = RoundedCornerShape(999.dp),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_feedback_updates),
+                            contentDescription = stringResource(R.string.main_feedback_updates_content_description),
+                        )
+                    }
                 }
             }
-        }
-        CompactTopBarIconButton(
-            onClick = onToggleDragLocked,
-            enabled = canEditFolders,
-        ) {
-            DragLockStateIcon(dragLocked = dragLocked)
-        }
-        CompactTopBarIconButton(
-            onClick = onAddFolderClick,
-            enabled = canEditFolders,
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_folder_add),
-                contentDescription = stringResource(R.string.main_action_add_folder),
+            WorkshopUpdateCheckButton(
+                state = workshopUpdateCheckState,
+                enabled = canEditFolders,
+                onClick = onCheckWorkshopUpdates,
             )
+            CompactTopBarIconButton(
+                onClick = onToggleDragLocked,
+                enabled = canEditFolders,
+            ) {
+                DragLockStateIcon(dragLocked = dragLocked)
+            }
+            CompactTopBarIconButton(
+                onClick = onAddFolderClick,
+                enabled = canEditFolders,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_folder_add),
+                    contentDescription = stringResource(R.string.main_action_add_folder),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkshopUpdateCheckButton(
+    state: WorkshopUpdateCheckUiState,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val checking = state.checking
+    CompactTopBarIconButton(
+        onClick = onClick,
+        enabled = enabled && !checking,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                painter = painterResource(R.drawable.ic_check_circle),
+                contentDescription = if (checking) "检查中" else "已为最新",
+            )
+            if (checking) {
+                CircularProgressIndicator(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .size(12.dp),
+                    strokeWidth = 1.6.dp,
+                )
+            }
         }
     }
 }
@@ -759,7 +820,22 @@ fun LauncherModsScreen(
     onOpenWorkshop: () -> Unit = {},
     feedbackUnreadCount: Int = 0,
     onOpenFeedbackUpdates: () -> Unit = {},
+    onBatchSelectionModeChange: (Boolean) -> Unit = {},
 ) {
+    val context = LocalContext.current
+    val workshopUpdateCheckState by WorkshopUpdateCheckCoordinator.uiState.collectAsState()
+
+    LaunchedEffect(context) {
+        WorkshopUpdateCheckCoordinator.bind(context.applicationContext)
+    }
+
+    LaunchedEffect(workshopUpdateCheckState.lastCompletedAtMs) {
+        val hostActivity = context as? Activity
+        if (hostActivity != null && workshopUpdateCheckState.lastCompletedAtMs > 0L) {
+            viewModel.refresh(hostActivity)
+        }
+    }
+
     LauncherMainRoute(
         modifier = modifier,
         viewModel = viewModel,
@@ -774,6 +850,16 @@ fun LauncherModsScreen(
             onOpenWorkshop = onOpenWorkshop,
             feedbackUnreadCount = feedbackUnreadCount,
             onOpenFeedbackUpdates = onOpenFeedbackUpdates,
+            workshopUpdateCheckState = workshopUpdateCheckState,
+            onBatchSelectionModeChange = onBatchSelectionModeChange,
+            onCheckWorkshopUpdates = {
+                WorkshopUpdateCheckCoordinator.requestCheck(
+                    context = context.applicationContext,
+                    force = true,
+                    notifyResult = true,
+                )
+                LauncherTransientNoticeBus.show(UiText.DynamicString("正在检查模组更新"))
+            },
         )
     }
 }
@@ -793,6 +879,9 @@ private fun LauncherMainRoute(
     val hostActivity = context as? Activity
     val lifecycleOwner = LocalLifecycleOwner.current
     val uiState = viewModel.uiState
+    val hasActiveWorkshopDownloads = uiState.optionalMods.any { mod ->
+        mod.workshop?.state == WorkshopModState.Downloading
+    }
     var effectDialog by remember { mutableStateOf<MainScreenViewModel.Effect.ShowDialog?>(null) }
     var pendingExportModSourcePath by remember { mutableStateOf<String?>(null) }
     val importModsLauncher = rememberLauncherForActivityResult(
@@ -822,6 +911,19 @@ private fun LauncherMainRoute(
             viewModel.refresh(hostActivity)
             viewModel.syncModSuggestionsIfNeeded(hostActivity)
             viewModel.syncSteamCloudIndicatorIfNeeded(hostActivity, force = true)
+        }
+    }
+
+    LaunchedEffect(hostActivity, hasActiveWorkshopDownloads) {
+        val activity = hostActivity ?: return@LaunchedEffect
+        if (!hasActiveWorkshopDownloads) return@LaunchedEffect
+        while (true) {
+            delay(1000L)
+            viewModel.refresh(activity)
+            val stillActive = viewModel.uiState.optionalMods.any { mod ->
+                mod.workshop?.state == WorkshopModState.Downloading
+            }
+            if (!stillActive) break
         }
     }
 
@@ -1009,6 +1111,9 @@ private fun LauncherModsScreenContent(
     onOpenWorkshop: () -> Unit = {},
     feedbackUnreadCount: Int = 0,
     onOpenFeedbackUpdates: () -> Unit = {},
+    workshopUpdateCheckState: WorkshopUpdateCheckUiState = WorkshopUpdateCheckUiState(),
+    onBatchSelectionModeChange: (Boolean) -> Unit = {},
+    onCheckWorkshopUpdates: () -> Unit = {},
 ) {
     LauncherMainScreenContent(
         modifier = modifier,
@@ -1020,6 +1125,9 @@ private fun LauncherModsScreenContent(
         onOpenWorkshop = onOpenWorkshop,
         feedbackUnreadCount = feedbackUnreadCount,
         onOpenFeedbackUpdates = onOpenFeedbackUpdates,
+        workshopUpdateCheckState = workshopUpdateCheckState,
+        onBatchSelectionModeChange = onBatchSelectionModeChange,
+        onCheckWorkshopUpdates = onCheckWorkshopUpdates,
     )
 }
 
@@ -1035,6 +1143,9 @@ private fun LauncherMainScreenContent(
     onOpenWorkshop: () -> Unit = {},
     feedbackUnreadCount: Int = 0,
     onOpenFeedbackUpdates: () -> Unit = {},
+    workshopUpdateCheckState: WorkshopUpdateCheckUiState = WorkshopUpdateCheckUiState(),
+    onBatchSelectionModeChange: (Boolean) -> Unit = {},
+    onCheckWorkshopUpdates: () -> Unit = {},
 ) {
     val density = LocalDensity.current
     var showCreateFolderDialog by remember { mutableStateOf(false) }
@@ -1056,8 +1167,17 @@ private fun LauncherMainScreenContent(
     val steamCloudBottomSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var batchEditBarState by remember { mutableStateOf<BatchEditBarState?>(null) }
     var batchEditBarHeightPx by remember { mutableIntStateOf(0) }
+    val batchSelectionMode = batchEditBarState != null
     val batchEditBarContentPadding = with(density) { batchEditBarHeightPx.toDp() }
     val launcherDockContentPadding = 108.dp
+
+    LaunchedEffect(batchSelectionMode) {
+        onBatchSelectionModeChange(batchSelectionMode)
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { onBatchSelectionModeChange(false) }
+    }
 
     LaunchedEffect(steamCloudIndicator.visible) {
         if (!steamCloudIndicator.visible) {
@@ -1230,27 +1350,33 @@ private fun LauncherMainScreenContent(
                                 },
                                 pinnedContent = {
                                     ModsHeaderPinnedContent(
-                                        folderControlsEnabled = uiState.controlsEnabled,
+                                        folderControlsEnabled = uiState.controlsEnabled && !batchSelectionMode,
                                         dragLocked = uiState.dragLocked,
                                         hostAvailable = actions.isHostAvailable,
                                         feedbackUnreadCount = feedbackUnreadCount,
+                                        workshopUpdateCheckState = workshopUpdateCheckState,
                                         onToggleDragLocked = actions.onToggleDragLocked,
                                         onAddFolderClick = { showCreateFolderDialog = true },
+                                        onCheckWorkshopUpdates = {
+                                            if (!batchSelectionMode) {
+                                                onCheckWorkshopUpdates()
+                                            }
+                                        },
                                         onOpenFeedbackUpdates = onOpenFeedbackUpdates,
                                     )
                                 },
                                 expandedContent = {
                                     ModsHeaderExpandedContent(
-                                        folderControlsEnabled = uiState.controlsEnabled,
+                                        folderControlsEnabled = uiState.controlsEnabled && !batchSelectionMode,
                                         dragLocked = uiState.dragLocked,
                                         hostAvailable = actions.isHostAvailable,
                                         enabledCount = uiState.optionalMods.count { it.enabled },
                                         totalCount = uiState.optionalMods.size,
                                         folderCount = uiState.modFolders.size,
-                                        importEnabled = !uiState.busy && uiState.storageIssue == null,
+                                        importEnabled = !batchSelectionMode && !uiState.busy && uiState.storageIssue == null,
                                         profiles = uiState.modLaunchProfiles,
                                         activeProfileId = uiState.activeModLaunchProfileId,
-                                        profileEnabled = actions.isHostAvailable && uiState.controlsEnabled && uiState.storageIssue == null,
+                                        profileEnabled = !batchSelectionMode && actions.isHostAvailable && uiState.controlsEnabled && uiState.storageIssue == null,
                                         onImportMods = actions.onImportMods,
                                         onSelectProfile = actions.onSelectModLaunchProfile,
                                         onAddProfile = actions.onAddModLaunchProfile,
@@ -2831,9 +2957,12 @@ private fun ModLaunchProfileMenu(
                             }
                         }
                     },
+                    enabled = enabled,
                     onClick = {
-                        expanded = false
-                        onSelectProfile(profile.id)
+                        if (enabled) {
+                            expanded = false
+                            onSelectProfile(profile.id)
+                        }
                     }
                 )
             }
@@ -2847,9 +2976,12 @@ private fun ModLaunchProfileMenu(
                     )
                 },
                 onClick = {
-                    expanded = false
-                    creatingProfile = true
-                }
+                    if (enabled) {
+                        expanded = false
+                        creatingProfile = true
+                    }
+                },
+                enabled = enabled
             )
         }
     }

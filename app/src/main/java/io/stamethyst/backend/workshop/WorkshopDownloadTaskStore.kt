@@ -178,6 +178,7 @@ private fun WorkshopDownloadTaskRecord.toJson(): JSONObject = JSONObject()
     .put("errorStackTrace", errorStackTrace)
     .put("appId", details.summary.appId.toString())
     .put("updatedAtMillisRemote", details.summary.updatedAtMillis)
+    .put("downloadCount", details.summary.downloadCount)
     .put("fileUrl", details.fileUrl.orEmpty())
     .put("hcontentFile", details.hcontentFile?.toString().orEmpty())
     .put("depotId", details.depotId?.toString().orEmpty())
@@ -195,6 +196,7 @@ private fun JSONObject.toTask(): WorkshopDownloadTaskRecord {
         authorName = optString("authorName"),
         fileSizeBytes = optLong("fileSizeBytes"),
         updatedAtMillis = optLong("updatedAtMillisRemote"),
+        downloadCount = optLong("downloadCount"),
     )
     val details = WorkshopItemDetails(
         summary = summary,
@@ -243,6 +245,7 @@ private fun List<WorkshopItemSummary>.toJsonArray(): JSONArray = JSONArray().als
                 .put("authorName", item.authorName)
                 .put("fileSizeBytes", item.fileSizeBytes)
                 .put("updatedAtMillis", item.updatedAtMillis)
+                .put("downloadCount", item.downloadCount)
         )
     }
 }
@@ -263,6 +266,7 @@ private fun JSONArray?.toWorkshopSummaries(): List<WorkshopItemSummary> {
                     authorName = item.optString("authorName"),
                     fileSizeBytes = item.optLong("fileSizeBytes"),
                     updatedAtMillis = item.optLong("updatedAtMillis"),
+                    downloadCount = item.optLong("downloadCount"),
                 )
             )
         }

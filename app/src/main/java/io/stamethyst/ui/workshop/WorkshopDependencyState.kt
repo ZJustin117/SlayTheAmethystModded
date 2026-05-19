@@ -11,6 +11,7 @@ internal data class WorkshopDependencyUiState(
     val item: WorkshopItemSummary,
     val installed: Boolean,
     val defaultInstalled: Boolean,
+    val downloadState: WorkshopModDownloadState,
     val statusLabel: String,
 )
 
@@ -20,11 +21,17 @@ internal fun resolveWorkshopDependencyUiStates(
     downloadTasks: List<WorkshopDownloadTaskUi>,
 ): List<WorkshopDependencyUiState> = dependencies.map { dependency ->
     val defaultInstalled = dependency.isDefaultInstalledWorkshopDependency()
+    val downloadState = resolveWorkshopModDownloadState(
+        item = dependency,
+        installedMods = installedMods,
+        downloadTasks = downloadTasks,
+    )
     val installed = defaultInstalled || dependency.isInstalledOrQueued(installedMods, downloadTasks)
     WorkshopDependencyUiState(
         item = dependency,
         installed = installed,
         defaultInstalled = defaultInstalled,
+        downloadState = downloadState,
         statusLabel = when {
             defaultInstalled -> "默认已安装"
             installed -> "已安装"

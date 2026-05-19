@@ -18,6 +18,7 @@ import androidx.appcompat.app.AppCompatActivity
 import io.stamethyst.backend.diag.LauncherLogcatCaptureProcessClient
 import io.stamethyst.backend.diag.LogcatCaptureProcessClient
 import io.stamethyst.backend.launch.GameLaunchReturnTracker
+import io.stamethyst.backend.workshop.WorkshopUpdateCheckCoordinator
 import io.stamethyst.config.LegacyStsStorageMigration
 import io.stamethyst.config.RuntimePaths
 import io.stamethyst.backend.mods.StsJarValidator
@@ -145,6 +146,7 @@ class LauncherActivity : AppCompatActivity() {
         }
         maybeShowExternalStsImportNotice(intent)
         maybeHandleJarIntent(intent)
+        WorkshopUpdateCheckCoordinator.checkOnAppStartIfDue(this)
     }
 
     override fun onNewIntent(intent: Intent) {

@@ -8,15 +8,8 @@ kotlin {
     jvmToolchain(21)
 }
 
-sourceSets {
-    main {
-        kotlin.srcDir("../../WorkshopOnAndroid/steam-protocol/src/main/kotlin")
-        proto.srcDir("../../WorkshopOnAndroid/steam-protocol/src/main/proto")
-    }
-}
-
 dependencies {
-    api("com.google.protobuf:protobuf-java:${libs.versions.protobufLite.get()}")
+    api(libs.protobuf.java)
     implementation(platform(libs.okhttpBom))
     implementation(libs.coroutines.core)
     implementation(libs.kotlinx.serialization.json)

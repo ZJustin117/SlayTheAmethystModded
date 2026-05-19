@@ -1,8 +1,12 @@
 package io.stamethyst.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -33,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.activity.compose.LocalActivity
@@ -63,6 +68,8 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import io.stamethyst.R
+import io.stamethyst.backend.workshop.WorkshopItemSummary
+import io.stamethyst.backend.workshop.WorkshopUpdateCheckCoordinator
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
@@ -99,6 +106,8 @@ import io.stamethyst.ui.settings.LauncherSteamCloudSyncBlacklistSettingsScreen
 import io.stamethyst.ui.settings.SettingsScreenViewModel
 import io.stamethyst.ui.preferences.LauncherPreferences
 
+private const val PAGE_TRANSITION_DURATION_MS = 420
+
 @Composable
 fun LauncherContent(
     initialRoute: Route = Route.Main,
@@ -119,8 +128,12 @@ fun LauncherContent(
     val feedbackInboxState by FeedbackInboxCoordinator.uiState.collectAsState()
     val mainUiState = mainViewModel.uiState
     val settingsUiState = settingsViewModel.uiState
+    val workshopViewModel: WorkshopViewModel = viewModel()
     val currentRoute = navigator.backStack.lastOrNull() as? Route
     val showLauncherDock = isLauncherDockRoute(currentRoute)
+    var forwardPageTransition by remember { mutableStateOf(true) }
+    var modsBatchSelectionMode by remember { mutableStateOf(false) }
+    val showAnimatedLauncherDock = showLauncherDock && !modsBatchSelectionMode
     val launcherDockHazeState = rememberHazeState()
     val isBlockingBusyInteractionLocked =
         mainUiState.busyOperation.usesBlockingOverlay() ||
@@ -138,6 +151,12 @@ fun LauncherContent(
         settingsUiState.busyOperation.usesBlockingOverlay() ->
             settingsUiState.busyProgressPercent
         else -> null
+    }
+
+    LaunchedEffect(currentRoute) {
+        if (currentRoute != Route.Mods) {
+            modsBatchSelectionMode = false
+        }
     }
 
     CompositionLocalProvider(
@@ -167,6 +186,13 @@ fun LauncherContent(
                 }
             }
         }
+        LaunchedEffect(activity) {
+            WorkshopUpdateCheckCoordinator.completionNotices.collect { completion ->
+                LauncherTransientNoticeBus.show(
+                    UiText.DynamicString(completion.toNoticeMessage())
+                )
+            }
+        }
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background,
@@ -193,26 +219,10 @@ fun LauncherContent(
                     },
                     backStack = navigator.backStack,
                     transitionSpec = {
-                        slideInHorizontally(
-                            animationSpec = tween(durationMillis = 420),
-                            initialOffsetX = { fullWidth -> fullWidth }
-                        ).togetherWith(
-                            slideOutHorizontally(
-                                animationSpec = tween(durationMillis = 420),
-                                targetOffsetX = { fullWidth -> -fullWidth }
-                            )
-                        )
+                        horizontalPageTransition(forward = forwardPageTransition)
                     },
                     popTransitionSpec = {
-                        slideInHorizontally(
-                            animationSpec = tween(durationMillis = 420),
-                            initialOffsetX = { fullWidth -> -fullWidth }
-                        ).togetherWith(
-                            slideOutHorizontally(
-                                animationSpec = tween(durationMillis = 420),
-                                targetOffsetX = { fullWidth -> fullWidth }
-                            )
-                        )
+                        horizontalPageTransition(forward = false)
                     },
                     entryProvider = entryProvider {
                         entry<Route.QuickStart> {
@@ -286,7 +296,8 @@ fun LauncherContent(
                                             navigator.push(Route.FeedbackSubscriptions)
                                         }
                                     }
-                                }
+                                },
+                                onBatchSelectionModeChange = { modsBatchSelectionMode = it }
                             )
                         }
 
@@ -304,6 +315,7 @@ fun LauncherContent(
 
                         entry<Route.Workshop> {
                             WorkshopScreen(
+                                viewModel = workshopViewModel,
                                 modifier = Modifier.fillMaxSize(),
                                 showBackButton = false,
                                 onBack = { navigator.goBack() },
@@ -325,14 +337,22 @@ fun LauncherContent(
                             WorkshopDetailScreen(
                                 appId = route.appId.toUInt(),
                                 publishedFileId = publishedFileId,
+                                viewModel = workshopViewModel,
                                 modifier = Modifier.fillMaxSize(),
                                 onBack = { navigator.goBack() },
                                 onOpenDownloadCenter = { navigator.push(Route.WorkshopDownloadCenter) },
+                                onOpenDetails = { item ->
+                                    navigator.push(
+                                        Route.WorkshopDetail(
+                                            publishedFileId = item.publishedFileId.toString(),
+                                            appId = item.appId.toLong(),
+                                        )
+                                    )
+                                },
                             )
                         }
 
                         entry<Route.WorkshopDownloadCenter> {
-                            val workshopViewModel: WorkshopViewModel = viewModel()
                             val context = LocalContext.current
                             WorkshopDownloadCenterScreen(
                                 modifier = Modifier.fillMaxSize(),
@@ -440,13 +460,27 @@ fun LauncherContent(
                     }
                     )
                 }
-                if (showLauncherDock) {
+                AnimatedVisibility(
+                    visible = showAnimatedLauncherDock,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    enter = slideInVertically(
+                        animationSpec = tween(durationMillis = 220),
+                        initialOffsetY = { fullHeight -> fullHeight }
+                    ),
+                    exit = slideOutVertically(
+                        animationSpec = tween(durationMillis = 220),
+                        targetOffsetY = { fullHeight -> fullHeight }
+                    )
+                ) {
                     LauncherDockBar(
-                        modifier = Modifier.align(Alignment.BottomCenter),
                         hazeState = launcherDockHazeState,
                         currentRoute = currentRoute,
                         onSelectRoute = { route ->
                             if (currentRoute != route || navigator.stackSize > 1) {
+                                forwardPageTransition = isForwardDockTransition(
+                                    from = currentRoute.launcherDockRoute(),
+                                    to = route.launcherDockRoute(),
+                                )
                                 navigator.resetRoot(route)
                             }
                         }
@@ -812,6 +846,7 @@ private fun RowScope.LauncherDockItem(
     label: String,
     onSelectRoute: (Route) -> Unit,
 ) {
+    val dockItemShape = RoundedCornerShape(20.dp)
     val contentColor = if (selected) {
         MaterialTheme.colorScheme.primary
     } else {
@@ -821,6 +856,7 @@ private fun RowScope.LauncherDockItem(
         modifier = Modifier
             .weight(1f)
             .height(58.dp)
+            .clip(dockItemShape)
             .clickable { onSelectRoute(route) },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
@@ -850,6 +886,56 @@ private fun RowScope.LauncherDockItem(
 
 private fun isLauncherDockRoute(route: Route?): Boolean {
     return route.launcherDockRoute() != null
+}
+
+private fun horizontalPageTransition(forward: Boolean): ContentTransform {
+    val direction = if (forward) 1 else -1
+    return slideInHorizontally(
+        animationSpec = tween(durationMillis = PAGE_TRANSITION_DURATION_MS),
+        initialOffsetX = { fullWidth -> fullWidth * direction }
+    ).togetherWith(
+        slideOutHorizontally(
+            animationSpec = tween(durationMillis = PAGE_TRANSITION_DURATION_MS),
+            targetOffsetX = { fullWidth -> -fullWidth * direction }
+        )
+    )
+}
+
+private fun isForwardDockTransition(from: Route?, to: Route?): Boolean {
+    val fromIndex = from.launcherDockIndex()
+    val toIndex = to.launcherDockIndex()
+    return if (fromIndex != null && toIndex != null && fromIndex != toIndex) {
+        toIndex > fromIndex
+    } else {
+        true
+    }
+}
+
+private fun Route?.launcherDockIndex(): Int? {
+    return when (this) {
+        Route.Main -> 0
+        Route.Mods -> 1
+        Route.Workshop -> 2
+        Route.Settings -> 3
+        else -> null
+    }
+}
+
+private fun io.stamethyst.backend.workshop.WorkshopUpdateCheckCompletion.toNoticeMessage(): String {
+    val error = errorSummary
+    if (!error.isNullOrBlank()) {
+        return "模组更新检查失败：$error"
+    }
+    val base = if (updateCount > 0) {
+        "检查完成，发现 $updateCount 个可更新模组"
+    } else {
+        "检查完成，所有模组已为最新"
+    }
+    return if (failedCount > 0) {
+        "$base，$failedCount 个检查失败"
+    } else {
+        base
+    }
 }
 
 private fun Route?.launcherDockRoute(): Route? {

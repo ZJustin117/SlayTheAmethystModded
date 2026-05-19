@@ -1,13 +1,14 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package io.stamethyst.ui.workshop
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.graphics.BitmapFactory
 import android.os.Build
-import android.util.LruCache
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -28,18 +29,25 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import androidx.compose.material3.SearchBar
+import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -54,16 +62,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.core.content.ContextCompat
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
@@ -71,14 +78,16 @@ import io.stamethyst.R
 import io.stamethyst.backend.workshop.WorkshopBrowseSort
 import io.stamethyst.backend.workshop.WorkshopBrowseTimeFilter
 import io.stamethyst.backend.workshop.WorkshopItemSummary
+import io.stamethyst.backend.workshop.WorkshopPreviewCacheStore
+import io.stamethyst.backend.workshop.isActiveDownload
 import io.stamethyst.ui.CollapsibleFloatingGlassHeader
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
 
 @Composable
 internal fun WorkshopScreen(
+    viewModel: WorkshopViewModel,
     modifier: Modifier = Modifier,
     showBackButton: Boolean = true,
     onBack: () -> Unit,
@@ -87,7 +96,6 @@ internal fun WorkshopScreen(
     onOpenDetails: (WorkshopItemSummary) -> Unit,
 ) {
     val context = LocalContext.current
-    val viewModel: WorkshopViewModel = viewModel()
     val state = viewModel.uiState
     val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     fun requestNotificationPermissionIfNeeded() {
@@ -105,9 +113,19 @@ internal fun WorkshopScreen(
         listState.firstVisibleItemScrollOffset > with(density) { 24.dp.roundToPx() }
     val measuredHeaderHeight = with(density) { headerHeightPx.toDp() }
     val headerContentTopInset = (if (headerHeightPx == 0) 102.dp else measuredHeaderHeight) + 16.dp
+    val refreshIndicatorTopInset = (if (headerHeightPx == 0) 102.dp else measuredHeaderHeight) + 8.dp
+    val pullToRefreshState = rememberPullToRefreshState()
+    val activeDownloadTaskCount = WorkshopDownloadCenterStore.tasks.count { it.status.isActiveDownload() }
     var query by rememberSaveable { mutableStateOf("") }
-    var sort by rememberSaveable { mutableStateOf(WorkshopBrowseSort.TextSearch) }
-    var timeFilter by rememberSaveable { mutableStateOf(WorkshopBrowseTimeFilter.ThreeMonths) }
+    var sort by rememberSaveable { mutableStateOf(WorkshopBrowseSort.MostPopular) }
+    var timeFilter by rememberSaveable { mutableStateOf(WorkshopBrowseTimeFilter.OneWeek) }
+    fun searchWithPopularAllTime() {
+        val searchSort = WorkshopBrowseSort.MostPopular
+        val searchTimeFilter = WorkshopBrowseTimeFilter.AllTime
+        sort = searchSort
+        timeFilter = searchTimeFilter
+        viewModel.search(context.applicationContext, query, searchSort, searchTimeFilter)
+    }
     val shouldLoadMore by remember {
         derivedStateOf {
             val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: return@derivedStateOf false
@@ -117,6 +135,14 @@ internal fun WorkshopScreen(
 
     LaunchedEffect(Unit) {
         viewModel.load(context.applicationContext)
+    }
+
+    LaunchedEffect(state.downloadInProgress) {
+        if (!state.downloadInProgress) return@LaunchedEffect
+        while (true) {
+            delay(1000L)
+            viewModel.refreshDownloadState(context.applicationContext)
+        }
     }
 
     LaunchedEffect(shouldLoadMore, state.items.size, state.hasMorePages) {
@@ -131,96 +157,122 @@ internal fun WorkshopScreen(
             .statusBarsPadding()
             .padding(start = 16.dp, top = 18.dp, end = 16.dp),
     ) {
-        LazyColumn(
-            state = listState,
+        PullToRefreshBox(
+            isRefreshing = state.browseLoading && state.items.isNotEmpty(),
+            onRefresh = { viewModel.refreshBrowse(context.applicationContext) },
+            state = pullToRefreshState,
+            indicator = {
+                PullToRefreshDefaults.Indicator(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = refreshIndicatorTopInset),
+                    isRefreshing = state.browseLoading && state.items.isNotEmpty(),
+                    state = pullToRefreshState,
+                )
+            },
             modifier = Modifier
                 .fillMaxSize()
                 .hazeSource(state = headerHazeState)
                 .fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 132.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item {
-                Spacer(modifier = Modifier.height(headerContentTopInset))
-            }
-            item {
-                WorkshopStatusHeader(
-                    state = state,
-                    onOpenSteamLogin = onOpenSteamLogin,
-                )
-            }
-
-            item {
-                SearchPanel(
-                    query = query,
-                    loading = state.browseLoading,
-                    sort = sort,
-                    timeFilter = timeFilter,
-                    onQueryChange = { query = it },
-                    onSearch = {
-                        viewModel.search(context.applicationContext, query, sort, timeFilter)
-                    },
-                    onSortChange = { selectedSort ->
-                        sort = selectedSort
-                        viewModel.search(context.applicationContext, query, selectedSort, timeFilter)
-                    },
-                    onTimeFilterChange = { selectedTimeFilter ->
-                        timeFilter = selectedTimeFilter
-                        viewModel.search(context.applicationContext, query, sort, selectedTimeFilter)
-                    },
-                )
-            }
-
-            if (state.errorMessage != null) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 132.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 item {
-                    ErrorPanel(
-                        message = state.errorMessage,
-                        onRetry = { viewModel.search(context.applicationContext, query, sort, timeFilter) },
+                    Spacer(modifier = Modifier.height(headerContentTopInset))
+                }
+                if (!state.steamLoggedIn) {
+                    item(key = "workshop-status-header") {
+                        WorkshopStatusHeader(onOpenSteamLogin = onOpenSteamLogin)
+                    }
+                }
+
+                item(key = "workshop-search-panel") {
+                    SearchPanel(
+                        query = query,
+                        loading = state.browseLoading,
+                        sort = sort,
+                        timeFilter = timeFilter,
+                        onQueryChange = { query = it },
+                        onSearch = ::searchWithPopularAllTime,
+                        onSortChange = { selectedSort ->
+                            sort = selectedSort
+                            viewModel.search(context.applicationContext, query, selectedSort, timeFilter)
+                        },
+                        onTimeFilterChange = { selectedTimeFilter ->
+                            timeFilter = selectedTimeFilter
+                            viewModel.search(context.applicationContext, query, sort, selectedTimeFilter)
+                        },
                     )
                 }
-            }
 
-            item {
-                SectionTitle(
-                    title = "工坊列表",
-                    subtitle = when {
-                        state.browseLoading -> "正在加载"
-                        state.items.isEmpty() -> "没有结果"
-                        else -> "${state.items.size} 个条目"
-                    },
-                )
-            }
-
-            when {
-                state.browseLoading && state.items.isEmpty() -> {
-                    item { LoadingPanel("正在连接 Steam 创意工坊") }
-                }
-                state.items.isEmpty() && state.errorMessage == null -> {
-                    item { EmptyPanel(onRetry = { viewModel.search(context.applicationContext, query, sort, timeFilter) }) }
-                }
-                else -> {
-                    items(state.items, key = { it.publishedFileId.toString() }) { item ->
-                        val downloadState = resolveWorkshopModDownloadState(
-                            item = item,
-                            installedMods = state.installedMods,
-                            downloadTasks = WorkshopDownloadCenterStore.tasks,
-                        )
-                        WorkshopItemCard(
-                            item = item,
-                            downloadState = downloadState,
-                            onClick = { onOpenDetails(item) },
-                            onDownload = {
-                                requestNotificationPermissionIfNeeded()
-                                viewModel.download(context.applicationContext, item)
-                            },
+                if (state.errorMessage != null) {
+                    item(key = "workshop-error") {
+                        ErrorPanel(
+                            modifier = Modifier.animateItem(),
+                            message = state.errorMessage,
+                            onRetry = { viewModel.search(context.applicationContext, query, sort, timeFilter) },
                         )
                     }
-                    item {
-                        BrowsePaginationFooter(
-                            loading = state.loadingMore,
-                            hasMorePages = state.hasMorePages,
-                            itemCount = state.items.size,
-                        )
+                }
+
+                item(key = "workshop-section-title") {
+                    SectionTitle(
+                        title = "工坊列表",
+                        subtitle = when {
+                            state.browseLoading -> "正在加载"
+                            state.items.isEmpty() -> "没有结果"
+                            else -> "${state.items.size} 个条目"
+                        },
+                    )
+                }
+
+                when {
+                    state.browseLoading && state.items.isEmpty() -> {
+                        item(key = "workshop-loading") {
+                            LoadingPanel(
+                                modifier = Modifier.animateItem(),
+                                text = "正在连接 Steam 创意工坊",
+                            )
+                        }
+                    }
+                    state.items.isEmpty() && state.errorMessage == null -> {
+                        item(key = "workshop-empty") {
+                            EmptyPanel(
+                                modifier = Modifier.animateItem(),
+                                onRetry = { viewModel.search(context.applicationContext, query, sort, timeFilter) },
+                            )
+                        }
+                    }
+                    else -> {
+                        items(state.items, key = { it.publishedFileId.toString() }) { item ->
+                            val downloadState = resolveWorkshopModDownloadState(
+                                item = item,
+                                installedMods = state.installedMods,
+                                downloadTasks = WorkshopDownloadCenterStore.tasks,
+                            )
+                            WorkshopItemCard(
+                                modifier = Modifier.animateItem(),
+                                item = item,
+                                downloadState = downloadState,
+                                onClick = { onOpenDetails(item) },
+                                onDownload = {
+                                    requestNotificationPermissionIfNeeded()
+                                    viewModel.download(context.applicationContext, item)
+                                },
+                            )
+                        }
+                        item(key = "workshop-pagination-footer") {
+                            BrowsePaginationFooter(
+                                modifier = Modifier.animateItem(),
+                                loading = state.loadingMore,
+                                hasMorePages = state.hasMorePages,
+                                itemCount = state.items.size,
+                            )
+                        }
                     }
                 }
             }
@@ -239,6 +291,7 @@ internal fun WorkshopScreen(
             pinnedContent = {
                 WorkshopHeaderPinnedContent(
                     showBackButton = showBackButton,
+                    activeDownloadTaskCount = activeDownloadTaskCount,
                     onBack = onBack,
                     onOpenDownloadCenter = onOpenDownloadCenter,
                 )
@@ -262,9 +315,15 @@ internal fun WorkshopScreen(
 @Composable
 private fun WorkshopHeaderPinnedContent(
     showBackButton: Boolean,
+    activeDownloadTaskCount: Int,
     onBack: () -> Unit,
     onOpenDownloadCenter: () -> Unit,
 ) {
+    val downloadCenterDescription = if (activeDownloadTaskCount > 0) {
+        "下载中心，正在进行 $activeDownloadTaskCount 个下载任务"
+    } else {
+        "下载中心"
+    }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -275,14 +334,14 @@ private fun WorkshopHeaderPinnedContent(
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
-                text = "STS 创意工坊",
+                text = "模组市场",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = "浏览并下载 Slay the Spire 模组",
+                text = "浏览并下载创意工坊模组",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -293,10 +352,18 @@ private fun WorkshopHeaderPinnedContent(
             onClick = onOpenDownloadCenter,
             modifier = Modifier.size(48.dp),
         ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_cloud),
-                contentDescription = "下载中心",
-            )
+            BadgedBox(
+                badge = {
+                    if (activeDownloadTaskCount > 0) {
+                        Badge { Text(if (activeDownloadTaskCount > 99) "99+" else activeDownloadTaskCount.toString()) }
+                    }
+                },
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_workshop_download),
+                    contentDescription = downloadCenterDescription,
+                )
+            }
         }
         if (showBackButton) {
             TextButton(onClick = onBack) { Text("返回") }
@@ -306,29 +373,36 @@ private fun WorkshopHeaderPinnedContent(
 
 @Composable
 private fun BrowsePaginationFooter(
+    modifier: Modifier = Modifier,
     loading: Boolean,
     hasMorePages: Boolean,
     itemCount: Int,
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(72.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        when {
-            loading -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator()
-                Text("正在加载更多模组", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val showFooter = loading || (!hasMorePages && itemCount > 0)
+    if (!showFooter) {
+        Spacer(modifier = Modifier.height(72.dp))
+        return
+    }
+    Card(modifier = modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(72.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            when {
+                loading -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator()
+                    Text("正在加载更多模组", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                else -> Text("已经到底了", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            !hasMorePages && itemCount > 0 -> Text("已经到底了", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
 @Composable
 private fun WorkshopStatusHeader(
-    state: WorkshopUiState,
     onOpenSteamLogin: () -> Unit,
 ) {
     Card(
@@ -336,21 +410,12 @@ private fun WorkshopStatusHeader(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (!state.steamLoggedIn) {
-                Text(
-                    text = "Steam 尚未登录，部分模组不会显示。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                OutlinedButton(onClick = onOpenSteamLogin) { Text("登录 Steam") }
-            }
-            if (state.installedMods.isNotEmpty()) {
-                Text(
-                    text = "已下载 ${state.installedMods.size} 个创意工坊模组",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            Text(
+                text = "Steam 尚未登录，部分模组不会显示。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(onClick = onOpenSteamLogin) { Text("登录 Steam") }
         }
     }
 }
@@ -366,25 +431,63 @@ private fun SearchPanel(
     onSortChange: (WorkshopBrowseSort) -> Unit,
     onTimeFilterChange: (WorkshopBrowseTimeFilter) -> Unit,
 ) {
+    val keyboardController = LocalSoftwareKeyboardController.current
+    var searchExpanded by rememberSaveable { mutableStateOf(false) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
     var timeMenuExpanded by remember { mutableStateOf(false) }
+    fun submitSearch() {
+        if (!loading) {
+            searchExpanded = false
+            keyboardController?.hide()
+            onSearch()
+        }
+    }
 
-    Card {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedTextField(
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            Modifier
+                .padding(16.dp)
+                .animateContentSize(),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            SearchBar(
                 modifier = Modifier.fillMaxWidth(),
-                value = query,
-                onValueChange = onQueryChange,
-                label = { Text("搜索模组") },
-                singleLine = true,
-                supportingText = { Text("留空浏览推荐/默认排序条目") },
-            )
+                inputField = {
+                    SearchBarDefaults.InputField(
+                        query = query,
+                        onQueryChange = onQueryChange,
+                        onSearch = { submitSearch() },
+                        expanded = searchExpanded,
+                        onExpandedChange = { searchExpanded = it },
+                        placeholder = { Text("搜索模组") },
+                        trailingIcon = {
+                            TextButton(
+                                enabled = !loading,
+                                onClick = { submitSearch() },
+                            ) { Text("搜索") }
+                        },
+                    )
+                },
+                expanded = searchExpanded,
+                onExpandedChange = { searchExpanded = it },
+            ) {
+                Text(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    text = "留空浏览推荐/默认排序条目",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Button(enabled = !loading, onClick = onSearch) { Text("搜索") }
+                Text(
+                    text = "留空浏览推荐/默认排序条目",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (sort.usesTimeFilter) {
                         Box {
@@ -435,23 +538,29 @@ private fun SearchPanel(
                     }
                 }
             }
-            if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            AnimatedVisibility(
+                visible = loading,
+                label = "workshop-search-loading"
+            ) {
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
         }
     }
 }
 
 @Composable
 private fun WorkshopItemCard(
+    modifier: Modifier = Modifier,
     item: WorkshopItemSummary,
     downloadState: WorkshopModDownloadState,
     onClick: () -> Unit,
     onDownload: () -> Unit,
 ) {
     Card(
-        modifier = Modifier
+        onClick = onClick,
+        modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 96.dp)
-            .clickable(onClick = onClick),
+            .heightIn(min = 96.dp),
     ) {
         Row(
             Modifier.padding(12.dp),
@@ -459,6 +568,7 @@ private fun WorkshopItemCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             WorkshopPreviewImage(
+                publishedFileId = item.publishedFileId,
                 url = item.previewUrl,
                 contentDescription = "${item.title} 预览图",
             )
@@ -578,33 +688,46 @@ private val WorkshopModDownloadState.actionIconRes: Int
 
 @Composable
 internal fun WorkshopPreviewImage(
+    publishedFileId: ULong,
     url: String,
     contentDescription: String,
     modifier: Modifier = Modifier.size(72.dp),
 ) {
-    val imageState by produceState<PreviewImageState>(initialValue = PreviewImageState.Loading, key1 = url) {
+    val context = LocalContext.current
+    val imageState by produceState<PreviewImageState>(
+        initialValue = PreviewImageState.Loading,
+        key1 = publishedFileId,
+        key2 = url,
+    ) {
         value = when {
             url.isBlank() -> PreviewImageState.Failed
             else -> withContext(Dispatchers.IO) {
-                WorkshopPreviewImageLoader.load(url)?.let(PreviewImageState::Loaded) ?: PreviewImageState.Failed
+                WorkshopPreviewCacheStore.load(context.applicationContext, publishedFileId, url)
+                    ?.let(PreviewImageState::Loaded)
+                    ?: PreviewImageState.Failed
             }
         }
     }
-    Box(
-        modifier = modifier
-            .clip(CardDefaults.shape)
-            .background(MaterialTheme.colorScheme.surfaceVariant),
-        contentAlignment = Alignment.Center,
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
-        when (val current = imageState) {
-            PreviewImageState.Loading -> PreviewImageSkeleton(showLabel = false)
-            PreviewImageState.Failed -> PreviewImageSkeleton(showLabel = true)
-            is PreviewImageState.Loaded -> Image(
-                bitmap = current.bitmap.asImageBitmap(),
-                contentDescription = contentDescription,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-            )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center,
+        ) {
+            when (val current = imageState) {
+                PreviewImageState.Loading -> PreviewImageSkeleton(showLabel = false)
+                PreviewImageState.Failed -> PreviewImageSkeleton(showLabel = true)
+                is PreviewImageState.Loaded -> Image(
+                    bitmap = current.bitmap.asImageBitmap(),
+                    contentDescription = contentDescription,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+            }
         }
     }
 }
@@ -631,30 +754,16 @@ private fun PreviewImageSkeleton(showLabel: Boolean) {
     }
 }
 
-private object WorkshopPreviewImageLoader {
-    private val cache = object : LruCache<String, android.graphics.Bitmap>(CACHE_SIZE_BYTES) {
-        override fun sizeOf(key: String, value: android.graphics.Bitmap): Int = value.byteCount
-    }
-    private val client = OkHttpClient()
-
-    fun load(url: String): android.graphics.Bitmap? {
-        cache.get(url)?.let { return it }
-        return runCatching {
-        client.newCall(Request.Builder().url(url).build()).execute().use { response ->
-            if (!response.isSuccessful) return@runCatching null
-            BitmapFactory.decodeStream(response.body.byteStream())?.also { bitmap ->
-                cache.put(url, bitmap)
-            }
-        }
-        }.getOrNull()
-    }
-
-    private const val CACHE_SIZE_BYTES = 16 * 1024 * 1024
-}
-
 @Composable
-private fun ErrorPanel(message: String, onRetry: () -> Unit) {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+private fun ErrorPanel(
+    modifier: Modifier = Modifier,
+    message: String,
+    onRetry: () -> Unit,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+    ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("加载失败", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onErrorContainer)
             Text(message, color = MaterialTheme.colorScheme.onErrorContainer)
@@ -664,8 +773,11 @@ private fun ErrorPanel(message: String, onRetry: () -> Unit) {
 }
 
 @Composable
-private fun EmptyPanel(onRetry: () -> Unit) {
-    Card {
+private fun EmptyPanel(
+    modifier: Modifier = Modifier,
+    onRetry: () -> Unit,
+) {
+    Card(modifier = modifier.fillMaxWidth()) {
         Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("没有找到条目", style = MaterialTheme.typography.titleMedium)
             Text("换个关键词试试，或稍后刷新 Steam 创意工坊。", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -675,11 +787,16 @@ private fun EmptyPanel(onRetry: () -> Unit) {
 }
 
 @Composable
-private fun LoadingPanel(text: String) {
-    Box(Modifier.fillMaxWidth().height(140.dp), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            CircularProgressIndicator()
-            Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun LoadingPanel(
+    modifier: Modifier = Modifier,
+    text: String,
+) {
+    Card(modifier = modifier.fillMaxWidth()) {
+        Box(Modifier.fillMaxWidth().height(140.dp), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                CircularProgressIndicator()
+                Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }

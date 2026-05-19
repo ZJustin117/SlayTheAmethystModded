@@ -56,6 +56,8 @@ import io.stamethyst.backend.workshop.WorkshopItemSummary
 import io.stamethyst.backend.workshop.WorkshopDownloadProcessService
 import io.stamethyst.backend.workshop.WorkshopMetadataStore
 import io.stamethyst.backend.workshop.WorkshopModCardState
+import io.stamethyst.backend.workshop.WorkshopService
+import io.stamethyst.backend.workshop.isActiveDownload
 import io.stamethyst.config.BackBehavior
 import io.stamethyst.config.RuntimePaths
 import io.stamethyst.config.SteamCloudSaveMode
@@ -73,6 +75,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.runBlocking
 
 @Stable
 class MainScreenViewModel : ViewModel() {
@@ -185,6 +188,7 @@ class MainScreenViewModel : ViewModel() {
     private val launchExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private val steamCloudExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private val importedStsJarValidationExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    private val workshopUpdateExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private var currentModSuggestions: Map<String, String> = emptyMap()
     private var currentReadModSuggestionKeys: Set<String> = emptySet()
     private var pendingLaunchUnreadSuggestionModNames: List<String> = emptyList()
@@ -262,7 +266,7 @@ class MainScreenViewModel : ViewModel() {
         if (uiState.optionalMods.none { it.newlyImported }) {
             return
         }
-        modManagementController.clearNewlyImportedHighlights()
+        modManagementController.clearNewlyImportedHighlights(host)
         republish(host)
     }
 
@@ -765,7 +769,7 @@ class MainScreenViewModel : ViewModel() {
 
     fun onToggleMod(host: Activity, mod: ModItemUi, enabled: Boolean) {
         modManagementController.onToggleMod(host, mod, enabled)
-        if (enabled && modManagementController.clearEnabledNewlyImportedHighlights()) {
+        if (enabled && modManagementController.clearEnabledNewlyImportedHighlights(host)) {
             republish(host)
         }
     }
@@ -826,8 +830,64 @@ class MainScreenViewModel : ViewModel() {
     }
 
     fun onUpdateWorkshopMod(host: Activity, mod: ModItemUi) {
-        mod.workshop ?: return
-        onRetryWorkshopDownload(host, mod)
+        val workshop = mod.workshop ?: return
+        val store = WorkshopMetadataStore(host)
+        val record = store.findByPublishedFileId(workshop.appId, workshop.publishedFileId)
+        if (record == null) {
+            _effects.tryEmit(Effect.ShowSnackbar(UiText.DynamicString("未找到创意工坊下载记录")))
+            return
+        }
+        val taskStore = WorkshopDownloadTaskStore(host)
+        if (taskStore.find(record.publishedFileId)?.status?.isActiveDownload() == true) {
+            _effects.tryEmit(Effect.ShowSnackbar(UiText.DynamicString("该模组已在更新队列中")))
+            return
+        }
+        val existingTask = taskStore.find(record.publishedFileId)
+        taskStore.upsert(
+            record.toWorkshopUpdatePlaceholderTaskRecord(message = "正在准备更新")
+        )
+        refresh(host)
+        workshopUpdateExecutor.execute {
+            try {
+                val details = runBlocking {
+                    WorkshopService(host.applicationContext)
+                        .getDetails(record.appId, record.publishedFileId)
+                }
+                val task = details.toWorkshopDownloadTaskRecord(message = "等待更新")
+                taskStore.upsert(task)
+                store.updateState(
+                    appId = record.appId,
+                    publishedFileId = record.publishedFileId,
+                    state = WorkshopModCardState.Downloading,
+                    statusText = "等待更新",
+                )
+                WorkshopDownloadProcessService.startNextQueued(host.applicationContext)
+                host.runOnUiThread {
+                    _effects.tryEmit(Effect.ShowSnackbar(UiText.DynamicString("已加入更新队列：${record.title}")))
+                    refresh(host)
+                }
+            } catch (error: Throwable) {
+                store.updateState(
+                    appId = record.appId,
+                    publishedFileId = record.publishedFileId,
+                    state = WorkshopModCardState.UpdateAvailable,
+                    statusText = "准备更新失败：${error.message ?: error.javaClass.simpleName}",
+                )
+                if (existingTask == null) {
+                    taskStore.remove(record.publishedFileId)
+                } else {
+                    taskStore.upsert(existingTask)
+                }
+                host.runOnUiThread {
+                    _effects.tryEmit(
+                        Effect.ShowSnackbar(
+                            UiText.DynamicString("准备更新失败：${error.message ?: error.javaClass.simpleName}")
+                        )
+                    )
+                    refresh(host)
+                }
+            }
+        }
     }
 
     private fun WorkshopInstalledModRecord.toWorkshopDownloadTaskRecord(): WorkshopDownloadTaskRecord {
@@ -851,6 +911,49 @@ class MainScreenViewModel : ViewModel() {
         )
     }
 
+    private fun WorkshopInstalledModRecord.toWorkshopUpdatePlaceholderTaskRecord(message: String): WorkshopDownloadTaskRecord {
+        val summary = WorkshopItemSummary(
+            appId = appId,
+            publishedFileId = publishedFileId,
+            title = title,
+            previewUrl = previewUrl,
+            description = description,
+            updatedAtMillis = updatedAtMillis,
+        )
+        return WorkshopDownloadTaskRecord(
+            publishedFileId = publishedFileId,
+            title = title,
+            status = WorkshopDownloadTaskStatus.Queued,
+            message = message,
+            details = WorkshopItemDetails(summary = summary),
+            previewUrl = previewUrl,
+            description = description,
+            fileSizeBytes = 0L,
+        )
+    }
+
+    private fun WorkshopItemDetails.toWorkshopDownloadTaskRecord(message: String): WorkshopDownloadTaskRecord {
+        return WorkshopDownloadTaskRecord(
+            publishedFileId = summary.publishedFileId,
+            title = summary.title,
+            status = WorkshopDownloadTaskStatus.Queued,
+            message = message,
+            details = this,
+            previewUrl = summary.previewUrl,
+            description = summary.description,
+            authorName = summary.authorName,
+            fileSizeBytes = summary.fileSizeBytes,
+            progressPercent = null,
+            downloadedBytes = 0L,
+            totalBytes = summary.fileSizeBytes.takeIf { it > 0L },
+            completedFiles = null,
+            completedChunks = null,
+            errorClass = "",
+            errorMessage = "",
+            errorStackTrace = "",
+        )
+    }
+
     fun addModLaunchProfile(host: Activity, name: String) {
         modManagementController.addModLaunchProfile(host, name)
     }
@@ -869,7 +972,7 @@ class MainScreenViewModel : ViewModel() {
 
     fun setModsSelected(host: Activity, mods: List<ModItemUi>, selected: Boolean) {
         modManagementController.setModsSelected(host, mods, selected)
-        if (selected && modManagementController.clearEnabledNewlyImportedHighlights()) {
+        if (selected && modManagementController.clearEnabledNewlyImportedHighlights(host)) {
             republish(host)
         }
     }
@@ -1006,14 +1109,14 @@ class MainScreenViewModel : ViewModel() {
 
     fun setFolderSelected(host: Activity, folderId: String, selected: Boolean) {
         modManagementController.setFolderSelected(host, folderId, selected)
-        if (selected && modManagementController.clearEnabledNewlyImportedHighlights()) {
+        if (selected && modManagementController.clearEnabledNewlyImportedHighlights(host)) {
             republish(host)
         }
     }
 
     fun setUnassignedSelected(host: Activity, selected: Boolean) {
         modManagementController.setUnassignedSelected(host, selected)
-        if (selected && modManagementController.clearEnabledNewlyImportedHighlights()) {
+        if (selected && modManagementController.clearEnabledNewlyImportedHighlights(host)) {
             republish(host)
         }
     }
@@ -2554,6 +2657,7 @@ class MainScreenViewModel : ViewModel() {
         launchExecutor.shutdownNow()
         diagnosticsExecutor.shutdownNow()
         suggestionExecutor.shutdownNow()
+        workshopUpdateExecutor.shutdownNow()
         modManagementController.shutdown()
         super.onCleared()
     }

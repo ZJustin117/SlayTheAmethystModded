@@ -20,6 +20,7 @@ import io.stamethyst.config.LauncherThemeMode
 import io.stamethyst.config.RenderSurfaceBackend
 import io.stamethyst.config.SteamCloudSaveMode
 import io.stamethyst.config.TouchMouseInteractionMode
+import io.stamethyst.backend.workshop.SteamLanguagePreference
 
 object LauncherPreferences {
     val DEFAULT_BACK_BEHAVIOR: BackBehavior
@@ -126,6 +127,10 @@ object LauncherPreferences {
         get() = LauncherConfig.MAX_WORKSHOP_DOWNLOAD_THREADS
     val DEFAULT_WORKSHOP_WATT_ACCELERATION_ENABLED: Boolean
         get() = LauncherConfig.DEFAULT_WORKSHOP_WATT_ACCELERATION_ENABLED
+    val DEFAULT_WORKSHOP_STEAM_LANGUAGE: SteamLanguagePreference
+        get() = SteamLanguagePreference.fromStorageValue(LauncherConfig.DEFAULT_WORKSHOP_STEAM_LANGUAGE)
+    val DEFAULT_WORKSHOP_AUTO_IMPORT_ENABLED: Boolean
+        get() = LauncherConfig.DEFAULT_WORKSHOP_AUTO_IMPORT_ENABLED
     val DEFAULT_STEAM_CLOUD_SAVE_MODE: SteamCloudSaveMode
         get() = LauncherConfig.DEFAULT_STEAM_CLOUD_SAVE_MODE
     val DEFAULT_STEAM_CLOUD_SYNC_BLACKLIST_PATHS: Set<String>
@@ -464,6 +469,30 @@ object LauncherPreferences {
 
     fun setWorkshopWattAccelerationEnabled(context: Context, enabled: Boolean) {
         LauncherConfig.setWorkshopWattAccelerationEnabled(context, enabled)
+    }
+
+    fun readWorkshopSteamLanguage(context: Context): SteamLanguagePreference {
+        return SteamLanguagePreference.fromStorageValue(LauncherConfig.readWorkshopSteamLanguage(context))
+    }
+
+    fun saveWorkshopSteamLanguage(context: Context, value: SteamLanguagePreference) {
+        LauncherConfig.saveWorkshopSteamLanguage(context, value.storageValue)
+    }
+
+    fun isWorkshopAutoImportEnabled(context: Context): Boolean {
+        return LauncherConfig.isWorkshopAutoImportEnabled(context)
+    }
+
+    fun setWorkshopAutoImportEnabled(context: Context, enabled: Boolean) {
+        LauncherConfig.setWorkshopAutoImportEnabled(context, enabled)
+    }
+
+    fun readLastWorkshopUpdateCheckAtMs(context: Context): Long {
+        return LauncherConfig.readLastWorkshopUpdateCheckAtMs(context)
+    }
+
+    fun saveLastWorkshopUpdateCheckAtMs(context: Context, timestampMs: Long) {
+        LauncherConfig.saveLastWorkshopUpdateCheckAtMs(context, timestampMs)
     }
 
     fun readSteamCloudSaveMode(context: Context): SteamCloudSaveMode {

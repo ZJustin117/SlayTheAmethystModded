@@ -7,6 +7,7 @@ import io.stamethyst.backend.github.FileBackedWattToolkitGithubRouteStore
 import io.stamethyst.backend.github.GithubDirectHostnameVerifier
 import io.stamethyst.backend.github.WattToolkitGithubRouteResolver
 import io.stamethyst.backend.github.WattToolkitRouteProfile
+import io.stamethyst.backend.github.trustWattToolkitForwardCertificates
 import io.stamethyst.config.LauncherConfig
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -18,7 +19,7 @@ internal val SteamCommunityWattToolkitRouteProfile = WattToolkitRouteProfile(
     name = "steam-community",
     cacheFileName = "watt-steam-community-route-cache.json",
     supportedHosts = setOf("steamcommunity.com", "www.steamcommunity.com"),
-    bootstrapForwardTargets = listOf("steamcommunity.rmbgame.net"),
+    bootstrapForwardTargets = listOf("http://steamcommunity.rmbgame.net"),
 )
 
 internal val SteamStoreWattToolkitRouteProfile = WattToolkitRouteProfile(
@@ -132,6 +133,7 @@ internal fun createSteamCloudWattToolkitRuntime(
         .readTimeout(STEAM_CLOUD_DIRECT_ACCESS_READ_TIMEOUT_MS, TimeUnit.MILLISECONDS)
         .writeTimeout(STEAM_CLOUD_DIRECT_ACCESS_READ_TIMEOUT_MS, TimeUnit.MILLISECONDS)
         .hostnameVerifier(hostnameVerifier)
+        .trustWattToolkitForwardCertificates()
         .followRedirects(false)
         .followSslRedirects(false)
         .protocols(listOf(Protocol.HTTP_1_1))

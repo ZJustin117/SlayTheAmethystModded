@@ -5,13 +5,17 @@ import java.io.File
 import java.io.IOException
 import java.net.ProtocolException
 import java.net.Proxy
+import java.security.cert.X509Certificate
 import java.util.LinkedHashSet
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.HostnameVerifier
 import javax.net.ssl.HttpsURLConnection
+import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLSession
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
 import okhttp3.ConnectionPool
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -173,6 +177,7 @@ internal fun createExperimentalGithubDirectAccessRuntime(
         .readTimeout(DEFAULT_READ_TIMEOUT_MS, TimeUnit.MILLISECONDS)
         .writeTimeout(DEFAULT_READ_TIMEOUT_MS, TimeUnit.MILLISECONDS)
         .hostnameVerifier(hostnameVerifier)
+        .trustWattToolkitForwardCertificates()
         .followRedirects(false)
         .followSslRedirects(false)
         .protocols(listOf(Protocol.HTTP_1_1))
@@ -195,6 +200,14 @@ internal fun OkHttpClient.Builder.addExperimentalGithubDirectAccess(
     )
 }
 
+internal fun OkHttpClient.Builder.trustWattToolkitForwardCertificates(): OkHttpClient.Builder = apply {
+    val trustManager = WattToolkitForwardTrustManager
+    val sslContext = SSLContext.getInstance("TLS").apply {
+        init(null, arrayOf<TrustManager>(trustManager), null)
+    }
+    sslSocketFactory(sslContext.socketFactory, trustManager)
+}
+
 internal class ExperimentalGithubDirectAccessInterceptor(
     private val routeResolvers: List<WattToolkitGithubRouteResolver>,
     private val directCallFactory: okhttp3.Call.Factory,
@@ -205,7 +218,11 @@ internal class ExperimentalGithubDirectAccessInterceptor(
         if (routeResolvers.none { resolver -> resolver.supports(request.url.host) }) {
             return chain.proceed(request)
         }
-        return executeDirectAccessRequest(request)
+        return try {
+            executeDirectAccessRequest(request)
+        } catch (_: IOException) {
+            chain.proceed(request)
+        }
     }
 
     private fun executeDirectAccessRequest(initialLogicalRequest: Request): Response {
@@ -214,8 +231,25 @@ internal class ExperimentalGithubDirectAccessInterceptor(
         while (true) {
             val resolver = routeResolvers.firstOrNull { candidate -> candidate.supports(logicalRequest.url.host) }
             val route = resolver?.resolveRouteForHost(logicalRequest.url.host)
+            if (resolver != null && route == null) {
+                return directCallFactory.newCall(logicalRequest).execute()
+                    .newBuilder()
+                    .request(logicalRequest)
+                    .build()
+            }
             val networkRequest = buildNetworkRequest(logicalRequest, route)
-            val response = directCallFactory.newCall(networkRequest).execute()
+            val response = try {
+                directCallFactory.newCall(networkRequest).execute()
+            } catch (error: IOException) {
+                val refreshedRoute = resolver?.refreshRouteForHost(logicalRequest.url.host) ?: throw error
+                val refreshedRequest = buildNetworkRequest(logicalRequest, refreshedRoute)
+                try {
+                    directCallFactory.newCall(refreshedRequest).execute()
+                } catch (refreshedError: IOException) {
+                    refreshedError.addSuppressed(error)
+                    throw refreshedError
+                }
+            }
             val redirectTarget = response.redirectTarget(logicalRequest.url, route)
             if (redirectTarget == null) {
                 return response.newBuilder()
@@ -369,6 +403,35 @@ internal class WattToolkitGithubRouteResolver(
                 return bootstrapRoute
             }
             return null
+        }
+    }
+
+    fun refreshRouteForHost(host: String): WattToolkitGithubRoute? {
+        val normalizedHost = host.lowercase(Locale.ROOT)
+        if (normalizedHost !in normalizedSupportedHosts) {
+            return null
+        }
+        synchronized(lock) {
+            cachedRoute = null
+            cachedAtMs = 0L
+            persistedRouteLoaded = true
+        }
+        val now = nowProvider()
+        val fetched = runCatching(::fetchSupportedRouteWithRetries)
+            .getOrNull()
+            ?.takeIf { route -> route.matchesLogicalHost(normalizedHost) }
+        synchronized(lock) {
+            if (fetched != null) {
+                cachedRoute = fetched
+                cachedAtMs = now
+                routeStore.save(
+                    PersistedWattToolkitGithubRoute(
+                        route = fetched,
+                        cachedAtMs = now,
+                    ),
+                )
+            }
+            return fetched
         }
     }
 
@@ -716,3 +779,11 @@ private const val HTTP_METHOD_HEAD = "HEAD"
 private const val HTTP_TEMP_REDIRECT = 307
 private const val HTTP_PERM_REDIRECT = 308
 private val REDIRECT_RESPONSE_CODES = setOf(300, 301, 302, 303, HTTP_TEMP_REDIRECT, HTTP_PERM_REDIRECT)
+
+private object WattToolkitForwardTrustManager : X509TrustManager {
+    override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) = Unit
+
+    override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) = Unit
+
+    override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
+}

@@ -71,6 +71,8 @@ import io.stamethyst.backend.update.UpdateReleaseInfo
 import io.stamethyst.backend.update.UpdateUiMessage
 import io.stamethyst.backend.update.GithubMirrorFallback
 import io.stamethyst.backend.update.UpdateSource
+import io.stamethyst.backend.workshop.SteamLanguagePreference
+import io.stamethyst.backend.workshop.WorkshopPreviewCacheStore
 import io.stamethyst.R
 import io.stamethyst.config.BackBehavior
 import io.stamethyst.config.GpuResourceGuardianMode
@@ -295,6 +297,10 @@ class SettingsScreenViewModel : ViewModel() {
         val workshopDownloadThreads: Int = LauncherPreferences.DEFAULT_WORKSHOP_DOWNLOAD_THREADS,
         val workshopWattAccelerationEnabled: Boolean =
             LauncherPreferences.DEFAULT_WORKSHOP_WATT_ACCELERATION_ENABLED,
+        val workshopSteamLanguage: SteamLanguagePreference =
+            LauncherPreferences.DEFAULT_WORKSHOP_STEAM_LANGUAGE,
+        val workshopAutoImportEnabled: Boolean =
+            LauncherPreferences.DEFAULT_WORKSHOP_AUTO_IMPORT_ENABLED,
         val steamCloudCredentialsSummary: String = "",
         val steamCloudStatusText: String = "",
         val steamCloudManifestSummary: String = "",
@@ -1447,6 +1453,28 @@ class SettingsScreenViewModel : ViewModel() {
     fun onWorkshopWattAccelerationChanged(host: Activity, enabled: Boolean) {
         LauncherPreferences.setWorkshopWattAccelerationEnabled(host, enabled)
         refreshStatus(host)
+    }
+
+    fun onWorkshopSteamLanguageChanged(host: Activity, language: SteamLanguagePreference) {
+        LauncherPreferences.saveWorkshopSteamLanguage(host, language)
+        refreshStatus(host)
+    }
+
+    fun onWorkshopAutoImportChanged(host: Activity, enabled: Boolean) {
+        LauncherPreferences.setWorkshopAutoImportEnabled(host, enabled)
+        refreshStatus(host)
+    }
+
+    fun onClearWorkshopPreviewCache(host: Activity) {
+        executor.execute {
+            val deletedCount = WorkshopPreviewCacheStore.clear(host.applicationContext)
+            host.runOnUiThread {
+                showToast(
+                    host,
+                    host.getString(R.string.settings_market_clear_preview_cache_done, deletedCount)
+                )
+            }
+        }
     }
 
     fun onSteamCloudSaveModeChanged(host: Activity, mode: SteamCloudSaveMode) {
@@ -2762,7 +2790,9 @@ class SettingsScreenViewModel : ViewModel() {
             gameplayLargerUiEnabled = input.largerUiEnabled,
             workshopMaxConcurrentDownloads = market.workshopMaxConcurrentDownloads,
             workshopDownloadThreads = market.workshopDownloadThreads,
-            workshopWattAccelerationEnabled = market.workshopWattAccelerationEnabled
+            workshopWattAccelerationEnabled = market.workshopWattAccelerationEnabled,
+            workshopSteamLanguage = market.workshopSteamLanguage,
+            workshopAutoImportEnabled = market.workshopAutoImportEnabled,
         )
     }
 
