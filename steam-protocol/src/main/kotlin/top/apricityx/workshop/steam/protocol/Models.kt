@@ -75,6 +75,13 @@ data class SteamAccountSession(
     val machineName: String = DEFAULT_MACHINE_NAME,
 )
 
+data class SteamAppProductInfo(
+    val appId: UInt,
+    val changeNumber: UInt,
+    val missingToken: Boolean,
+    val buffer: ByteArray,
+)
+
 data class SteamAuthSessionDetails(
     val username: String,
     val password: String,
@@ -199,6 +206,7 @@ interface SteamCmSession : Closeable {
         parser: com.google.protobuf.Parser<T>,
     ): T
     suspend fun requestDepotDecryptionKey(appId: UInt, depotId: UInt): ByteArray
+    suspend fun requestAppProductInfo(appId: UInt): SteamAppProductInfo
 
     val currentSession: kotlinx.coroutines.flow.StateFlow<SessionContext?>
 }

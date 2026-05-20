@@ -35,6 +35,9 @@ import io.stamethyst.backend.steamcloud.SteamCloudSaveProfileManager
 import io.stamethyst.backend.steamcloud.SteamCloudSyncBlacklist
 import io.stamethyst.backend.steamcloud.SteamCloudSyncBaseline
 import io.stamethyst.backend.steamcloud.SteamCloudUploadPlan
+import io.stamethyst.backend.steam.SteamStsJarDownloadPhase
+import io.stamethyst.backend.steam.SteamStsJarDownloadProgress
+import io.stamethyst.backend.steam.SteamStsJarDownloadService
 import io.stamethyst.backend.nativelib.NativeLibraryMarketAvailability
 import io.stamethyst.backend.nativelib.NativeLibraryMarketCatalogEntry
 import io.stamethyst.backend.nativelib.NativeLibraryMarketInstallProgress
@@ -178,6 +181,9 @@ class SettingsScreenViewModel : ViewModel() {
         val busyOperation: UiBusyOperation = UiBusyOperation.NONE,
         val busyMessage: UiText? = null,
         val busyProgressPercent: Int? = null,
+        val quickStartSteamDownloadPhase: SteamStsJarDownloadPhase? = null,
+        val quickStartSteamDownloadedBytes: Long = 0L,
+        val quickStartSteamTotalBytes: Long? = null,
         val playerName: String = LauncherPreferences.DEFAULT_PLAYER_NAME,
         val selectedRenderScale: Float = RenderScaleService.DEFAULT_RENDER_SCALE,
         val selectedTargetFps: Int = LauncherPreferences.DEFAULT_TARGET_FPS,
@@ -1455,6 +1461,11 @@ class SettingsScreenViewModel : ViewModel() {
         refreshStatus(host)
     }
 
+    fun onQuickStartSteamAccelerationChanged(host: Activity, enabled: Boolean) {
+        LauncherPreferences.setWorkshopWattAccelerationEnabled(host, enabled)
+        refreshStatus(host)
+    }
+
     fun onWorkshopSteamLanguageChanged(host: Activity, language: SteamLanguagePreference) {
         LauncherPreferences.saveWorkshopSteamLanguage(host, language)
         refreshStatus(host)
@@ -2655,6 +2666,86 @@ class SettingsScreenViewModel : ViewModel() {
         }
     }
 
+    fun onStartQuickStartSteamImport(
+        host: Activity,
+        onCompleted: ((Boolean) -> Unit)? = null
+    ) {
+        if (uiState.busy) {
+            return
+        }
+        setBusy(
+            busy = true,
+            message = UiText.StringResource(R.string.quick_start_steam_download_connecting),
+            operation = UiBusyOperation.OTHER_BUSY,
+            progressPercent = 0
+        )
+        executor.execute {
+            try {
+                val downloadedJar = SteamStsJarDownloadService(host.applicationContext)
+                    .downloadDesktopJar { progress ->
+                        host.runOnUiThread {
+                            updateQuickStartSteamDownloadProgress(progress)
+                            setBusy(
+                                busy = true,
+                                message = UiText.DynamicString(
+                                    buildQuickStartSteamDownloadProgressMessage(host, progress)
+                                ),
+                                operation = UiBusyOperation.OTHER_BUSY,
+                                progressPercent = progress.progressPercent
+                            )
+                        }
+                    }
+                host.runOnUiThread {
+                    updateQuickStartSteamDownloadProgress(
+                        SteamStsJarDownloadProgress(
+                            phase = SteamStsJarDownloadPhase.DOWNLOADING,
+                            progressPercent = 100,
+                            downloadedBytes = uiState.quickStartSteamTotalBytes
+                                ?: uiState.quickStartSteamDownloadedBytes,
+                            totalBytes = uiState.quickStartSteamTotalBytes
+                        )
+                    )
+                    setBusy(
+                        busy = true,
+                        message = UiText.StringResource(R.string.quick_start_steam_importing_jar),
+                        operation = UiBusyOperation.OTHER_BUSY,
+                        progressPercent = 100
+                    )
+                }
+                SettingsFileService.importFileToFileAtomically(
+                    sourceFile = downloadedJar,
+                    targetFile = RuntimePaths.importedStsJar(host),
+                    validator = StsJarValidator::validate
+                )
+                MtsClasspathWarmupCoordinator.invalidateCache(host)
+                val warmupWarning = prewarmMtsClasspathAfterImport(host)
+                host.runOnUiThread {
+                    setBusy(false, null)
+                    showToast(host, UiText.StringResource(R.string.sts_jar_import_success), Toast.LENGTH_SHORT)
+                    if (warmupWarning != null) {
+                        showToast(host, warmupWarning, Toast.LENGTH_LONG)
+                    }
+                    refreshStatus(host)
+                    onCompleted?.invoke(true)
+                }
+            } catch (error: Throwable) {
+                host.runOnUiThread {
+                    setBusy(false, null)
+                    showToast(
+                        host,
+                        UiText.StringResource(
+                            R.string.quick_start_steam_download_failed,
+                            resolveThrowableMessage(host, error)
+                        ),
+                        Toast.LENGTH_LONG
+                    )
+                    refreshStatus(host)
+                    onCompleted?.invoke(false)
+                }
+            }
+        }
+    }
+
     fun onModJarsPicked(
         host: Activity,
         uris: List<Uri>?,
@@ -2962,6 +3053,14 @@ class SettingsScreenViewModel : ViewModel() {
         }
     }
 
+    private fun updateQuickStartSteamDownloadProgress(progress: SteamStsJarDownloadProgress) {
+        uiState = uiState.copy(
+            quickStartSteamDownloadPhase = progress.phase,
+            quickStartSteamDownloadedBytes = progress.downloadedBytes,
+            quickStartSteamTotalBytes = progress.totalBytes
+        )
+    }
+
     private fun buildNativeLibraryInstallProgressMessage(
         host: Activity,
         progress: NativeLibraryMarketInstallProgress
@@ -2988,6 +3087,46 @@ class SettingsScreenViewModel : ViewModel() {
                 downloadedText,
                 speedText
             )
+        }
+    }
+
+    private fun buildQuickStartSteamDownloadProgressMessage(
+        host: Activity,
+        progress: SteamStsJarDownloadProgress
+    ): String {
+        return when (progress.phase) {
+            SteamStsJarDownloadPhase.CONNECTING -> host.getString(R.string.quick_start_steam_download_connecting)
+            SteamStsJarDownloadPhase.RESOLVING -> host.getString(R.string.quick_start_steam_download_resolving)
+            SteamStsJarDownloadPhase.DOWNLOADING -> {
+                val totalBytes = progress.totalBytes
+                if (totalBytes != null && totalBytes > 0L) {
+                    host.getString(
+                        R.string.quick_start_steam_downloading_with_total,
+                        formatQuickStartTransferBytes(progress.downloadedBytes),
+                        formatQuickStartTransferBytes(totalBytes)
+                    )
+                } else {
+                    host.getString(
+                        R.string.quick_start_steam_downloading_without_total,
+                        formatQuickStartTransferBytes(progress.downloadedBytes)
+                    )
+                }
+            }
+        }
+    }
+
+    private fun formatQuickStartTransferBytes(bytes: Long): String {
+        val units = arrayOf("B", "KB", "MB", "GB")
+        var value = bytes.coerceAtLeast(0L).toDouble()
+        var unitIndex = 0
+        while (value >= 1024.0 && unitIndex < units.lastIndex) {
+            value /= 1024.0
+            unitIndex += 1
+        }
+        return if (unitIndex == 0) {
+            "${value.toLong()} ${units[unitIndex]}"
+        } else {
+            String.format(Locale.US, "%.1f %s", value, units[unitIndex])
         }
     }
 

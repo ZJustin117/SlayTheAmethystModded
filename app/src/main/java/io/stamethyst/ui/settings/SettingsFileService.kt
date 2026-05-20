@@ -426,6 +426,38 @@ internal object SettingsFileService {
     }
 
     @Throws(IOException::class)
+    fun importFileToFileAtomically(
+        sourceFile: File,
+        targetFile: File,
+        validator: ((File) -> Unit)? = null
+    ) {
+        val parent = targetFile.parentFile
+        if (parent != null && !parent.exists() && !parent.mkdirs()) {
+            throw IOException("Failed to create directory: ${parent.absolutePath}")
+        }
+        if (!sourceFile.isFile || sourceFile.length() == 0L) {
+            throw IOException("Source file not found or empty: ${sourceFile.absolutePath}")
+        }
+        val tempFile = File(
+            parent ?: targetFile.absoluteFile.parentFile ?: throw IOException("Target has no parent"),
+            ".${targetFile.name}.${System.nanoTime()}.import.tmp"
+        )
+        try {
+            sourceFile.inputStream().use { input ->
+                FileOutputStream(tempFile, false).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            validator?.invoke(tempFile)
+            replaceFileAtomically(tempFile, targetFile)
+        } finally {
+            if (tempFile.exists()) {
+                tempFile.delete()
+            }
+        }
+    }
+
+    @Throws(IOException::class)
     fun importModJar(
         host: Activity,
         uri: Uri,

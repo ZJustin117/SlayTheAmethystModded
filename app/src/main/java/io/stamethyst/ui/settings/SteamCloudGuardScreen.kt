@@ -69,6 +69,8 @@ private const val STEAM_ANDROID_PACKAGE = "com.valvesoftware.android.steam.commu
 fun LauncherSteamCloudGuardScreen(
     viewModel: SettingsScreenViewModel,
     modifier: Modifier = Modifier,
+    returnToLoginRoute: Route = Route.SteamCloudLogin,
+    onLoginCompleted: (() -> Unit)? = null,
 ) {
     val activity = requireNotNull(LocalActivity.current)
     val navigator = currentNavigator
@@ -83,10 +85,14 @@ fun LauncherSteamCloudGuardScreen(
     LaunchedEffect(challenge, uiState.busy, uiState.steamCloudRefreshTokenConfigured) {
         if (challenge == null && !uiState.busy) {
             if (uiState.steamCloudRefreshTokenConfigured) {
-                if (!navigator.popTo(Route.FirstRunSetup)) {
-                    navigator.popTo(Route.Settings)
+                if (onLoginCompleted != null) {
+                    onLoginCompleted()
+                } else {
+                    if (!navigator.popTo(Route.FirstRunSetup)) {
+                        navigator.popTo(Route.Settings)
+                    }
                 }
-            } else if (!navigator.popTo(Route.SteamCloudLogin)) {
+            } else if (!navigator.popTo(returnToLoginRoute)) {
                 navigator.goBack()
             }
         }

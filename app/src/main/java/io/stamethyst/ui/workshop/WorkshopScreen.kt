@@ -432,12 +432,10 @@ private fun SearchPanel(
     onTimeFilterChange: (WorkshopBrowseTimeFilter) -> Unit,
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
-    var searchExpanded by rememberSaveable { mutableStateOf(false) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
     var timeMenuExpanded by remember { mutableStateOf(false) }
     fun submitSearch() {
         if (!loading) {
-            searchExpanded = false
             keyboardController?.hide()
             onSearch()
         }
@@ -457,8 +455,9 @@ private fun SearchPanel(
                         query = query,
                         onQueryChange = onQueryChange,
                         onSearch = { submitSearch() },
-                        expanded = searchExpanded,
-                        onExpandedChange = { searchExpanded = it },
+                        expanded = false,
+                        onExpandedChange = {},
+                        enabled = !loading,
                         placeholder = { Text("搜索模组") },
                         trailingIcon = {
                             TextButton(
@@ -468,16 +467,9 @@ private fun SearchPanel(
                         },
                     )
                 },
-                expanded = searchExpanded,
-                onExpandedChange = { searchExpanded = it },
-            ) {
-                Text(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                    text = "留空浏览推荐/默认排序条目",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+                expanded = false,
+                onExpandedChange = {},
+            ) {}
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,

@@ -212,9 +212,13 @@ internal class ExperimentalGithubDirectAccessInterceptor(
     private val routeResolvers: List<WattToolkitGithubRouteResolver>,
     private val directCallFactory: okhttp3.Call.Factory,
     private val maxRedirects: Int = MAX_FOLLOW_UPS,
+    private val enabledProvider: () -> Boolean = { true },
 ) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
+        if (!enabledProvider()) {
+            return chain.proceed(request)
+        }
         if (routeResolvers.none { resolver -> resolver.supports(request.url.host) }) {
             return chain.proceed(request)
         }

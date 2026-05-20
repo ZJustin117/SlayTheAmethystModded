@@ -39,6 +39,8 @@ import io.stamethyst.ui.icon.ArrowBack
 fun LauncherSteamCloudLoginScreen(
     viewModel: SettingsScreenViewModel,
     modifier: Modifier = Modifier,
+    challengeRoute: Route = Route.SteamCloudGuard,
+    onLoginCompleted: (() -> Unit)? = null,
 ) {
     val activity = requireNotNull(LocalActivity.current)
     val navigator = currentNavigator
@@ -71,15 +73,19 @@ fun LauncherSteamCloudLoginScreen(
             loginChallenge == null &&
             uiState.steamCloudRefreshTokenConfigured
         ) {
-            if (!navigator.popTo(Route.FirstRunSetup)) {
-                navigator.popTo(Route.Settings)
+            if (onLoginCompleted != null) {
+                onLoginCompleted()
+            } else {
+                if (!navigator.popTo(Route.FirstRunSetup)) {
+                    navigator.popTo(Route.Settings)
+                }
             }
         }
     }
 
     LaunchedEffect(loginChallenge?.kind, loginChallenge?.previousCodeWasIncorrect, loginChallenge?.emailHint) {
         if (loginChallenge != null) {
-            navigator.push(Route.SteamCloudGuard)
+            navigator.push(challengeRoute)
         }
     }
 

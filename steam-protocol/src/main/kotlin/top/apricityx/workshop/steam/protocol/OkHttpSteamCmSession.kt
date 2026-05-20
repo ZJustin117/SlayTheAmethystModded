@@ -10,6 +10,8 @@ import top.apricityx.workshop.steam.proto.CMsgClientHello
 import top.apricityx.workshop.steam.proto.CMsgClientLoggedOff
 import top.apricityx.workshop.steam.proto.CMsgClientLogon
 import top.apricityx.workshop.steam.proto.CMsgClientLogonResponse
+import top.apricityx.workshop.steam.proto.CMsgClientPICSProductInfoRequest
+import top.apricityx.workshop.steam.proto.CMsgClientPICSProductInfoResponse
 import top.apricityx.workshop.steam.proto.CMsgIPAddress
 import top.apricityx.workshop.steam.proto.CMsgProtoBufHeader
 import com.google.protobuf.ByteString
@@ -420,6 +422,63 @@ class OkHttpSteamCmSession(
             throw SteamProtocolException("Steam returned an empty depot key for depot=$depotId")
         }
         key
+    }
+
+    override suspend fun requestAppProductInfo(appId: UInt): SteamAppProductInfo = retryRecoverableRequest {
+        val session = currentSession.value
+            ?: throw SteamProtocolException("Steam CM session is not connected")
+        val sourceJobId = nextJobId.getAndIncrement()
+        val response = CompletableDeferred<CMsgClientPICSProductInfoResponse>()
+        pendingRequests[sourceJobId] = PendingRequest(
+            methodName = "ClientPICSProductInfo",
+            expectedEmsg = SteamPacketCodec.emsgClientPICSProductInfoResponse,
+            parser = CMsgClientPICSProductInfoResponse.parser(),
+            deferred = response,
+        )
+
+        val packet = SteamPacketCodec.encode(
+            emsg = SteamPacketCodec.emsgClientPICSProductInfoRequest,
+            header = CMsgProtoBufHeader.newBuilder()
+                .setClientSessionid(session.sessionId)
+                .setSteamid(session.steamId)
+                .setJobidSource(sourceJobId)
+                .build(),
+            body = CMsgClientPICSProductInfoRequest.newBuilder()
+                .addApps(
+                    CMsgClientPICSProductInfoRequest.AppInfo.newBuilder()
+                        .setAppid(appId.toInt())
+                        .setOnlyPublicObsolete(false)
+                        .build(),
+                )
+                .setMetaDataOnly(false)
+                .setSingleResponse(true)
+                .build(),
+        )
+
+        if (webSocket?.send(packet.toByteString()) != true) {
+            pendingRequests.remove(sourceJobId)
+            throw SteamProtocolException("Failed to request Steam app product info for app=$appId")
+        }
+
+        val body = withTimeout(REQUEST_TIMEOUT_MS) { response.await() }
+        if (body.unknownAppidsList.any { it.toUInt() == appId }) {
+            throw SteamProtocolException("Steam product info returned unknown app=$appId")
+        }
+        val appInfo = body.appsList.firstOrNull { it.appid.toUInt() == appId }
+            ?: throw SteamProtocolException("Steam product info response did not include app=$appId")
+        if (appInfo.missingToken) {
+            throw SteamProtocolException("Steam product info requires an app access token for app=$appId")
+        }
+        val buffer = appInfo.buffer.toByteArray()
+        if (buffer.isEmpty()) {
+            throw SteamProtocolException("Steam product info returned an empty appinfo buffer for app=$appId")
+        }
+        SteamAppProductInfo(
+            appId = appInfo.appid.toUInt(),
+            changeNumber = appInfo.changeNumber.toUInt(),
+            missingToken = appInfo.missingToken,
+            buffer = buffer,
+        )
     }
 
     override fun close() {

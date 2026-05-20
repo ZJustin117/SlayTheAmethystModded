@@ -94,6 +94,7 @@ import io.stamethyst.ui.workshop.WorkshopDownloadCenterScreen
 import io.stamethyst.ui.workshop.WorkshopDetailScreen
 import io.stamethyst.ui.workshop.WorkshopViewModel
 import io.stamethyst.ui.quickstart.QuickStartScreen
+import io.stamethyst.ui.quickstart.QuickStartSteamDownloadScreen
 import io.stamethyst.ui.settings.LauncherFirstRunSetupScreen
 import io.stamethyst.ui.settings.LauncherDeveloperSettingsScreen
 import io.stamethyst.ui.settings.LauncherMobileGluesSettingsScreen
@@ -139,7 +140,9 @@ fun LauncherContent(
         mainUiState.busyOperation.usesBlockingOverlay() ||
             settingsUiState.busyOperation.usesBlockingOverlay()
     val shouldShowBlockingBusyWindow =
-        isBlockingBusyInteractionLocked && currentRoute != Route.QuickStart
+        isBlockingBusyInteractionLocked &&
+            currentRoute != Route.QuickStart &&
+            currentRoute != Route.QuickStartSteamDownload
     val blockingBusyMessage = when {
         mainUiState.busyOperation.usesBlockingOverlay() -> mainUiState.busyMessage
         settingsUiState.busyOperation.usesBlockingOverlay() -> settingsUiState.busyMessage
@@ -227,6 +230,23 @@ fun LauncherContent(
                     entryProvider = entryProvider {
                         entry<Route.QuickStart> {
                             QuickStartScreen(
+                                viewModel = settingsViewModel,
+                                modifier = Modifier.fillMaxSize(),
+                                onOpenSteamLogin = { navigator.push(Route.QuickStartSteamLogin) },
+                                onImportSuccess = {
+                                    navigator.resetRoot(
+                                        if (LauncherPreferences.isFirstRunSetupCompleted(activity)) {
+                                            Route.Main
+                                        } else {
+                                            Route.FirstRunSetup
+                                        }
+                                    )
+                                }
+                            )
+                        }
+
+                        entry<Route.QuickStartSteamDownload> {
+                            QuickStartSteamDownloadScreen(
                                 viewModel = settingsViewModel,
                                 modifier = Modifier.fillMaxSize(),
                                 onImportSuccess = {
@@ -371,10 +391,32 @@ fun LauncherContent(
                             )
                         }
 
+                        entry<Route.QuickStartSteamLogin> {
+                            LauncherSteamCloudLoginScreen(
+                                viewModel = settingsViewModel,
+                                modifier = Modifier.fillMaxSize(),
+                                challengeRoute = Route.QuickStartSteamGuard,
+                                onLoginCompleted = {
+                                    navigator.resetRoot(Route.QuickStartSteamDownload)
+                                },
+                            )
+                        }
+
                         entry<Route.SteamCloudGuard> {
                             LauncherSteamCloudGuardScreen(
                                 viewModel = settingsViewModel,
                                 modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+
+                        entry<Route.QuickStartSteamGuard> {
+                            LauncherSteamCloudGuardScreen(
+                                viewModel = settingsViewModel,
+                                modifier = Modifier.fillMaxSize(),
+                                returnToLoginRoute = Route.QuickStartSteamLogin,
+                                onLoginCompleted = {
+                                    navigator.resetRoot(Route.QuickStartSteamDownload)
+                                },
                             )
                         }
 
@@ -955,6 +997,9 @@ private fun Route?.launcherDockRoute(): Route? {
         Route.Compatibility,
         Route.MobileGluesSettings,
         Route.QuickStart,
+        Route.QuickStartSteamLogin,
+        Route.QuickStartSteamGuard,
+        Route.QuickStartSteamDownload,
         Route.FirstRunSetup,
         Route.Feedback,
         Route.FeedbackSubscriptions,

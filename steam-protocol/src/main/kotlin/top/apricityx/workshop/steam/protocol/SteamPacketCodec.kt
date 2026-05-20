@@ -26,6 +26,8 @@ object SteamPacketCodec {
     const val emsgServiceMethodCallFromClientNonAuthed: Int = 9804
     const val emsgClientHello: Int = 9805
     const val emsgClientLogon: Int = 5514
+    const val emsgClientPICSProductInfoRequest: Int = 8903
+    const val emsgClientPICSProductInfoResponse: Int = 8904
     const val clientLogonProtocol: Int = 65581
 
     fun makeMessageId(emsg: Int, proto: Boolean = true): Int = if (proto) emsg or protoMask else emsg

@@ -79,6 +79,7 @@ object SteamCloudAcceleratedHttp {
         readTimeoutMs: Long,
         callTimeoutMs: Long,
         enabled: Boolean = isEnabled(context),
+        enabledProvider: (() -> Boolean)? = null,
     ): OkHttpClient {
         val builder = OkHttpClient.Builder()
             .connectTimeout(connectTimeoutMs, TimeUnit.MILLISECONDS)
@@ -101,6 +102,7 @@ object SteamCloudAcceleratedHttp {
                 ExperimentalGithubDirectAccessInterceptor(
                     routeResolvers = runtime.resolvers,
                     directCallFactory = runtime.directHttpClient,
+                    enabledProvider = enabledProvider ?: { enabled },
                 ),
             )
             .build()
