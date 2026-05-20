@@ -50,13 +50,18 @@ class SteamDepotSingleFileDownloader(
     suspend fun download(
         request: SteamDepotFileDownloadRequest,
         emitProgress: suspend (SteamDepotFileDownloadProgress) -> Unit,
+        waitIfPaused: suspend () -> Unit = {},
     ): File = withContext(Dispatchers.IO) {
+        waitIfPaused()
         val cmServers = directoryClient.loadServers()
+        waitIfPaused()
         val cdnTransport = SteamCdnTransport(client)
 
         sessionFactory().use { session ->
+            waitIfPaused()
             sessionConnector(session, cmServers)
             val contentClient = SteamContentClient(session, directoryClient)
+            waitIfPaused()
             val manifestRequestCode = contentClient.getManifestRequestCode(
                 appId = request.appId,
                 depotId = request.depotId,
@@ -68,6 +73,7 @@ class SteamDepotSingleFileDownloader(
                     "Steam returned no manifest request code for depot=${request.depotId} manifest=${request.manifestId}",
                 )
             }
+            waitIfPaused()
             val contentServers = runCatching { contentClient.getServersForSteamPipe() }
                 .getOrElse { directoryClient.loadContentServers() }
             require(contentServers.isNotEmpty()) { "No CDN servers available for SteamPipe" }
@@ -83,6 +89,7 @@ class SteamDepotSingleFileDownloader(
                 contentClient = contentClient,
                 cdnTransport = cdnTransport,
                 cdnAuthTokenCache = cdnAuthTokenCache,
+                waitIfPaused = waitIfPaused,
             )
             val preparedManifest = if (manifest.filenamesEncrypted) {
                 manifest.decryptFilenames(request.depotKey)
@@ -106,6 +113,7 @@ class SteamDepotSingleFileDownloader(
                 cdnTransport = cdnTransport,
                 cdnAuthTokenCache = cdnAuthTokenCache,
                 emitProgress = emitProgress,
+                waitIfPaused = waitIfPaused,
             )
             request.outputFile
         }
@@ -119,10 +127,12 @@ class SteamDepotSingleFileDownloader(
         contentClient: SteamContentClient,
         cdnTransport: SteamCdnTransport,
         cdnAuthTokenCache: ConcurrentHashMap<String, String>,
+        waitIfPaused: suspend () -> Unit,
     ): DepotManifest {
         var lastError: Throwable? = null
         for (server in contentServers) {
             try {
+                waitIfPaused()
                 val bytes = requestBytes(
                     server = server,
                     proxyServer = proxyServer,
@@ -151,6 +161,7 @@ class SteamDepotSingleFileDownloader(
         cdnTransport: SteamCdnTransport,
         cdnAuthTokenCache: ConcurrentHashMap<String, String>,
         emitProgress: suspend (SteamDepotFileDownloadProgress) -> Unit,
+        waitIfPaused: suspend () -> Unit,
     ) {
         val parent = request.outputFile.parentFile
         if (parent != null && !parent.exists() && !parent.mkdirs()) {
@@ -173,6 +184,7 @@ class SteamDepotSingleFileDownloader(
         RandomAccessFile(request.outputFile, "rw").use { output ->
             output.setLength(totalBytes)
             for (chunk in chunks) {
+                waitIfPaused()
                 val processed = downloadChunkWithRetries(
                     request = request,
                     contentServers = contentServers,
@@ -181,6 +193,7 @@ class SteamDepotSingleFileDownloader(
                     cdnTransport = cdnTransport,
                     cdnAuthTokenCache = cdnAuthTokenCache,
                     chunk = chunk,
+                    waitIfPaused = waitIfPaused,
                 )
                 output.seek(chunk.offset)
                 output.write(processed)
@@ -215,11 +228,13 @@ class SteamDepotSingleFileDownloader(
         cdnTransport: SteamCdnTransport,
         cdnAuthTokenCache: ConcurrentHashMap<String, String>,
         chunk: ManifestChunk,
+        waitIfPaused: suspend () -> Unit,
     ): ByteArray {
         var lastError: Throwable? = null
         for (attempt in 1..MAX_CHUNK_DOWNLOAD_ATTEMPTS) {
             for (server in rotateServers(contentServers, attempt - 1)) {
                 try {
+                    waitIfPaused()
                     val raw = requestBytes(
                         server = server,
                         proxyServer = proxyServer,

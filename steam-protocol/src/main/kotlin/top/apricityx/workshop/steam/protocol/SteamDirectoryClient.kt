@@ -15,7 +15,7 @@ class SteamDirectoryClient(
     private val json: Json = Json { ignoreUnknownKeys = true },
     private val apiBaseUrl: HttpUrl = "https://api.steampowered.com/".toHttpUrl(),
 ) {
-    suspend fun loadServers(cellId: UInt = 0u, maxCount: UInt = 5u): List<CmServer> = withContext(Dispatchers.IO) {
+    suspend fun loadServers(cellId: UInt = 0u, maxCount: UInt = 20u): List<CmServer> = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url(
                 apiBaseUrl.newBuilder()
@@ -36,6 +36,7 @@ class SteamDirectoryClient(
             parsed.response.serverList
                 .filter { it.type == "websockets" }
                 .map { CmServer(endpoint = it.endpoint, type = it.type) }
+                .distinctBy(CmServer::websocketUri)
         }
     }
 

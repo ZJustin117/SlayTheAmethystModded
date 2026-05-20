@@ -346,7 +346,7 @@ internal class WorkshopService(
             sessionFactory = { identity.createSession(workshopClient) },
             sessionConnector = buildSessionConnector(account),
             maxConcurrentChunks = LauncherPreferences.readWorkshopDownloadThreads(context),
-            allowPublicCdnFallbackOnSessionFailure = account == null,
+            allowPublicCdnFallbackOnSessionFailure = true,
             publishedFileLanguage = steamLanguagePreference.requestValue,
         )
     }

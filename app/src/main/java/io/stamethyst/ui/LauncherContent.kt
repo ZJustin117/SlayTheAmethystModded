@@ -42,6 +42,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.activity.compose.LocalActivity
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.AlertDialog
@@ -94,6 +97,7 @@ import io.stamethyst.ui.workshop.WorkshopDownloadCenterScreen
 import io.stamethyst.ui.workshop.WorkshopDetailScreen
 import io.stamethyst.ui.workshop.WorkshopViewModel
 import io.stamethyst.ui.quickstart.QuickStartScreen
+import io.stamethyst.ui.quickstart.QuickStartJarImportScreen
 import io.stamethyst.ui.quickstart.QuickStartSteamDownloadScreen
 import io.stamethyst.ui.settings.LauncherFirstRunSetupScreen
 import io.stamethyst.ui.settings.LauncherDeveloperSettingsScreen
@@ -108,6 +112,7 @@ import io.stamethyst.ui.settings.SettingsScreenViewModel
 import io.stamethyst.ui.preferences.LauncherPreferences
 
 private const val PAGE_TRANSITION_DURATION_MS = 420
+internal const val LAUNCHER_DOCK_ITEM_TAG_PREFIX = "launcher_dock_item_"
 
 @Composable
 fun LauncherContent(
@@ -197,7 +202,9 @@ fun LauncherContent(
             }
         }
         Surface(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .semantics { testTagsAsResourceId = true },
             color = MaterialTheme.colorScheme.background,
             contentColor = MaterialTheme.colorScheme.onBackground
         ) {
@@ -233,6 +240,24 @@ fun LauncherContent(
                                 viewModel = settingsViewModel,
                                 modifier = Modifier.fillMaxSize(),
                                 onOpenSteamLogin = { navigator.push(Route.QuickStartSteamLogin) },
+                                onOpenJarImport = { navigator.push(Route.QuickStartJarImport) },
+                                onOpenSteamDownload = { navigator.push(Route.QuickStartSteamDownload) },
+                                onImportSuccess = {
+                                    navigator.resetRoot(
+                                        if (LauncherPreferences.isFirstRunSetupCompleted(activity)) {
+                                            Route.Main
+                                        } else {
+                                            Route.FirstRunSetup
+                                        }
+                                    )
+                                }
+                            )
+                        }
+
+                        entry<Route.QuickStartJarImport> {
+                            QuickStartJarImportScreen(
+                                viewModel = settingsViewModel,
+                                modifier = Modifier.fillMaxSize(),
                                 onImportSuccess = {
                                     navigator.resetRoot(
                                         if (LauncherPreferences.isFirstRunSetupCompleted(activity)) {
@@ -898,6 +923,7 @@ private fun RowScope.LauncherDockItem(
         modifier = Modifier
             .weight(1f)
             .height(58.dp)
+            .testTag(LAUNCHER_DOCK_ITEM_TAG_PREFIX + route.launcherDockTagSuffix())
             .clip(dockItemShape)
             .clickable { onSelectRoute(route) },
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -1000,6 +1026,7 @@ private fun Route?.launcherDockRoute(): Route? {
         Route.QuickStartSteamLogin,
         Route.QuickStartSteamGuard,
         Route.QuickStartSteamDownload,
+        Route.QuickStartJarImport,
         Route.FirstRunSetup,
         Route.Feedback,
         Route.FeedbackSubscriptions,
@@ -1008,6 +1035,14 @@ private fun Route?.launcherDockRoute(): Route? {
         is Route.FeedbackIssuePreview,
         null -> null
     }
+}
+
+private fun Route.launcherDockTagSuffix(): String = when (this) {
+    Route.Main -> "Main"
+    Route.Mods -> "Mods"
+    Route.Workshop -> "Workshop"
+    Route.Settings -> "Settings"
+    else -> this::class.simpleName.orEmpty()
 }
 
 @Composable

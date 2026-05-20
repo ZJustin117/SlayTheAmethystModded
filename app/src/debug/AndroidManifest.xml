@@ -7,6 +7,9 @@
         <activity
             android:name=".ui.main.ModFolderBenchmarkActivity"
             android:exported="true" />
+        <activity
+            android:name=".ui.main.ModPageTransitionBenchmarkActivity"
+            android:exported="true" />
 
         <receiver
             android:name=".backend.steamcloud.SteamCloudPhase0DebugReceiver"

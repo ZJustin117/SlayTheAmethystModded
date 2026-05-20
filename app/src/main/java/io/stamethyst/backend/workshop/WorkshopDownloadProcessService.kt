@@ -20,6 +20,7 @@ import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.concurrent.thread
 import kotlinx.coroutines.runBlocking
 
 class WorkshopDownloadProcessService : Service() {
@@ -185,8 +186,14 @@ class WorkshopDownloadProcessService : Service() {
         val startingTaskStore = WorkshopDownloadTaskStore(applicationContext)
         startingTaskStore.clearDeletedMarker(startingDetails.summary.publishedFileId)
         startingTaskStore.update(startingDetails.summary.publishedFileId) {
-            it.copy(status = WorkshopDownloadTaskStatus.Resolving, message = "正在解析下载内容", updatedAtMillis = System.currentTimeMillis())
+            it.copy(
+                status = WorkshopDownloadTaskStatus.Resolving,
+                message = "正在解析下载内容",
+                updatedAtMillis = System.currentTimeMillis(),
+                downloadLog = buildInitialDownloadLog(startingDetails),
+            )
         }
+        startingTaskStore.appendLog(startingDetails.summary.publishedFileId, "服务已启动，准备解析下载内容")
         val activeDownloadKey = requireNotNull(requestedDownloadKey)
         requestedStops.remove(activeDownloadKey)
         val thread = Thread({ runDownload(startId, safeIntent, receiver) }, "STS-WorkshopDownload-$activeDownloadKey")
@@ -251,24 +258,33 @@ class WorkshopDownloadProcessService : Service() {
             taskStore.update(details.summary.publishedFileId) {
                 it.copy(status = WorkshopDownloadTaskStatus.Queued, message = queuedMessage, updatedAtMillis = System.currentTimeMillis())
             }
-            downloadPreviewImageIfNeeded(service, metadataStore, details)
+            taskStore.appendLog(details.summary.publishedFileId, queuedMessage)
             sendProgress(receiver, queuedMessage, "Queued")
             runBlocking {
                 if (!details.hasDownloadSource()) {
                     taskStore.update(details.summary.publishedFileId) {
                         it.copy(status = WorkshopDownloadTaskStatus.Resolving, message = "正在解析下载内容", updatedAtMillis = System.currentTimeMillis())
                     }
+                    taskStore.appendLog(details.summary.publishedFileId, "正在通过 Steam 创意工坊解析下载内容")
                     sendProgress(receiver, "正在解析下载内容", "Resolving")
                     details = service.getDetails(details.summary.appId, details.summary.publishedFileId)
                     taskStore.update(details.summary.publishedFileId) { it.copy(details = details) }
-                    downloadPreviewImageIfNeeded(service, metadataStore, details)
+                    taskStore.appendLog(
+                        details.summary.publishedFileId,
+                        "解析完成：fileUrl=${details.fileUrl?.takeIf(String::isNotBlank) ?: "<empty>"}, hcontentFile=${details.hcontentFile ?: "<empty>"}, depotId=${details.depotId ?: "<empty>"}",
+                    )
                 }
+                downloadPreviewImageInBackground(service, metadataStore, details)
                 val outputDir = File(applicationContext.filesDir, "workshop/${details.summary.appId}/${details.summary.publishedFileId}")
                 cleanDownloadedContent(outputDir)
+                taskStore.appendLog(details.summary.publishedFileId, "输出目录：${outputDir.absolutePath}")
                 service.download(WorkshopDownloadRequest(details, outputDir)).collect { event ->
                     when (event) {
                         WorkshopDownloadEvent.Ignored -> Unit
-                        is WorkshopDownloadEvent.Log -> sendProgress(receiver, event.message, null)
+                        is WorkshopDownloadEvent.Log -> {
+                            taskStore.appendLog(details.summary.publishedFileId, event.message)
+                            sendProgress(receiver, event.message, null)
+                        }
                         is WorkshopDownloadEvent.Progress -> {
                             if (taskStore.isMarkedDeleted(details.summary.publishedFileId)) return@collect
                             taskStore.update(details.summary.publishedFileId) {
@@ -285,6 +301,7 @@ class WorkshopDownloadProcessService : Service() {
                                     updatedAtMillis = System.currentTimeMillis(),
                                 )
                             }
+                            taskStore.appendLog(details.summary.publishedFileId, event.progress.downloadLogLine())
                             sendProgress(receiver, "正在下载", "Downloading", event.progress)
                         }
                         is WorkshopDownloadEvent.StateChanged -> {
@@ -306,6 +323,7 @@ class WorkshopDownloadProcessService : Service() {
                                     updatedAtMillis = System.currentTimeMillis(),
                                 )
                             }
+                            taskStore.appendLog(details.summary.publishedFileId, "状态变更：$message")
                             sendProgress(receiver, message, event.state.toTaskStatusName())
                         }
                         is WorkshopDownloadEvent.Completed -> {
@@ -361,6 +379,7 @@ class WorkshopDownloadProcessService : Service() {
                                     updatedAtMillis = System.currentTimeMillis(),
                                 )
                             }
+                            taskStore.appendLog(details.summary.publishedFileId, message)
                             receiver?.send(
                                 RESULT_COMPLETED,
                                 Bundle().apply {
@@ -387,6 +406,7 @@ class WorkshopDownloadProcessService : Service() {
                     taskStore.update(details.summary.publishedFileId) {
                         it.copy(status = WorkshopDownloadTaskStatus.Paused, message = "下载已暂停", updatedAtMillis = System.currentTimeMillis())
                     }
+                    taskStore.appendLog(details.summary.publishedFileId, "下载已暂停")
                     restoreExistingRecordOrUpdateState(
                         metadataStore = metadataStore,
                         existingRecord = existingRecord,
@@ -401,7 +421,10 @@ class WorkshopDownloadProcessService : Service() {
                 }
                 StopReason.Cancel -> {
                     cleanOutput(details)
-                    taskStore.remove(details.summary.publishedFileId)
+                    taskStore.update(details.summary.publishedFileId) {
+                        it.copy(status = WorkshopDownloadTaskStatus.Cancelled, message = "下载已取消", updatedAtMillis = System.currentTimeMillis())
+                    }
+                    taskStore.appendLog(details.summary.publishedFileId, "下载已取消，已清理输出目录")
                     metadataStore.remove(details.summary.appId, details.summary.publishedFileId)
                     receiver?.send(RESULT_CANCELLED, Bundle().apply {
                         putString(EXTRA_MESSAGE, "下载已取消")
@@ -421,6 +444,8 @@ class WorkshopDownloadProcessService : Service() {
                             updatedAtMillis = System.currentTimeMillis(),
                         )
                     }
+                    taskStore.appendLog(details.summary.publishedFileId, "下载失败：$error")
+                    taskStore.appendLog(details.summary.publishedFileId, throwable.stackTraceToString())
                     restoreExistingRecordOrUpdateState(
                         metadataStore = metadataStore,
                         existingRecord = existingRecord,
@@ -540,6 +565,16 @@ class WorkshopDownloadProcessService : Service() {
             localPreviewImagePath = previewImagePath,
         )
         return previewImagePath
+    }
+
+    private fun downloadPreviewImageInBackground(
+        service: WorkshopService,
+        metadataStore: WorkshopMetadataStore,
+        details: WorkshopItemDetails,
+    ) {
+        thread(name = "STS-WorkshopPreview-${details.summary.publishedFileId}", isDaemon = true) {
+            runCatching { downloadPreviewImageIfNeeded(service, metadataStore, details) }
+        }
     }
 
     private fun cleanOutput(details: WorkshopItemDetails) {
@@ -664,6 +699,33 @@ private fun WorkshopDownloadProgress.progressPercent(): Int? {
     val safeTotalBytes = totalBytes?.takeIf { it > 0L } ?: return null
     return ((writtenBytes.coerceIn(0L, safeTotalBytes) * 100L) / safeTotalBytes).toInt().coerceIn(0, 100)
 }
+
+private fun WorkshopDownloadProgress.downloadLogLine(): String = buildString {
+    append("下载进度：writtenBytes=").append(writtenBytes)
+    totalBytes?.let { append(", totalBytes=").append(it) }
+    progressPercent()?.let { append(", percent=").append(it).append('%') }
+    if (completedFiles != null || totalFiles != null) {
+        append(", files=").append(completedFiles ?: 0).append('/').append(totalFiles ?: "?")
+    }
+    if (completedChunks != null || totalChunks != null) {
+        append(", chunks=").append(completedChunks ?: 0).append('/').append(totalChunks ?: "?")
+    }
+}
+
+private fun buildInitialDownloadLog(details: WorkshopItemDetails): String = buildString {
+    appendLine("创意工坊下载日志")
+    appendLine("Title: ${details.summary.title}")
+    appendLine("App ID: ${details.summary.appId}")
+    appendLine("Workshop ID: ${details.summary.publishedFileId}")
+    appendLine("Author: ${details.summary.authorName.ifBlank { "<empty>" }}")
+    appendLine("Remote updatedAtMillis: ${details.summary.updatedAtMillis}")
+    appendLine("Declared fileSizeBytes: ${details.summary.fileSizeBytes}")
+    appendLine("Preview URL: ${details.summary.previewUrl.ifBlank { "<empty>" }}")
+    appendLine("Initial fileUrl: ${details.fileUrl?.takeIf(String::isNotBlank) ?: "<empty>"}")
+    appendLine("Initial hcontentFile: ${details.hcontentFile ?: "<empty>"}")
+    appendLine("Initial depotId: ${details.depotId ?: "<empty>"}")
+    appendLine("Dependencies: ${details.dependencies.size}")
+}.trimEnd()
 
 private fun WorkshopInstalledModRecord.newlyImportedHighlightKeys(): List<String> {
     return listOf(

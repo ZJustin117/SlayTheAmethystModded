@@ -3,6 +3,9 @@ package io.stamethyst.backend.workshop
 import android.content.Context
 import java.io.File
 import java.nio.charset.StandardCharsets
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -39,6 +42,7 @@ data class WorkshopDownloadTaskRecord(
     val errorClass: String = "",
     val errorMessage: String = "",
     val errorStackTrace: String = "",
+    val downloadLog: String = "",
 )
 
 class WorkshopDownloadTaskStore(context: Context) {
@@ -60,6 +64,14 @@ class WorkshopDownloadTaskStore(context: Context) {
         if (index < 0) return
         current[index] = transform(current[index])
         save(current)
+    }
+
+    @Synchronized fun appendLog(publishedFileId: ULong, message: String) {
+        val cleanMessage = message.trim().takeIf { it.isNotEmpty() } ?: return
+        update(publishedFileId) { task ->
+            val line = "${downloadLogTimestamp()} $cleanMessage"
+            task.copy(downloadLog = listOf(task.downloadLog, line).filter(String::isNotBlank).joinToString("\n"))
+        }
     }
 
     @Synchronized fun remove(publishedFileId: ULong) {
@@ -176,6 +188,7 @@ private fun WorkshopDownloadTaskRecord.toJson(): JSONObject = JSONObject()
     .put("errorClass", errorClass)
     .put("errorMessage", errorMessage)
     .put("errorStackTrace", errorStackTrace)
+    .put("downloadLog", downloadLog)
     .put("appId", details.summary.appId.toString())
     .put("updatedAtMillisRemote", details.summary.updatedAtMillis)
     .put("downloadCount", details.summary.downloadCount)
@@ -227,8 +240,11 @@ private fun JSONObject.toTask(): WorkshopDownloadTaskRecord {
         errorClass = optString("errorClass"),
         errorMessage = optString("errorMessage"),
         errorStackTrace = optString("errorStackTrace"),
+        downloadLog = optString("downloadLog"),
     )
 }
+
+private fun downloadLogTimestamp(): String = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
 
 private fun JSONObject.optionalInt(key: String): Int? = if (has(key) && !isNull(key)) optInt(key) else null
 private fun JSONObject.optionalLong(key: String): Long? = if (has(key) && !isNull(key)) optLong(key) else null

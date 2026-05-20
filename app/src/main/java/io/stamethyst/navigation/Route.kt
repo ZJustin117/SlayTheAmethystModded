@@ -14,6 +14,8 @@ sealed interface Route : NavKey {
     @Serializable
     data object QuickStartSteamDownload : Route
     @Serializable
+    data object QuickStartJarImport : Route
+    @Serializable
     data object FirstRunSetup : Route
     @Serializable
     data object Main : Route

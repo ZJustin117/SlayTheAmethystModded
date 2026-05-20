@@ -44,7 +44,9 @@ internal class SteamStsJarDownloadService(
 ) {
     fun downloadDesktopJar(
         onProgress: (SteamStsJarDownloadProgress) -> Unit,
+        waitIfPaused: suspend () -> Unit = {},
     ): File = runBlocking {
+        waitIfPaused()
         onProgress(SteamStsJarDownloadProgress(phase = SteamStsJarDownloadPhase.CONNECTING, progressPercent = 0))
         val identity = WorkshopSteamClientIdentity(context)
         val account = readSteamAccountSession(identity)
@@ -52,8 +54,11 @@ internal class SteamStsJarDownloadService(
         val outputFile = prepareOutputFile()
 
         identity.createSession(client).use { session ->
+            waitIfPaused()
             val cmServers = directoryClient.loadServers()
+            waitIfPaused()
             session.connectWithRefreshToken(cmServers, account)
+            waitIfPaused()
             onProgress(SteamStsJarDownloadProgress(phase = SteamStsJarDownloadPhase.RESOLVING, progressPercent = 0))
             val appInfo = parseAppInfo(session.requestAppProductInfo(STS_APP_ID))
             val candidates = resolveDepotCandidates(
@@ -80,6 +85,7 @@ internal class SteamStsJarDownloadService(
             var lastError: Throwable? = null
             for (candidate in candidates) {
                 try {
+                    waitIfPaused()
                     outputFile.delete()
                     val depotKey = session.requestDepotDecryptionKey(
                         appId = candidate.appId,
@@ -98,6 +104,7 @@ internal class SteamStsJarDownloadService(
                         emitProgress = { progress ->
                             onProgress(progress.toStsJarProgress())
                         },
+                        waitIfPaused = waitIfPaused,
                     )
                 } catch (error: Throwable) {
                     lastError = error

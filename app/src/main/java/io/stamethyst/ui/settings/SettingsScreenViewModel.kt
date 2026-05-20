@@ -1,5 +1,6 @@
 package io.stamethyst.ui.settings
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.ActivityManager
 import android.os.Build
@@ -30,7 +31,9 @@ import io.stamethyst.backend.steamcloud.SteamCloudPhase0ManifestProbe
 import io.stamethyst.backend.steamcloud.SteamCloudPhase0Store
 import io.stamethyst.backend.steamcloud.SteamCloudProfileService
 import io.stamethyst.backend.steamcloud.SteamCloudPullCoordinator
+import io.stamethyst.backend.steamcloud.SteamCloudPullResult
 import io.stamethyst.backend.steamcloud.SteamCloudPushCoordinator
+import io.stamethyst.backend.steamcloud.SteamCloudRootKind
 import io.stamethyst.backend.steamcloud.SteamCloudSaveProfileManager
 import io.stamethyst.backend.steamcloud.SteamCloudSyncBlacklist
 import io.stamethyst.backend.steamcloud.SteamCloudSyncBaseline
@@ -106,8 +109,12 @@ import java.util.concurrent.CancellationException
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.Future
+import java.util.concurrent.locks.Condition
+import java.util.concurrent.locks.ReentrantLock
 import java.util.jar.Manifest
 import java.util.zip.ZipInputStream
+import kotlin.concurrent.withLock
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 
@@ -124,6 +131,7 @@ private fun TouchMouseInteractionMode.displayNameResId(): Int {
 }
 
 @Stable
+@SuppressLint("SuspiciousIndentation")
 class SettingsScreenViewModel : ViewModel() {
     private data class SteamCloudLoginAutoEnableResult(
         val autoEnabled: Boolean,
@@ -184,6 +192,10 @@ class SettingsScreenViewModel : ViewModel() {
         val quickStartSteamDownloadPhase: SteamStsJarDownloadPhase? = null,
         val quickStartSteamDownloadedBytes: Long = 0L,
         val quickStartSteamTotalBytes: Long? = null,
+        val quickStartSteamAccelerationSwitchEnabled: Boolean = true,
+        val quickStartSteamPaused: Boolean = false,
+        val quickStartSteamFailed: Boolean = false,
+        val quickStartSteamFailureMessage: UiText? = null,
         val playerName: String = LauncherPreferences.DEFAULT_PLAYER_NAME,
         val selectedRenderScale: Float = RenderScaleService.DEFAULT_RENDER_SCALE,
         val selectedTargetFps: Int = LauncherPreferences.DEFAULT_TARGET_FPS,
@@ -336,11 +348,45 @@ class SettingsScreenViewModel : ViewModel() {
         val totalMemoryBytes: Long
     )
 
+    private class PauseController {
+        private val lock = ReentrantLock()
+        private val resumed: Condition = lock.newCondition()
+        @Volatile
+        var paused: Boolean = false
+            private set
+
+        fun pause() {
+            lock.withLock {
+                paused = true
+            }
+        }
+
+        fun resume() {
+            lock.withLock {
+                paused = false
+                resumed.signalAll()
+            }
+        }
+
+        fun awaitIfPaused() {
+            lock.withLock {
+                while (paused) {
+                    resumed.await()
+                }
+            }
+        }
+    }
+
     private val executor: ExecutorService = Executors.newSingleThreadExecutor()
     private val _effects = MutableSharedFlow<Effect>(extraBufferCapacity = 16)
     private var nativeLibraryMarketCatalog: List<NativeLibraryMarketCatalogEntry> = emptyList()
     private var pendingSteamCloudCodeFuture: CompletableFuture<String>? = null
     private var pendingSteamCloudConfirmationFuture: CompletableFuture<Boolean>? = null
+    private var quickStartSteamImportTask: Future<*>? = null
+    private var quickStartSteamImportCompletion: ((Boolean) -> Unit)? = null
+    private var quickStartSteamPauseController: PauseController? = null
+    @Volatile
+    private var quickStartSteamImportGeneration: Int = 0
 
     var uiState by mutableStateOf(UiState())
         private set
@@ -1462,8 +1508,60 @@ class SettingsScreenViewModel : ViewModel() {
     }
 
     fun onQuickStartSteamAccelerationChanged(host: Activity, enabled: Boolean) {
-        LauncherPreferences.setWorkshopWattAccelerationEnabled(host, enabled)
-        refreshStatus(host)
+        if (!uiState.quickStartSteamAccelerationSwitchEnabled) {
+            return
+        }
+        val completion = quickStartSteamImportCompletion
+        val pauseController = PauseController()
+        quickStartSteamPauseController?.resume()
+        quickStartSteamPauseController = pauseController
+        uiState = uiState.copy(quickStartSteamAccelerationSwitchEnabled = false)
+        val generation = nextQuickStartSteamImportGeneration()
+        quickStartSteamImportTask?.cancel(true)
+        quickStartSteamImportTask = executor.submit {
+            LauncherPreferences.setWorkshopWattAccelerationEnabled(host, enabled)
+            host.runOnUiThread {
+                refreshStatus(host)
+            }
+            runQuickStartSteamImport(
+                host = host,
+                generation = generation,
+                onCompleted = completion,
+                keepAccelerationSwitchDisabled = true,
+                pauseController = pauseController,
+            )
+        }
+    }
+
+    fun onQuickStartSteamPauseChanged(paused: Boolean) {
+        val controller = quickStartSteamPauseController ?: return
+        if (paused) {
+            controller.pause()
+        } else {
+            controller.resume()
+        }
+        uiState = uiState.copy(
+            quickStartSteamPaused = paused,
+            busyMessage = if (paused) {
+                UiText.StringResource(R.string.quick_start_steam_download_paused)
+            } else {
+                uiState.busyMessage
+            }
+        )
+    }
+
+    fun onRetryQuickStartSteamImport(host: Activity) {
+        if (uiState.busy) {
+            return
+        }
+        val completion = quickStartSteamImportCompletion
+            ?: { success: Boolean ->
+                uiState = uiState.copy(
+                    quickStartSteamFailed = !success,
+                    quickStartSteamFailureMessage = null,
+                )
+            }
+        onStartQuickStartSteamImport(host, completion)
     }
 
     fun onWorkshopSteamLanguageChanged(host: Activity, language: SteamLanguagePreference) {
@@ -2673,29 +2771,82 @@ class SettingsScreenViewModel : ViewModel() {
         if (uiState.busy) {
             return
         }
+        quickStartSteamImportCompletion = onCompleted
+        val pauseController = PauseController()
+        quickStartSteamPauseController = pauseController
         setBusy(
             busy = true,
             message = UiText.StringResource(R.string.quick_start_steam_download_connecting),
             operation = UiBusyOperation.OTHER_BUSY,
             progressPercent = 0
         )
-        executor.execute {
-            try {
-                val downloadedJar = SteamStsJarDownloadService(host.applicationContext)
-                    .downloadDesktopJar { progress ->
+        uiState = uiState.copy(
+            quickStartSteamAccelerationSwitchEnabled = true,
+            quickStartSteamPaused = false,
+            quickStartSteamFailed = false,
+            quickStartSteamFailureMessage = null,
+        )
+        val generation = nextQuickStartSteamImportGeneration()
+        quickStartSteamImportTask = executor.submit {
+            runQuickStartSteamImport(
+                host = host,
+                generation = generation,
+                onCompleted = onCompleted,
+                keepAccelerationSwitchDisabled = false,
+                pauseController = pauseController,
+            )
+        }
+    }
+
+    private fun runQuickStartSteamImport(
+        host: Activity,
+        generation: Int,
+        onCompleted: ((Boolean) -> Unit)?,
+        keepAccelerationSwitchDisabled: Boolean,
+        pauseController: PauseController,
+    ) {
+        host.runOnUiThread {
+            if (generation == quickStartSteamImportGeneration) {
+                setBusy(
+                    busy = true,
+                    message = UiText.StringResource(R.string.quick_start_steam_download_connecting),
+                    operation = UiBusyOperation.OTHER_BUSY,
+                    progressPercent = uiState.busyProgressPercent ?: 0
+                )
+                uiState = uiState.copy(
+                    quickStartSteamAccelerationSwitchEnabled = !keepAccelerationSwitchDisabled,
+                    quickStartSteamFailed = false,
+                    quickStartSteamFailureMessage = null,
+                )
+            }
+        }
+        try {
+            val downloadedJar = SteamStsJarDownloadService(host.applicationContext)
+                .downloadDesktopJar(
+                    onProgress = { progress ->
                         host.runOnUiThread {
-                            updateQuickStartSteamDownloadProgress(progress)
-                            setBusy(
-                                busy = true,
-                                message = UiText.DynamicString(
-                                    buildQuickStartSteamDownloadProgressMessage(host, progress)
-                                ),
-                                operation = UiBusyOperation.OTHER_BUSY,
-                                progressPercent = progress.progressPercent
-                            )
+                            if (generation == quickStartSteamImportGeneration) {
+                                updateQuickStartSteamDownloadProgress(progress)
+                                setBusy(
+                                    busy = true,
+                                    message = UiText.DynamicString(
+                                        buildQuickStartSteamDownloadProgressMessage(host, progress)
+                                    ),
+                                    operation = UiBusyOperation.OTHER_BUSY,
+                                    progressPercent = progress.progressPercent
+                                )
+                                if (keepAccelerationSwitchDisabled &&
+                                    progress.phase == SteamStsJarDownloadPhase.DOWNLOADING
+                                ) {
+                                    uiState = uiState.copy(quickStartSteamAccelerationSwitchEnabled = true)
+                                }
+                            }
                         }
-                    }
-                host.runOnUiThread {
+                    },
+                    waitIfPaused = { pauseController.awaitIfPaused() },
+                )
+            host.runOnUiThread {
+                if (generation == quickStartSteamImportGeneration) {
                     updateQuickStartSteamDownloadProgress(
                         SteamStsJarDownloadProgress(
                             phase = SteamStsJarDownloadPhase.DOWNLOADING,
@@ -2711,32 +2862,64 @@ class SettingsScreenViewModel : ViewModel() {
                         operation = UiBusyOperation.OTHER_BUSY,
                         progressPercent = 100
                     )
+                    uiState = uiState.copy(quickStartSteamAccelerationSwitchEnabled = false)
                 }
-                SettingsFileService.importFileToFileAtomically(
-                    sourceFile = downloadedJar,
-                    targetFile = RuntimePaths.importedStsJar(host),
-                    validator = StsJarValidator::validate
-                )
-                MtsClasspathWarmupCoordinator.invalidateCache(host)
-                val warmupWarning = prewarmMtsClasspathAfterImport(host)
-                host.runOnUiThread {
+            }
+            SettingsFileService.importFileToFileAtomically(
+                sourceFile = downloadedJar,
+                targetFile = RuntimePaths.importedStsJar(host),
+                validator = StsJarValidator::validate
+            )
+            MtsClasspathWarmupCoordinator.invalidateCache(host)
+            val warmupWarning = prewarmMtsClasspathAfterImport(host)
+            val pullResult = pullSteamCloudIntoEmptySlotAfterQuickStartImport(host)
+            host.runOnUiThread {
+                if (generation == quickStartSteamImportGeneration) {
                     setBusy(false, null)
+                    uiState = uiState.copy(quickStartSteamAccelerationSwitchEnabled = true)
+                    quickStartSteamImportTask = null
+                    quickStartSteamImportCompletion = null
+                    quickStartSteamPauseController = null
                     showToast(host, UiText.StringResource(R.string.sts_jar_import_success), Toast.LENGTH_SHORT)
                     if (warmupWarning != null) {
                         showToast(host, warmupWarning, Toast.LENGTH_LONG)
                     }
+                    if (pullResult != null) {
+                        showToast(
+                            host,
+                            UiText.StringResource(
+                                R.string.settings_steam_cloud_pull_succeeded,
+                                pullResult.appliedFileCount,
+                            ),
+                            Toast.LENGTH_SHORT,
+                        )
+                    }
                     refreshStatus(host)
                     onCompleted?.invoke(true)
                 }
-            } catch (error: Throwable) {
-                host.runOnUiThread {
+            }
+        } catch (error: Throwable) {
+            if (generation != quickStartSteamImportGeneration || error is CancellationException) {
+                return
+            }
+            host.runOnUiThread {
+                if (generation == quickStartSteamImportGeneration) {
                     setBusy(false, null)
+                    val failureMessage = UiText.StringResource(
+                        R.string.quick_start_steam_download_failed,
+                        resolveThrowableMessage(host, error)
+                    )
+                    uiState = uiState.copy(
+                        quickStartSteamAccelerationSwitchEnabled = true,
+                        quickStartSteamPaused = false,
+                        quickStartSteamFailed = true,
+                        quickStartSteamFailureMessage = failureMessage,
+                    )
+                    quickStartSteamImportTask = null
+                    quickStartSteamPauseController = null
                     showToast(
                         host,
-                        UiText.StringResource(
-                            R.string.quick_start_steam_download_failed,
-                            resolveThrowableMessage(host, error)
-                        ),
+                        failureMessage,
                         Toast.LENGTH_LONG
                     )
                     refreshStatus(host)
@@ -2744,6 +2927,35 @@ class SettingsScreenViewModel : ViewModel() {
                 }
             }
         }
+    }
+
+    private fun pullSteamCloudIntoEmptySlotAfterQuickStartImport(host: Activity): SteamCloudPullResult? {
+        val authMaterial = runCatching { SteamCloudAuthStore.readAuthMaterial(host) }.getOrNull()
+            ?: return null
+        host.runOnUiThread {
+            setBusy(
+                busy = true,
+                message = UiText.StringResource(R.string.settings_busy_steam_cloud_pull),
+                operation = UiBusyOperation.STEAM_CLOUD_SYNC,
+                progressPercent = null,
+            )
+        }
+        return SteamCloudOperationMutex.runExclusive {
+            val currentMode = LauncherPreferences.readSteamCloudSaveMode(host)
+            if (currentMode != SteamCloudSaveMode.STEAM_CLOUD) {
+                SteamCloudSaveProfileManager.saveActiveProfile(host, currentMode)
+            }
+            SteamCloudRootKind.entries.forEach { rootKind ->
+                File(RuntimePaths.stsRoot(host), rootKind.directoryName).deleteRecursively()
+            }
+            LauncherPreferences.saveSteamCloudSaveMode(host, SteamCloudSaveMode.STEAM_CLOUD)
+            SteamCloudPullCoordinator.pullAll(host, authMaterial)
+        }
+    }
+
+    private fun nextQuickStartSteamImportGeneration(): Int {
+        quickStartSteamImportGeneration += 1
+        return quickStartSteamImportGeneration
     }
 
     fun onModJarsPicked(
@@ -3102,8 +3314,6 @@ class SettingsScreenViewModel : ViewModel() {
                 if (totalBytes != null && totalBytes > 0L) {
                     host.getString(
                         R.string.quick_start_steam_downloading_with_total,
-                        formatQuickStartTransferBytes(progress.downloadedBytes),
-                        formatQuickStartTransferBytes(totalBytes)
                     )
                 } else {
                     host.getString(

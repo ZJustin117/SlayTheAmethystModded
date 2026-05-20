@@ -85,6 +85,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -130,6 +131,7 @@ private enum class SteamCloudConflictResolutionChoice {
 }
 
 private const val GAME_PAGE_CARD_ENTRANCE_DURATION_MS = 320
+private const val MODS_CONTENT_MOUNT_DELAY_MS = 80L
 
 @Composable
 private fun LauncherGamePage(
@@ -1080,7 +1082,7 @@ private fun LauncherMainScreenPreview() {
 }
 
 @Composable
-private fun LauncherGameScreenContent(
+internal fun LauncherGameScreenContent(
     modifier: Modifier = Modifier,
     uiState: MainScreenViewModel.UiState,
     actions: MainScreenActions = MainScreenActions(isHostAvailable = false),
@@ -1102,7 +1104,7 @@ private fun LauncherGameScreenContent(
 }
 
 @Composable
-private fun LauncherModsScreenContent(
+internal fun LauncherModsScreenContent(
     modifier: Modifier = Modifier,
     uiState: MainScreenViewModel.UiState,
     actions: MainScreenActions = MainScreenActions(isHostAvailable = false),
@@ -1305,14 +1307,21 @@ private fun LauncherMainScreenContent(
                     LauncherMainContentMode.MODS -> {
                         var modsHeaderHeightPx by remember { mutableIntStateOf(0) }
                         var modsHeaderCollapsed by remember { mutableStateOf(false) }
+                        var modsContentMountReady by remember { mutableStateOf(false) }
                         val measuredModsHeaderHeight = with(density) { modsHeaderHeightPx.toDp() }
                         val modsHeaderContentTopInset =
                             (if (modsHeaderHeightPx == 0) 232.dp else measuredModsHeaderHeight) + 14.dp
+
+                        LaunchedEffect(Unit) {
+                            delay(MODS_CONTENT_MOUNT_DELAY_MS)
+                            modsContentMountReady = true
+                        }
 
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .statusBarsPadding()
+                                .testTag(MODS_SCREEN_ROOT_TAG)
                                 .padding(start = 16.dp, top = 18.dp, end = 16.dp)
                         ) {
                             Column(
@@ -1330,7 +1339,7 @@ private fun LauncherMainScreenContent(
 
                                 MainContentSwitcher(
                                     uiState = uiState,
-                                    showInitializing = showInitializing,
+                                    showInitializing = showInitializing || !modsContentMountReady,
                                     contentTopInset = modsHeaderContentTopInset,
                                     actionBarBottomPadding = launcherDockContentPadding + batchEditBarContentPadding,
                                     onHeaderCollapsedChange = { modsHeaderCollapsed = it },
@@ -2778,7 +2787,9 @@ private fun ColumnScope.MainContentSwitcher(
     ) { loading ->
         if (loading) {
             Box(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .testTag(MODS_CONTENT_PREPARING_TAG),
                 contentAlignment = Alignment.Center
             ) {
                 Column(
@@ -2795,7 +2806,9 @@ private fun ColumnScope.MainContentSwitcher(
             }
         } else {
             Column(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .testTag(MODS_CONTENT_READY_TAG),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 uiState.storageIssue?.let { issue ->

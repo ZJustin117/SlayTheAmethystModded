@@ -29,11 +29,16 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -52,6 +57,9 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import io.stamethyst.R
 import io.stamethyst.backend.steam.SteamStsJarDownloadPhase
+import io.stamethyst.ui.Icons
+import io.stamethyst.ui.icon.Pause
+import io.stamethyst.ui.icon.PlayArrow
 import io.stamethyst.ui.resolve
 import io.stamethyst.ui.settings.SettingsScreenViewModel
 import java.util.Locale
@@ -62,6 +70,29 @@ fun QuickStartScreen(
     viewModel: SettingsScreenViewModel,
     modifier: Modifier = Modifier,
     onOpenSteamLogin: () -> Unit,
+    onOpenJarImport: () -> Unit,
+    onOpenSteamDownload: () -> Unit,
+    onImportSuccess: () -> Unit
+) {
+    QuickStartImportContent(
+        viewModel = viewModel,
+        modifier = modifier,
+        showWelcome = true,
+        onOpenSteamLogin = onOpenSteamLogin,
+        onOpenJarImport = onOpenJarImport,
+        onOpenSteamDownload = onOpenSteamDownload,
+        onImportSuccess = onImportSuccess
+    )
+}
+
+@Composable
+private fun QuickStartImportContent(
+    viewModel: SettingsScreenViewModel,
+    modifier: Modifier = Modifier,
+    showWelcome: Boolean,
+    onOpenSteamLogin: () -> Unit,
+    onOpenJarImport: () -> Unit,
+    onOpenSteamDownload: () -> Unit,
     onImportSuccess: () -> Unit
 ) {
     val activity = requireNotNull(LocalActivity.current)
@@ -95,7 +126,7 @@ fun QuickStartScreen(
             onOpenSteamLogin()
             return
         }
-        onOpenSteamLogin()
+        onOpenSteamDownload()
     }
 
     LaunchedEffect(Unit) {
@@ -143,11 +174,13 @@ fun QuickStartScreen(
                         text = stringResource(
                             if (isImported) {
                                 R.string.quick_start_title_done
+                            } else if (!showWelcome) {
+                                R.string.quick_start_title
                             } else {
                                 R.string.quick_start_welcome_title
                             }
                         ),
-                        style = if (isImported) MaterialTheme.typography.displaySmall else MaterialTheme.typography.headlineSmall,
+                        style = if (isImported) MaterialTheme.typography.displaySmall else MaterialTheme.typography.headlineLarge,
                         color = MaterialTheme.colorScheme.onBackground,
                         textAlign = TextAlign.Center
                     )
@@ -160,6 +193,8 @@ fun QuickStartScreen(
                     Text(
                         text = if (isImported) {
                             ""
+                        } else if (!showWelcome) {
+                            stringResource(R.string.quick_start_subtitle)
                         } else {
                             stringResource(R.string.quick_start_welcome_subtitle)
                         },
@@ -171,7 +206,7 @@ fun QuickStartScreen(
 
                 Spacer(modifier = Modifier.height(2.dp))
 
-                AnimatedVisibility(visible = !imported, label = "quickstart-start-options") {
+                AnimatedVisibility(visible = !imported && showWelcome, label = "quickstart-start-options") {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -180,17 +215,38 @@ fun QuickStartScreen(
                             title = stringResource(R.string.quick_start_start_from_file_title),
                             subtitle = stringResource(R.string.quick_start_start_from_file_subtitle),
                             enabled = !uiState.busy,
-                            onClick = {
-                                pickJarLauncher.launch(
-                                    arrayOf("application/java-archive", "application/octet-stream", "*/*")
-                                )
-                            }
+                            onClick = onOpenJarImport
                         )
                         QuickStartChoiceCard(
                             title = stringResource(R.string.quick_start_start_from_steam_title),
                             subtitle = stringResource(R.string.quick_start_start_from_steam_subtitle),
                             enabled = !uiState.busy,
                             onClick = ::startSteamImport
+                        )
+                    }
+                }
+
+                AnimatedVisibility(visible = !imported && !showWelcome, label = "quickstart-import-box") {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.64f)
+                            .widthIn(max = 232.dp)
+                            .clip(shape = RoundedCornerShape(14.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                            .clickable(enabled = !uiState.busy) {
+                                pickJarLauncher.launch(
+                                    arrayOf("application/java-archive", "application/octet-stream", "*/*")
+                                )
+                            }
+                            .animateContentSize()
+                            .padding(horizontal = 12.dp, vertical = 16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = stringResource(R.string.quick_start_import_button),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textAlign = TextAlign.Center
                         )
                     }
                 }
@@ -365,6 +421,23 @@ fun QuickStartScreen(
 }
 
 @Composable
+fun QuickStartJarImportScreen(
+    viewModel: SettingsScreenViewModel,
+    modifier: Modifier = Modifier,
+    onImportSuccess: () -> Unit,
+) {
+    QuickStartImportContent(
+        viewModel = viewModel,
+        modifier = modifier,
+        showWelcome = false,
+        onOpenSteamLogin = {},
+        onOpenJarImport = {},
+        onOpenSteamDownload = {},
+        onImportSuccess = onImportSuccess
+    )
+}
+
+@Composable
 fun QuickStartSteamDownloadScreen(
     viewModel: SettingsScreenViewModel,
     modifier: Modifier = Modifier,
@@ -374,6 +447,7 @@ fun QuickStartSteamDownloadScreen(
     val uiState = viewModel.uiState
     var imported by rememberSaveable { mutableStateOf(false) }
     var downloadStarted by rememberSaveable { mutableStateOf(false) }
+    var pendingAccelerationEnabled by rememberSaveable { mutableStateOf<Boolean?>(null) }
 
     LaunchedEffect(Unit) {
         viewModel.bind(activity)
@@ -429,12 +503,23 @@ fun QuickStartSteamDownloadScreen(
                     )
                     SteamAccelerationSwitchCard(
                         checked = uiState.workshopWattAccelerationEnabled,
-                        enabled = true,
+                        enabled = uiState.quickStartSteamAccelerationSwitchEnabled && !uiState.quickStartSteamPaused,
                         onCheckedChange = { enabled ->
-                            viewModel.onQuickStartSteamAccelerationChanged(activity, enabled)
+                            pendingAccelerationEnabled = enabled
                         }
                     )
-                    QuickStartSteamDownloadProgressCard(uiState = uiState)
+                    QuickStartSteamDownloadProgressCard(
+                        uiState = uiState,
+                        onPause = { viewModel.onQuickStartSteamPauseChanged(true) },
+                        onResume = { viewModel.onQuickStartSteamPauseChanged(false) },
+                    )
+                    QuickStartSteamDownloadRetryAction(
+                        uiState = uiState,
+                        onRetry = {
+                            downloadStarted = true
+                            viewModel.onRetryQuickStartSteamImport(activity)
+                        }
+                    )
                 }
                 AnimatedVisibility(visible = imported, label = "quickstart-steam-continue-button") {
                     Box(
@@ -454,6 +539,41 @@ fun QuickStartSteamDownloadScreen(
                 }
             }
         }
+    }
+
+    pendingAccelerationEnabled?.let { enabled ->
+        AlertDialog(
+            onDismissRequest = { pendingAccelerationEnabled = null },
+            title = {
+                Text(text = stringResource(R.string.quick_start_steam_acceleration_confirm_title))
+            },
+            text = {
+                Text(
+                    text = stringResource(
+                        if (enabled) {
+                            R.string.quick_start_steam_acceleration_confirm_enable_message
+                        } else {
+                            R.string.quick_start_steam_acceleration_confirm_disable_message
+                        }
+                    )
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        pendingAccelerationEnabled = null
+                        viewModel.onQuickStartSteamAccelerationChanged(activity, enabled)
+                    }
+                ) {
+                    Text(text = stringResource(R.string.quick_start_steam_acceleration_confirm_action))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingAccelerationEnabled = null }) {
+                    Text(text = stringResource(android.R.string.cancel))
+                }
+            }
+        )
     }
 }
 
@@ -509,6 +629,8 @@ private fun SteamAccelerationSwitchCard(
 @Composable
 private fun QuickStartSteamDownloadProgressCard(
     uiState: SettingsScreenViewModel.UiState,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -520,22 +642,41 @@ private fun QuickStartSteamDownloadProgressCard(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            val progress = uiState.busyProgressPercent
-                ?.coerceIn(0, 100)
-                ?.div(100f)
-            if (progress != null) {
-                LinearProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier.fillMaxWidth()
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val progress = uiState.busyProgressPercent
+                    ?.coerceIn(0, 100)
+                    ?.div(100f)
+                if (progress != null) {
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.weight(1f)
+                    )
+                } else {
+                    LinearProgressIndicator(modifier = Modifier.weight(1f))
+                }
+                QuickStartSteamDownloadPauseButton(
+                    uiState = uiState,
+                    onPause = onPause,
+                    onResume = onResume,
                 )
-            } else {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
             uiState.busyMessage?.let { busyMessage ->
                 Text(
                     text = busyMessage.resolve(),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Start
+                )
+            }
+            uiState.quickStartSteamFailureMessage?.let { failureMessage ->
+                Text(
+                    text = failureMessage.resolve(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
                     textAlign = TextAlign.Start
                 )
             }
@@ -560,6 +701,46 @@ private fun QuickStartSteamDownloadProgressCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuickStartSteamDownloadPauseButton(
+    uiState: SettingsScreenViewModel.UiState,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
+) {
+    val canControl = uiState.busy && uiState.quickStartSteamDownloadPhase != null
+    val paused = uiState.quickStartSteamPaused
+    IconButton(
+        enabled = canControl,
+        onClick = if (paused) onResume else onPause,
+    ) {
+        Icon(
+            imageVector = if (paused) Icons.PlayArrow else Icons.Pause,
+            contentDescription = stringResource(
+                if (paused) R.string.quick_start_steam_download_resume else R.string.quick_start_steam_download_pause
+            ),
+            tint = if (canControl) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun QuickStartSteamDownloadRetryAction(
+    uiState: SettingsScreenViewModel.UiState,
+    onRetry: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (uiState.quickStartSteamFailed) {
+            Button(onClick = onRetry) {
+                Text(text = stringResource(R.string.quick_start_steam_download_retry))
             }
         }
     }

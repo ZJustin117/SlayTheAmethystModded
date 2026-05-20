@@ -42,6 +42,7 @@ internal class WorkshopViewModel : ViewModel() {
     private var activeQueryText: String = ""
     private var activeSort: WorkshopBrowseSort = WorkshopBrowseSort.MostPopular
     private var activeTimeFilter: WorkshopBrowseTimeFilter = WorkshopBrowseTimeFilter.OneWeek
+    private val detailsCache = mutableMapOf<String, WorkshopItemDetails>()
 
     fun load(context: Context) {
         WorkshopDownloadCenterStore.initialize(context)
@@ -69,6 +70,12 @@ internal class WorkshopViewModel : ViewModel() {
             installedMods = metadataStore?.list().orEmpty(),
             downloadInProgress = WorkshopDownloadCenterStore.tasks.any { it.status.isActiveDownload() },
         )
+    }
+
+    private fun findCachedDetails(appId: UInt, publishedFileId: ULong): WorkshopItemDetails? {
+        return uiState.selected?.takeIf { selected ->
+            selected.summary.appId == appId && selected.summary.publishedFileId == publishedFileId
+        } ?: detailsCache[detailsCacheKey(appId, publishedFileId)]
     }
 
     fun refreshDownloadState(context: Context) {
@@ -179,6 +186,7 @@ internal class WorkshopViewModel : ViewModel() {
             runCatching {
                 withContext(Dispatchers.IO) { currentService.getDetails(appId, publishedFileId) }
             }.onSuccess { details ->
+                detailsCache[details.cacheKey()] = details
                 val shouldLoadComments = details.shouldLoadWorkshopComments()
                 uiState = uiState.copy(
                     selected = details,
@@ -336,13 +344,11 @@ internal class WorkshopViewModel : ViewModel() {
         }
         val state = resolveWorkshopModDownloadState(
             item = item,
-            installedMods = metadataStore?.list().orEmpty(),
+            installedMods = uiState.installedMods,
             downloadTasks = WorkshopDownloadCenterStore.tasks,
         )
         if (!state.canStartDownload) return
-        val selectedDetails = uiState.selected?.takeIf { selected ->
-            selected.summary.appId == item.appId && selected.summary.publishedFileId == item.publishedFileId
-        }
+        val selectedDetails = findCachedDetails(item.appId, item.publishedFileId)
         if (selectedDetails != null) {
             startDownloadAfterDependencyCheck(context, item, selectedDetails)
             return
@@ -353,6 +359,7 @@ internal class WorkshopViewModel : ViewModel() {
             runCatching {
                 withContext(Dispatchers.IO) { currentService.getDetails(item.appId, item.publishedFileId) }
             }.onSuccess { details ->
+                detailsCache[details.cacheKey()] = details
                 uiState = uiState.copy(selected = details)
                 startDownloadAfterDependencyCheck(context, item, details)
             }.onFailure { error ->
@@ -379,7 +386,7 @@ internal class WorkshopViewModel : ViewModel() {
     ) {
         val missingDependencies = findMissingWorkshopDependencies(
             dependencies = details.dependencies,
-            installedMods = metadataStore?.list().orEmpty(),
+            installedMods = uiState.installedMods,
             downloadTasks = WorkshopDownloadCenterStore.tasks,
         )
         if (missingDependencies.isNotEmpty()) {
@@ -399,47 +406,51 @@ internal class WorkshopViewModel : ViewModel() {
         summary: WorkshopItemSummary,
         details: WorkshopItemDetails? = null,
     ) {
-        val alreadyRunning = WorkshopDownloadCenterStore.hasRunningTask()
+        val alreadyRunning = WorkshopDownloadCenterStore.tasks.any { it.status.isRunningDownload() }
         val queuedDetails = details ?: WorkshopItemDetails(summary = summary)
-        WorkshopDownloadCenterStore.upsert(
-            WorkshopDownloadTaskUi(
-                publishedFileId = summary.publishedFileId,
-                title = summary.title,
-                status = WorkshopDownloadTaskStatus.Queued,
-                message = if (alreadyRunning) "已加入下载队列" else "等待下载",
-                details = queuedDetails,
-                previewUrl = summary.previewUrl,
-                description = summary.description,
-                authorName = summary.authorName,
-                fileSizeBytes = summary.fileSizeBytes,
-                totalBytes = summary.fileSizeBytes.takeIf { it > 0L },
-                errorClass = "",
-                errorMessage = "",
-                errorStackTrace = "",
-            )
+        val queuedTask = WorkshopDownloadTaskUi(
+            publishedFileId = summary.publishedFileId,
+            title = summary.title,
+            status = WorkshopDownloadTaskStatus.Queued,
+            message = if (alreadyRunning) "已加入下载队列" else "等待下载",
+            details = queuedDetails,
+            previewUrl = summary.previewUrl,
+            description = summary.description,
+            authorName = summary.authorName,
+            fileSizeBytes = summary.fileSizeBytes,
+            totalBytes = summary.fileSizeBytes.takeIf { it > 0L },
+            errorClass = "",
+            errorMessage = "",
+            errorStackTrace = "",
+            downloadLog = "",
         )
-        metadataStore?.upsert(
-                WorkshopInstalledModRecord(
-                    appId = summary.appId,
-                    publishedFileId = summary.publishedFileId,
-                    title = summary.title,
+        val queuedRecord = WorkshopInstalledModRecord(
+            appId = summary.appId,
+            publishedFileId = summary.publishedFileId,
+            title = summary.title,
                 description = summary.description,
                 previewUrl = summary.previewUrl,
                 versionText = summary.updatedAtMillis.toString(),
                 updatedAtMillis = summary.updatedAtMillis,
                 installedAtMillis = System.currentTimeMillis(),
-                    localJarPath = "",
-                    cardState = WorkshopModCardState.Downloading,
-                    statusText = "等待下载",
-                    dependencies = queuedDetails.dependencies,
-                )
-            )
+            localJarPath = "",
+            cardState = WorkshopModCardState.Downloading,
+            statusText = "等待下载",
+            dependencies = queuedDetails.dependencies,
+        )
+        WorkshopDownloadCenterStore.upsertInMemory(queuedTask)
         uiState = uiState.copy(
             downloadStatus = if (alreadyRunning) "已加入下载队列：${summary.title}" else "正在下载 ${summary.title}",
-            downloadInProgress = WorkshopDownloadCenterStore.hasRunningTask() || !alreadyRunning,
-            installedMods = metadataStore?.list().orEmpty(),
+            downloadInProgress = true,
+            installedMods = listOf(queuedRecord) + uiState.installedMods.filterNot {
+                it.appId == queuedRecord.appId && it.publishedFileId == queuedRecord.publishedFileId
+            },
         )
-        WorkshopDownloadProcessService.startNextQueued(context)
+        viewModelScope.launch(Dispatchers.IO) {
+            WorkshopDownloadCenterStore.persistUpsert(queuedTask)
+            metadataStore?.upsert(queuedRecord)
+            WorkshopDownloadProcessService.startNextQueued(context)
+        }
     }
 
     private fun restartDownload(context: Context, task: WorkshopDownloadTaskUi, message: String) {
@@ -456,6 +467,7 @@ internal class WorkshopViewModel : ViewModel() {
                 errorClass = "",
                 errorMessage = "",
                 errorStackTrace = "",
+                downloadLog = "",
             )
         )
         metadataStore?.updateState(details.summary.appId, details.summary.publishedFileId, WorkshopModCardState.Downloading, "等待下载")
@@ -525,7 +537,6 @@ internal class WorkshopViewModel : ViewModel() {
                     WorkshopDownloadCenterStore.refresh()
                 }
                 WorkshopDownloadProcessService.RESULT_CANCELLED -> {
-                    WorkshopDownloadCenterStore.remove(summary.publishedFileId)
                     uiState = uiState.copy(
                         downloadStatus = message.ifBlank { "下载已取消" },
                         downloadInProgress = false,
@@ -601,6 +612,10 @@ internal data class WorkshopPendingDependencyDownload(
 
 private fun WorkshopItemDetails.shouldLoadWorkshopComments(): Boolean =
     commentThreadContext != null && commentCount != 0L
+
+private fun WorkshopItemDetails.cacheKey(): String = detailsCacheKey(summary.appId, summary.publishedFileId)
+
+private fun detailsCacheKey(appId: UInt, publishedFileId: ULong): String = "$appId:$publishedFileId"
 
 private fun WorkshopItemDetails.commentUnavailableMessage(): String? = when {
     commentThreadContext == null -> "暂时无法读取 Steam 评论区。"

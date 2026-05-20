@@ -6,6 +6,7 @@
     native <methods>;
 }
 -keep class org.lwjgl.glfw.CallbackBridge { *; }
+-keep class io.stamethyst.backend.workshop.AndroidZstdBridge { *; }
 -keep class net.kdt.pojavlaunch.AWTInputBridge { *; }
 -keep class net.kdt.pojavlaunch.CriticalNativeTest { *; }
 -keep class net.kdt.pojavlaunch.ExitActivity { *; }
@@ -25,3 +26,4 @@
 # JavaSteam/protobuf internals use generated classes and reflective callbacks.
 -keep class in.dragonbra.javasteam.** { *; }
 -keep class com.google.protobuf.** { *; }
+-keep class top.apricityx.workshop.steam.proto.** { *; }

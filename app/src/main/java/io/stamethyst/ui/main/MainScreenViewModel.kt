@@ -214,6 +214,10 @@ class MainScreenViewModel : ViewModel() {
     var uiState by mutableStateOf(UiState())
         private set
 
+    internal fun replaceUiStateForBenchmark(state: UiState) {
+        uiState = state
+    }
+
     private val modManagementController = MainModManagementController(
         object : MainModManagementController.Host {
             override fun canEditMainScreenState(): Boolean {

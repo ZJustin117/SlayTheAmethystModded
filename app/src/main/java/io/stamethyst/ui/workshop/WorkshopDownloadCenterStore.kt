@@ -34,6 +34,15 @@ internal object WorkshopDownloadCenterStore {
         refresh()
     }
 
+    fun persistUpsert(task: WorkshopDownloadTaskUi) {
+        store?.upsert(task.toRecord())
+    }
+
+    fun upsertInMemory(task: WorkshopDownloadTaskUi) {
+        val index = tasks.indexOfFirst { it.publishedFileId == task.publishedFileId }
+        if (index >= 0) tasks[index] = task else tasks.add(0, task)
+    }
+
     fun update(publishedFileId: ULong, transform: (WorkshopDownloadTaskUi) -> WorkshopDownloadTaskUi) {
         store?.update(publishedFileId) { record -> transform(record.toUi()).toRecord() }
         refresh()
@@ -89,6 +98,7 @@ internal data class WorkshopDownloadTaskUi(
     val errorClass: String = "",
     val errorMessage: String = "",
     val errorStackTrace: String = "",
+    val downloadLog: String = "",
 )
 
 private fun WorkshopDownloadTaskRecord.toUi(): WorkshopDownloadTaskUi = WorkshopDownloadTaskUi(
@@ -112,9 +122,10 @@ private fun WorkshopDownloadTaskRecord.toUi(): WorkshopDownloadTaskUi = Workshop
     errorClass = errorClass,
     errorMessage = errorMessage,
     errorStackTrace = errorStackTrace,
+    downloadLog = downloadLog,
 )
 
-private fun WorkshopDownloadTaskUi.toRecord(): WorkshopDownloadTaskRecord = WorkshopDownloadTaskRecord(
+internal fun WorkshopDownloadTaskUi.toRecord(): WorkshopDownloadTaskRecord = WorkshopDownloadTaskRecord(
     publishedFileId = publishedFileId,
     title = title,
     status = status,
@@ -135,4 +146,5 @@ private fun WorkshopDownloadTaskUi.toRecord(): WorkshopDownloadTaskRecord = Work
     errorClass = errorClass,
     errorMessage = errorMessage,
     errorStackTrace = errorStackTrace,
+    downloadLog = downloadLog,
 )

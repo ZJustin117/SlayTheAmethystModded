@@ -89,6 +89,9 @@ import kotlinx.coroutines.delay
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
+private const val INITIAL_EXPANDED_FOLDER_MOD_ITEM_BUDGET = 48
+private const val EXPANDED_FOLDER_FULL_MOUNT_DELAY_MS = 220L
+
 @Composable
 internal fun ModFolderSection(
     modifier: Modifier = Modifier,
@@ -260,6 +263,20 @@ internal fun ModFolderSection(
         }
     }
     val activeDragMod = activeModDragSession?.mod
+    var deferExpandedFolderItems by remember(
+        mods,
+        folders,
+        folderAssignments,
+        filterText,
+        unassignedFolderOrder
+    ) {
+        mutableStateOf(true)
+    }
+    LaunchedEffect(mods, folders, folderAssignments, filterText, unassignedFolderOrder) {
+        deferExpandedFolderItems = true
+        delay(EXPANDED_FOLDER_FULL_MOUNT_DELAY_MS)
+        deferExpandedFolderItems = false
+    }
     val latestFolderBodyVisibilityByToken = remember { mutableMapOf<String, Boolean>() }
     val folderBodyVisibilityByToken = remember(folderUiModels, shouldCollapseFolders, activeDragSourceFolderId, activeDragMod) {
         buildFolderBodyVisibilityByToken(
@@ -319,7 +336,8 @@ internal fun ModFolderSection(
         folderBodyExitingTokens.value,
         shouldCollapseFolders,
         activeDragSourceFolderId,
-        activeDragMod
+        activeDragMod,
+        deferExpandedFolderItems
     ) {
         buildModFolderLazyItems(
             hasDependencyMods = dependencyMods.isNotEmpty(),
@@ -329,7 +347,12 @@ internal fun ModFolderSection(
             folderBodyExitingTokens = folderBodyExitingTokens.value,
             shouldCollapseFolders = shouldCollapseFolders,
             activeDragSourceFolderId = activeDragSourceFolderId,
-            activeDragMod = activeDragMod
+            activeDragMod = activeDragMod,
+            initialExpandedFolderModItemBudget = if (deferExpandedFolderItems && activeDragMod == null) {
+                INITIAL_EXPANDED_FOLDER_MOD_ITEM_BUDGET
+            } else {
+                Int.MAX_VALUE
+            }
         )
     }
     val topLevelItemKeys = remember(lazyListItems) {
@@ -1578,9 +1601,11 @@ private fun buildModFolderLazyItems(
     folderBodyExitingTokens: Set<String>,
     shouldCollapseFolders: Boolean,
     activeDragSourceFolderId: String?,
-    activeDragMod: ModItemUi?
+    activeDragMod: ModItemUi?,
+    initialExpandedFolderModItemBudget: Int
 ): List<ModFolderLazyItem> {
     return buildList {
+        var remainingInitialBodyItems = initialExpandedFolderModItemBudget
         add(ModFolderLazyItem.TopPlaceholder)
         add(ModFolderLazyItem.FilterInput)
         if (hasDependencyMods) {
@@ -1594,21 +1619,32 @@ private fun buildModFolderLazyItems(
             val bodyPresent = bodyVisible ||
                 previousFolderBodyVisibilityByToken[folderTokenId] == true ||
                 folderBodyExitingTokens.contains(folderTokenId)
+            val bodyMods = if (!bodyPresent) {
+                emptyList()
+            } else if (keepSourceFolderBodyAlive && effectiveCollapsed) {
+                listOfNotNull(activeDragMod)
+            } else {
+                folderUiModel.mods
+            }
+            val presentedBodyMods = if (bodyMods.size > remainingInitialBodyItems) {
+                bodyMods.take(remainingInitialBodyItems)
+            } else {
+                bodyMods
+            }
+            if (remainingInitialBodyItems != Int.MAX_VALUE) {
+                remainingInitialBodyItems = (remainingInitialBodyItems - presentedBodyMods.size).coerceAtLeast(0)
+            }
+            val hasPresentedBody = bodyPresent && (presentedBodyMods.isNotEmpty() || bodyMods.isEmpty())
             add(
                 ModFolderLazyItem.FolderHeader(
                     folderUiModel = folderUiModel,
                     displayIndex = index,
                     effectiveCollapsed = effectiveCollapsed,
-                    hasBody = bodyPresent
+                    hasBody = hasPresentedBody
                 )
             )
             if (!bodyPresent) {
                 return@forEachIndexed
-            }
-            val bodyMods = if (keepSourceFolderBodyAlive && effectiveCollapsed) {
-                listOfNotNull(activeDragMod)
-            } else {
-                folderUiModel.mods
             }
             if (bodyMods.isEmpty()) {
                 add(
@@ -1618,13 +1654,13 @@ private fun buildModFolderLazyItems(
                     )
                 )
             } else {
-                bodyMods.forEachIndexed { modIndex, mod ->
+                presentedBodyMods.forEachIndexed { modIndex, mod ->
                     add(
                         ModFolderLazyItem.FolderMod(
                             folderTokenId = folderTokenId,
                             mod = mod,
                             constrainHeightForDrag = keepSourceFolderBodyAlive && folderUiModel.isCollapsed,
-                            isLastInFolder = modIndex == bodyMods.lastIndex,
+                            isLastInFolder = modIndex == presentedBodyMods.lastIndex,
                             bodyVisible = bodyVisible
                         )
                     )
