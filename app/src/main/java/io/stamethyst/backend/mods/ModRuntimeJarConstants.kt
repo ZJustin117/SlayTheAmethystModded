@@ -117,6 +117,16 @@ internal const val STS_PATCH_GL_TEXTURE_INNER_PREFIX =
     "com/badlogic/gdx/graphics/GLTexture$"
 internal const val STS_PATCH_TEXTURE_OWNER_SUMMARY_CLASS =
     "com/badlogic/gdx/graphics/TextureOwnerSummary.class"
+internal const val STS_PATCH_GPU_RESOURCE_GUARDIAN_CLASS =
+    "com/badlogic/gdx/graphics/GpuResourceGuardian.class"
+internal const val STS_PATCH_GPU_RESOURCE_GUARDIAN_MODE_CLASS =
+    "com/badlogic/gdx/graphics/GpuResourceGuardian\$Mode.class"
+internal const val STS_PATCH_GPU_RESOURCE_GUARDIAN_STATE_CLASS =
+    "com/badlogic/gdx/graphics/GpuResourceGuardian\$State.class"
+internal const val STS_PATCH_GPU_RESOURCE_GUARDIAN_INNER_PREFIX =
+    "com/badlogic/gdx/graphics/GpuResourceGuardian$"
+internal const val STS_PATCH_GPU_LEAK_INJECTOR_CLASS =
+    "com/badlogic/gdx/graphics/GpuLeakInjector.class"
 internal const val STS_PATCH_GL_FRAMEBUFFER_CLASS =
     "com/badlogic/gdx/graphics/glutils/GLFrameBuffer.class"
 internal const val STS_PATCH_GL_FRAMEBUFFER_INNER_PREFIX =
@@ -169,6 +179,10 @@ internal val REQUIRED_STS_PATCH_CLASSES: Set<String> = HashSet(
         STS_PATCH_SINGLE_CARD_VIEW_POPUP_CLASS,
         STS_PATCH_GL_TEXTURE_CLASS,
         STS_PATCH_TEXTURE_OWNER_SUMMARY_CLASS,
+        STS_PATCH_GPU_RESOURCE_GUARDIAN_CLASS,
+        STS_PATCH_GPU_RESOURCE_GUARDIAN_MODE_CLASS,
+        STS_PATCH_GPU_RESOURCE_GUARDIAN_STATE_CLASS,
+        STS_PATCH_GPU_LEAK_INJECTOR_CLASS,
         STS_PATCH_GL_FRAMEBUFFER_CLASS,
         STS_PATCH_FRAMEBUFFER_OWNER_SUMMARY_CLASS,
         STS_PATCH_FREETYPE_GLYPH_FALLBACK_COMPAT_CLASS,

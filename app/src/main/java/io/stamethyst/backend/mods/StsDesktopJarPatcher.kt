@@ -37,6 +37,21 @@ internal object StsDesktopJarPatcher {
         }
     }
 
+    internal fun isPatchedWithCurrentPatch(stsJar: File?, patchJar: File?): Boolean {
+        if (stsJar == null || !stsJar.isFile || patchJar == null || !patchJar.isFile) {
+            return false
+        }
+        return try {
+            val patchEntries = loadPatchClassEntries(patchJar)
+            if (!patchEntries.keys.containsAll(REQUIRED_STS_PATCH_CLASSES)) {
+                return false
+            }
+            isStsPatched(stsJar, patchEntries)
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
     @Throws(IOException::class)
     fun ensurePatchedStsJar(
         context: Context,
@@ -264,6 +279,9 @@ internal object StsDesktopJarPatcher {
             STS_PATCH_GL_TEXTURE_CLASS == entryName ||
             entryName.startsWith(STS_PATCH_GL_TEXTURE_INNER_PREFIX) ||
             STS_PATCH_TEXTURE_OWNER_SUMMARY_CLASS == entryName ||
+            STS_PATCH_GPU_RESOURCE_GUARDIAN_CLASS == entryName ||
+            entryName.startsWith(STS_PATCH_GPU_RESOURCE_GUARDIAN_INNER_PREFIX) ||
+            STS_PATCH_GPU_LEAK_INJECTOR_CLASS == entryName ||
             STS_PATCH_GL_FRAMEBUFFER_CLASS == entryName ||
             entryName.startsWith(STS_PATCH_GL_FRAMEBUFFER_INNER_PREFIX) ||
             STS_PATCH_FRAMEBUFFER_OWNER_SUMMARY_CLASS == entryName ||

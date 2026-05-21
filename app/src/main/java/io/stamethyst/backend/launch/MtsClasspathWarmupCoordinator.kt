@@ -7,6 +7,7 @@ import io.stamethyst.backend.mods.ModClasspathJarBuilder
 import io.stamethyst.backend.mods.ModManager
 import io.stamethyst.backend.mods.OptionalModStorageCoordinator
 import io.stamethyst.backend.mods.StsJarValidator
+import io.stamethyst.backend.mods.StsDesktopJarPatcher
 import io.stamethyst.backend.mods.BASEMOD_RESOURCE_SENTINEL
 import io.stamethyst.backend.mods.STS_RESOURCE_SENTINEL
 import io.stamethyst.config.RuntimePaths
@@ -74,6 +75,13 @@ object MtsClasspathWarmupCoordinator {
             ""
         }
         if (markerValue.isEmpty() || markerValue != buildCacheMarkerValue(context)) {
+            return false
+        }
+        if (!StsDesktopJarPatcher.isPatchedWithCurrentPatch(
+                RuntimePaths.importedStsJar(context),
+                RuntimePaths.gdxPatchJar(context)
+            )
+        ) {
             return false
         }
         return ModClasspathJarBuilder.hasRequiredGdxApi(RuntimePaths.mtsGdxApiJar(context)) &&

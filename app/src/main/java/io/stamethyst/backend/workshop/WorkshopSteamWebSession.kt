@@ -111,17 +111,22 @@ internal class WorkshopSteamWebSession(
     private fun projectedCookiesFor(url: HttpUrl): List<Cookie> {
         if (!url.host.isSteamDomain()) return emptyList()
         val context = synchronized(lock) { webLoginContext } ?: return emptyList()
+        val domain = when {
+            url.host == "steamcommunity.com" || url.host.endsWith(".steamcommunity.com") -> "steamcommunity.com"
+            url.host == "steampowered.com" || url.host.endsWith(".steampowered.com") -> "steampowered.com"
+            else -> url.host
+        }
         return listOf(
             Cookie.Builder()
                 .name("steamLoginSecure")
                 .value("${context.steamId}||${context.accessToken}")
-                .domain(url.host)
+                .domain(domain)
                 .path("/")
                 .build(),
             Cookie.Builder()
                 .name("sessionid")
                 .value(context.sessionId)
-                .domain(url.host)
+                .domain(domain)
                 .path("/")
                 .build(),
         )

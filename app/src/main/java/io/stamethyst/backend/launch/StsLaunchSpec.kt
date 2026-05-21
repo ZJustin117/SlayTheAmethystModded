@@ -10,6 +10,7 @@ import io.stamethyst.backend.render.RendererDecision
 import io.stamethyst.backend.render.RendererBackend
 import io.stamethyst.backend.render.VirtualResolutionPolicy
 import io.stamethyst.backend.render.VirtualResolutionMode
+import io.stamethyst.config.GpuResourceGuardianMode
 import io.stamethyst.config.LauncherConfig
 import io.stamethyst.config.RuntimePaths
 import io.stamethyst.config.TouchscreenInputMode
@@ -337,10 +338,15 @@ object StsLaunchSpec {
             "-Damethyst.gdx.texture_pressure_downscale_divisor=" +
                 CompatibilitySettings.readTexturePressureDownscaleDivisor(context)
         )
+        val gpuResourceGuardianMode = LauncherConfig.readGpuResourceGuardianMode(context)
         args.add(
             "-Damethyst.gdx.gpu_resource_guardian=" +
-                LauncherConfig.readGpuResourceGuardianMode(context).runtimePropertyValue
+                gpuResourceGuardianMode.runtimePropertyValue
         )
+        if (gpuResourceGuardianMode == GpuResourceGuardianMode.ULTRA_AGGRESSIVE) {
+            args.add("-Damethyst.gdx.gpu_guardian_sync_restore_max_bytes=67108864")
+            args.add("-Damethyst.gdx.gpu_guardian_sync_restore_budget_bytes_per_frame=67108864")
+        }
         args.add(
             "-Damethyst.gdx.force_linear_mipmap_filter=" +
                 if (CompatibilitySettings.isForceLinearMipmapFilterEnabled(context)) "true" else "false"

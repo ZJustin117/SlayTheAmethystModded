@@ -204,6 +204,8 @@ public abstract class GLTexture implements Disposable {
 	private static final AtomicInteger TEXTURE_RESIDENCY_RESTORE_FAILURES = new AtomicInteger();
 	private static final AtomicLong TEXTURE_RESIDENCY_RECLAIMED_BYTES = new AtomicLong();
 	private static final AtomicLong TEXTURE_RESIDENCY_RESTORED_BYTES = new AtomicLong();
+	private static final AtomicLong GUARDIAN_RESTORE_TOO_LARGE_SKIPS = new AtomicLong();
+	private static final AtomicLong GUARDIAN_RESTORE_TOO_LARGE_BYTES = new AtomicLong();
 	private static final AtomicBoolean TEXTURE_RESIDENCY_SKIP_FOR_RAM_SAVER_LOGGED = new AtomicBoolean();
 	private static final ConcurrentHashMap<String, AtomicInteger> TEXTURE_BUILD_STACK_COUNTS =
 		new ConcurrentHashMap<String, AtomicInteger>();
@@ -527,7 +529,11 @@ public abstract class GLTexture implements Disposable {
 			+ " textureResidencyRestores=" + TEXTURE_RESIDENCY_RESTORES.get()
 			+ " textureResidencyRestoreFailures=" + TEXTURE_RESIDENCY_RESTORE_FAILURES.get()
 			+ " textureResidencyReclaimedBytes=" + TEXTURE_RESIDENCY_RECLAIMED_BYTES.get()
-			+ " textureResidencyRestoredBytes=" + TEXTURE_RESIDENCY_RESTORED_BYTES.get();
+			+ " textureResidencyRestoredBytes=" + TEXTURE_RESIDENCY_RESTORED_BYTES.get()
+			+ " guardianRestoreTooLargeSkips=" + GUARDIAN_RESTORE_TOO_LARGE_SKIPS.get()
+			+ " guardianRestoreTooLargeBytes=" + GUARDIAN_RESTORE_TOO_LARGE_BYTES.get()
+			+ " guardianSyncRestoreMaxBytes=" + GPU_GUARDIAN_SYNC_RESTORE_MAX_BYTES
+			+ " guardianSyncRestoreBudgetBytes=" + GPU_GUARDIAN_SYNC_RESTORE_BUDGET_BYTES;
 	}
 
 	public static String getLiveSourceSummary () {
@@ -736,6 +742,10 @@ public abstract class GLTexture implements Disposable {
 					}
 				} else {
 					recordGuardianProtectReason(protectReasonCounts, protectReasonBytes, protectReason, textureBytes);
+					if ("restore_too_large".equals(protectReason)) {
+						GUARDIAN_RESTORE_TOO_LARGE_SKIPS.incrementAndGet();
+						GUARDIAN_RESTORE_TOO_LARGE_BYTES.addAndGet(textureBytes);
+					}
 					recordGuardianProtectGroup(protectOwnerCounts, protectOwnerBytes, texture.getResidencyOwnerKeyForLog(), textureBytes);
 					recordGuardianProtectGroup(protectSourceCounts, protectSourceBytes, texture.getResidencySourceSampleForLog(), textureBytes);
 				}

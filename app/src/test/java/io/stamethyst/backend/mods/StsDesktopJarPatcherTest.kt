@@ -18,6 +18,14 @@ class StsDesktopJarPatcherTest {
     }
 
     @Test
+    fun requiredPatchClasses_includeGpuGuardianSupportClasses() {
+        assertTrue(REQUIRED_STS_PATCH_CLASSES.contains(STS_PATCH_GPU_RESOURCE_GUARDIAN_CLASS))
+        assertTrue(REQUIRED_STS_PATCH_CLASSES.contains(STS_PATCH_GPU_RESOURCE_GUARDIAN_MODE_CLASS))
+        assertTrue(REQUIRED_STS_PATCH_CLASSES.contains(STS_PATCH_GPU_RESOURCE_GUARDIAN_STATE_CLASS))
+        assertTrue(REQUIRED_STS_PATCH_CLASSES.contains(STS_PATCH_GPU_LEAK_INJECTOR_CLASS))
+    }
+
+    @Test
     fun shouldPatchStsEntry_acceptsFrameBufferOwnerSummary() {
         val method = StsDesktopJarPatcher::class.java.getDeclaredMethod(
             "shouldPatchStsEntry",
@@ -47,6 +55,32 @@ class StsDesktopJarPatcherTest {
         ) as Boolean
 
         assertTrue(included)
+    }
+
+    @Test
+    fun shouldPatchStsEntry_acceptsGpuGuardianSupportClasses() {
+        val method = StsDesktopJarPatcher::class.java.getDeclaredMethod(
+            "shouldPatchStsEntry",
+            String::class.java
+        )
+        method.isAccessible = true
+
+        val guardianIncluded = method.invoke(
+            StsDesktopJarPatcher,
+            STS_PATCH_GPU_RESOURCE_GUARDIAN_CLASS
+        ) as Boolean
+        val injectorIncluded = method.invoke(
+            StsDesktopJarPatcher,
+            STS_PATCH_GPU_LEAK_INJECTOR_CLASS
+        ) as Boolean
+        val guardianInnerIncluded = method.invoke(
+            StsDesktopJarPatcher,
+            STS_PATCH_GPU_RESOURCE_GUARDIAN_MODE_CLASS
+        ) as Boolean
+
+        assertTrue(guardianIncluded)
+        assertTrue(injectorIncluded)
+        assertTrue(guardianInnerIncluded)
     }
 
     @Test

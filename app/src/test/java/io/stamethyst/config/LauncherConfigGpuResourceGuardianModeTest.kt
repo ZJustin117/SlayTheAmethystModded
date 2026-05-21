@@ -52,6 +52,10 @@ class LauncherConfigGpuResourceGuardianModeTest {
             GpuResourceGuardianMode.DIAGNOSTIC,
             GpuResourceGuardianMode.fromPersistedValue("diagnostic")
         )
+        assertEquals(
+            GpuResourceGuardianMode.ULTRA_AGGRESSIVE,
+            GpuResourceGuardianMode.fromPersistedValue("ultra_aggressive")
+        )
         assertEquals(GpuResourceGuardianMode.LEGACY, GpuResourceGuardianMode.fromPersistedValue("legacy"))
     }
 
@@ -59,6 +63,7 @@ class LauncherConfigGpuResourceGuardianModeTest {
     fun runtimePropertyValue_mapsLegacyToOff() {
         assertEquals("off", GpuResourceGuardianMode.LEGACY.runtimePropertyValue)
         assertEquals("safe", GpuResourceGuardianMode.SAFE.runtimePropertyValue)
+        assertEquals("ultra_aggressive", GpuResourceGuardianMode.ULTRA_AGGRESSIVE.runtimePropertyValue)
     }
 
     @Test

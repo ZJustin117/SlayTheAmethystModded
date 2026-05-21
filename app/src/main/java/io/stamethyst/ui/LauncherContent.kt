@@ -95,6 +95,7 @@ import io.stamethyst.ui.modimport.ModImportHost
 import io.stamethyst.ui.workshop.WorkshopScreen
 import io.stamethyst.ui.workshop.WorkshopDownloadCenterScreen
 import io.stamethyst.ui.workshop.WorkshopDetailScreen
+import io.stamethyst.ui.workshop.WorkshopListMode
 import io.stamethyst.ui.workshop.WorkshopViewModel
 import io.stamethyst.ui.quickstart.QuickStartScreen
 import io.stamethyst.ui.quickstart.QuickStartJarImportScreen
@@ -363,6 +364,30 @@ fun LauncherContent(
                                 viewModel = workshopViewModel,
                                 modifier = Modifier.fillMaxSize(),
                                 showBackButton = false,
+                                showSubscriptionsButton = true,
+                                onBack = { navigator.goBack() },
+                                onOpenSteamLogin = { navigator.push(Route.SteamCloudLogin) },
+                                onOpenDownloadCenter = { navigator.push(Route.WorkshopDownloadCenter) },
+                                onOpenSubscriptions = { navigator.push(Route.WorkshopSubscriptions) },
+                                onOpenDetails = { item ->
+                                    navigator.push(
+                                        Route.WorkshopDetail(
+                                            publishedFileId = item.publishedFileId.toString(),
+                                            appId = item.appId.toLong(),
+                                        )
+                                    )
+                                },
+                            )
+                        }
+
+                        entry<Route.WorkshopSubscriptions> {
+                            WorkshopScreen(
+                                viewModel = workshopViewModel,
+                                modifier = Modifier.fillMaxSize(),
+                                showBackButton = true,
+                                initialListMode = WorkshopListMode.Subscriptions,
+                                title = "已订阅模组",
+                                subtitle = "查看当前 Steam 账号订阅的创意工坊模组",
                                 onBack = { navigator.goBack() },
                                 onOpenSteamLogin = { navigator.push(Route.SteamCloudLogin) },
                                 onOpenDownloadCenter = { navigator.push(Route.WorkshopDownloadCenter) },
@@ -1011,8 +1036,10 @@ private fun Route?.launcherDockRoute(): Route? {
         Route.Main -> Route.Main
         Route.Mods -> Route.Mods
         Route.Workshop -> Route.Workshop
+        Route.WorkshopSubscriptions -> Route.Workshop
         Route.Settings -> Route.Settings
         is Route.WorkshopDetail,
+        Route.WorkshopSubscriptions,
         Route.WorkshopDownloadCenter,
         Route.SteamCloudLogin,
         Route.SteamCloudGuard,

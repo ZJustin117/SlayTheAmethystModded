@@ -39,34 +39,49 @@ internal class WorkshopViewModel : ViewModel() {
     private var service: WorkshopService? = null
     private var metadataStore: WorkshopMetadataStore? = null
     private var loaded = false
+    private var activeListMode: WorkshopListMode = WorkshopListMode.Browse
     private var activeQueryText: String = ""
     private var activeSort: WorkshopBrowseSort = WorkshopBrowseSort.MostPopular
     private var activeTimeFilter: WorkshopBrowseTimeFilter = WorkshopBrowseTimeFilter.OneWeek
     private val detailsCache = mutableMapOf<String, WorkshopItemDetails>()
 
-    fun load(context: Context) {
+    fun load(context: Context, initialListMode: WorkshopListMode = WorkshopListMode.Browse) {
         WorkshopDownloadCenterStore.initialize(context)
         if (loaded) {
             refreshLocalDownloadState()
+            if (uiState.listMode != initialListMode) {
+                when (initialListMode) {
+                    WorkshopListMode.Browse -> showWorkshopBrowse(context)
+                    WorkshopListMode.Subscriptions -> showSubscribedWorkshopMods(context)
+                }
+            }
             return
         }
         loaded = true
+        activeListMode = initialListMode
         service = WorkshopService(context)
         metadataStore = WorkshopMetadataStore(context)
         metadataStore?.markMissingFiles()
+        val steamLoggedIn = service?.hasSteamAuth() == true
         uiState = uiState.copy(
-            steamLoggedIn = service?.hasSteamAuth() == true,
+            steamLoggedIn = steamLoggedIn,
+            listMode = activeListMode,
             installedMods = metadataStore?.list().orEmpty(),
         )
         WorkshopDownloadProcessService.startNextQueued(context)
-        search(context, "")
+        when (activeListMode) {
+            WorkshopListMode.Browse -> search(context, "")
+            WorkshopListMode.Subscriptions -> loadSubscribedPage(context, page = 1, append = false)
+        }
     }
 
     private fun refreshLocalDownloadState() {
         metadataStore?.markMissingFiles()
         WorkshopDownloadCenterStore.refresh()
+        val steamLoggedIn = service?.hasSteamAuth() == true
         uiState = uiState.copy(
-            steamLoggedIn = service?.hasSteamAuth() == true,
+            steamLoggedIn = steamLoggedIn,
+            listMode = activeListMode,
             installedMods = metadataStore?.list().orEmpty(),
             downloadInProgress = WorkshopDownloadCenterStore.tasks.any { it.status.isActiveDownload() },
         )
@@ -84,6 +99,7 @@ internal class WorkshopViewModel : ViewModel() {
     }
 
     fun search(context: Context, queryText: String) {
+        activeListMode = WorkshopListMode.Browse
         activeQueryText = queryText
         loadBrowsePage(context, queryText = queryText, page = 1, append = false)
     }
@@ -94,6 +110,7 @@ internal class WorkshopViewModel : ViewModel() {
         sort: WorkshopBrowseSort,
         timeFilter: WorkshopBrowseTimeFilter,
     ) {
+        activeListMode = WorkshopListMode.Browse
         activeQueryText = queryText
         activeSort = sort
         activeTimeFilter = timeFilter
@@ -101,19 +118,40 @@ internal class WorkshopViewModel : ViewModel() {
     }
 
     fun refreshBrowse(context: Context) {
-        loadBrowsePage(
-            context = context,
-            queryText = activeQueryText,
-            page = 1,
-            append = false,
-            clearItems = false,
-        )
+        when (activeListMode) {
+            WorkshopListMode.Browse -> loadBrowsePage(
+                context = context,
+                queryText = activeQueryText,
+                page = 1,
+                append = false,
+                clearItems = false,
+            )
+            WorkshopListMode.Subscriptions -> loadSubscribedPage(
+                context = context,
+                page = 1,
+                append = false,
+                clearItems = false,
+            )
+        }
     }
 
     fun loadNextPage(context: Context) {
         val state = uiState
         if (state.browseLoading || state.loadingMore || !state.hasMorePages) return
-        loadBrowsePage(context, queryText = activeQueryText, page = state.nextPage, append = true)
+        when (state.listMode) {
+            WorkshopListMode.Browse -> loadBrowsePage(context, queryText = activeQueryText, page = state.nextPage, append = true)
+            WorkshopListMode.Subscriptions -> loadSubscribedPage(context, page = state.nextPage, append = true)
+        }
+    }
+
+    fun showSubscribedWorkshopMods(context: Context) {
+        activeListMode = WorkshopListMode.Subscriptions
+        loadSubscribedPage(context, page = 1, append = false)
+    }
+
+    fun showWorkshopBrowse(context: Context) {
+        activeListMode = WorkshopListMode.Browse
+        loadBrowsePage(context, queryText = activeQueryText, page = 1, append = false)
     }
 
     private fun loadBrowsePage(
@@ -124,6 +162,7 @@ internal class WorkshopViewModel : ViewModel() {
         clearItems: Boolean = true,
     ) {
         val currentService = service ?: return
+        activeListMode = WorkshopListMode.Browse
         viewModelScope.launch {
             uiState = if (append) {
                 uiState.copy(loadingMore = true, errorMessage = null)
@@ -131,6 +170,7 @@ internal class WorkshopViewModel : ViewModel() {
                 uiState.copy(
                     browseLoading = true,
                     loadingMore = false,
+                    listMode = WorkshopListMode.Browse,
                     errorMessage = null,
                     items = if (clearItems) emptyList() else uiState.items,
                     nextPage = 1,
@@ -150,6 +190,7 @@ internal class WorkshopViewModel : ViewModel() {
                     )
                 }
             }.onSuccess { result ->
+                if (activeListMode != WorkshopListMode.Browse) return@onSuccess
                 val existing = if (append) uiState.items else emptyList()
                 val merged = (existing + result.items).distinctBy { it.publishedFileId }
                 uiState = uiState.copy(
@@ -161,9 +202,74 @@ internal class WorkshopViewModel : ViewModel() {
                     errorMessage = if (merged.isEmpty()) "未找到创意工坊条目" else null,
                 )
             }.onFailure { error ->
+                if (activeListMode != WorkshopListMode.Browse) return@onFailure
                 uiState = uiState.copy(
                     browseLoading = false,
                     loadingMore = false,
+                    errorMessage = error.message ?: error.javaClass.simpleName,
+                )
+            }
+        }
+    }
+
+    private fun loadSubscribedPage(
+        context: Context,
+        page: Int,
+        append: Boolean,
+        clearItems: Boolean = true,
+    ) {
+        val currentService = service ?: return
+        activeListMode = WorkshopListMode.Subscriptions
+        if (!currentService.hasSteamAuth()) {
+            uiState = uiState.copy(
+                browseLoading = false,
+                loadingMore = false,
+                listMode = WorkshopListMode.Subscriptions,
+                steamLoggedIn = false,
+                items = emptyList(),
+                nextPage = 1,
+                hasMorePages = false,
+                errorMessage = null,
+            )
+            return
+        }
+        viewModelScope.launch {
+            uiState = if (append) {
+                uiState.copy(loadingMore = true, errorMessage = null)
+            } else {
+                uiState.copy(
+                    browseLoading = true,
+                    loadingMore = false,
+                    listMode = WorkshopListMode.Subscriptions,
+                    errorMessage = null,
+                    items = if (clearItems) emptyList() else uiState.items,
+                    nextPage = 1,
+                    hasMorePages = true,
+                )
+            }
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    currentService.browseSubscriptions(page = page, pageSize = WorkshopUiState.PAGE_SIZE)
+                }
+            }.onSuccess { result ->
+                if (activeListMode != WorkshopListMode.Subscriptions) return@onSuccess
+                val existing = if (append) uiState.items else emptyList()
+                val merged = (existing + result.items).distinctBy { it.publishedFileId }
+                uiState = uiState.copy(
+                    browseLoading = false,
+                    loadingMore = false,
+                    items = merged,
+                    nextPage = page + 1,
+                    hasMorePages = result.hasNextPage,
+                    steamLoggedIn = currentService.hasSteamAuth(),
+                    errorMessage = null,
+                )
+            }.onFailure { error ->
+                if (activeListMode != WorkshopListMode.Subscriptions) return@onFailure
+                uiState = uiState.copy(
+                    browseLoading = false,
+                    loadingMore = false,
+                    steamLoggedIn = currentService.hasSteamAuth(),
                     errorMessage = error.message ?: error.javaClass.simpleName,
                 )
             }
@@ -586,6 +692,7 @@ internal data class WorkshopUiState(
     val loadingMore: Boolean = false,
     val nextPage: Int = 1,
     val hasMorePages: Boolean = true,
+    val listMode: WorkshopListMode = WorkshopListMode.Browse,
     val detailLoadingId: ULong? = null,
     val downloadInProgress: Boolean = false,
     val updateChecking: Boolean = false,
@@ -603,6 +710,11 @@ internal data class WorkshopUiState(
     companion object {
         const val PAGE_SIZE = 30
     }
+}
+
+internal enum class WorkshopListMode {
+    Browse,
+    Subscriptions,
 }
 
 internal data class WorkshopPendingDependencyDownload(

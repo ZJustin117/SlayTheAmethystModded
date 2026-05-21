@@ -26,6 +26,8 @@ sealed interface Route : NavKey {
     @Serializable
     data object Workshop : Route
     @Serializable
+    data object WorkshopSubscriptions : Route
+    @Serializable
     data class WorkshopDetail(
         val publishedFileId: String,
         val appId: Long = 646570L,

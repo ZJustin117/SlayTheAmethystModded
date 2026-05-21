@@ -3440,6 +3440,8 @@ private fun gpuResourceGuardianModeDisplayName(mode: GpuResourceGuardianMode): S
             GpuResourceGuardianMode.OFF -> R.string.settings_gpu_resource_guardian_mode_off
             GpuResourceGuardianMode.SAFE -> R.string.settings_gpu_resource_guardian_mode_safe
             GpuResourceGuardianMode.AGGRESSIVE -> R.string.settings_gpu_resource_guardian_mode_aggressive
+            GpuResourceGuardianMode.ULTRA_AGGRESSIVE ->
+                R.string.settings_gpu_resource_guardian_mode_ultra_aggressive
             GpuResourceGuardianMode.DIAGNOSTIC -> R.string.settings_gpu_resource_guardian_mode_diagnostic
             GpuResourceGuardianMode.LEGACY -> R.string.settings_gpu_resource_guardian_mode_legacy
         }
@@ -3454,6 +3456,8 @@ private fun gpuResourceGuardianModeDescription(mode: GpuResourceGuardianMode): S
             GpuResourceGuardianMode.SAFE -> R.string.settings_gpu_resource_guardian_mode_safe_desc
             GpuResourceGuardianMode.AGGRESSIVE ->
                 R.string.settings_gpu_resource_guardian_mode_aggressive_desc
+            GpuResourceGuardianMode.ULTRA_AGGRESSIVE ->
+                R.string.settings_gpu_resource_guardian_mode_ultra_aggressive_desc
             GpuResourceGuardianMode.DIAGNOSTIC ->
                 R.string.settings_gpu_resource_guardian_mode_diagnostic_desc
             GpuResourceGuardianMode.LEGACY -> R.string.settings_gpu_resource_guardian_mode_legacy_desc

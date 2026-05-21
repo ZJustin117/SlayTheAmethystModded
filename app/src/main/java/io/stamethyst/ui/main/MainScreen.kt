@@ -2819,14 +2819,6 @@ private fun ColumnScope.MainContentSwitcher(
                     )
                 }
 
-                if (uiState.optionalMods.isEmpty() && uiState.storageIssue == null) {
-                    Text(
-                        text = stringResource(R.string.main_no_mods_hint),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-                }
-
                 ModFolderSection(
                     modifier = Modifier
                         .fillMaxWidth()

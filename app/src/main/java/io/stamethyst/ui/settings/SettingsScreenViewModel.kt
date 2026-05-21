@@ -4764,6 +4764,8 @@ class SettingsScreenViewModel : ViewModel() {
                 host.getString(R.string.settings_gpu_resource_guardian_mode_safe)
             GpuResourceGuardianMode.AGGRESSIVE ->
                 host.getString(R.string.settings_gpu_resource_guardian_mode_aggressive)
+            GpuResourceGuardianMode.ULTRA_AGGRESSIVE ->
+                host.getString(R.string.settings_gpu_resource_guardian_mode_ultra_aggressive)
             GpuResourceGuardianMode.DIAGNOSTIC ->
                 host.getString(R.string.settings_gpu_resource_guardian_mode_diagnostic)
             GpuResourceGuardianMode.LEGACY ->

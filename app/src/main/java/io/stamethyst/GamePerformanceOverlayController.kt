@@ -2,9 +2,11 @@ package io.stamethyst
 
 import android.app.ActivityManager
 import android.content.Context
+import android.graphics.Typeface
 import android.os.Debug
 import android.os.Process
 import android.os.SystemClock
+import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.TextView
@@ -33,10 +35,10 @@ internal class GamePerformanceOverlayController(
         private const val GC_WINDOW_DURATION_MS = 60_000L
         private const val GC_LOG_SCAN_MAX_BYTES = 8 * 1024
         private const val GC_LOG_HISTORY_SCAN_MAX_BYTES = 64 * 1024
-        private const val OVERLAY_SIDE_MARGIN_DP = 12
-        private const val OVERLAY_TOP_MARGIN_DP = 40
+        private const val GPU_SUMMARY_SCAN_MAX_BYTES = 64 * 1024
         private const val BYTES_PER_MB = 1024.0 * 1024.0
         private const val BYTES_PER_KB = 1024L
+        private val SUMMARY_NUMBER_REGEX_CACHE = HashMap<String, Regex>()
     }
 
     private data class PssMemorySnapshot(
@@ -114,6 +116,7 @@ internal class GamePerformanceOverlayController(
         activity.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
     private val processId = Process.myPid()
     private val procStatusFile = File("/proc/self/status")
+    private val latestLogFile = RuntimePaths.latestLog(activity)
     private val jvmGcLogFile = RuntimePaths.jvmGcLog(activity)
 
     private var running = false
@@ -139,6 +142,11 @@ internal class GamePerformanceOverlayController(
     private var latestGcWarmupAgeSeconds: Int? = null
 
     @Volatile
+    private var latestGpuGuardianReclaimedBytes: Long? = null
+
+    private var labelsExpanded = false
+
+    @Volatile
     private var memorySamplerRunning = false
 
     @Volatile
@@ -160,6 +168,24 @@ internal class GamePerformanceOverlayController(
     fun init() {
         overlayView.visibility = View.GONE
         overlayView.text = ""
+        overlayView.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+        overlayView.includeFontPadding = false
+        overlayView.setHorizontallyScrolling(true)
+        overlayView.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    labelsExpanded = true
+                    renderSnapshot()
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    labelsExpanded = false
+                    renderSnapshot()
+                    true
+                }
+                else -> true
+            }
+        }
         ViewCompat.setOnApplyWindowInsetsListener(overlayView) { view, insets ->
             applyInsets(view, insets)
             insets
@@ -243,65 +269,29 @@ internal class GamePerformanceOverlayController(
         lastSwapCount = swapCount
 
         val nativeHeapBytes = Debug.getNativeHeapAllocatedSize()
-        val rssBytes = latestRssBytes
-        val pssSnapshot = latestPssSnapshot
+        val totalMemoryBytes = latestRssBytes ?: latestPssSnapshot?.totalPssBytes
         val gcEventsPerMinute = latestGcEventsPerMinute
         val gcWarmupAgeSeconds = latestGcWarmupAgeSeconds
         val jvmRuntimeMemorySnapshot = readJvmRuntimeMemorySnapshot()
-        val pssAgeSeconds = if (pssSnapshot != null && latestPssSampleElapsedMs > 0L) {
-            ((nowMs - latestPssSampleElapsedMs).coerceAtLeast(0L) / 1000L).toInt()
-        } else {
-            null
-        }
-
-        overlayView.text = buildString(320) {
-            append("Renderer ")
-            append(rendererSummary)
-            append('\n')
-            append("FPS ")
-            append(String.format(Locale.US, "%.1f", fps))
-            append("  RSS ")
-            append(rssBytes?.let(::formatMb) ?: "--")
-            append('\n')
-            append("JvmHeap ")
-            append(jvmRuntimeMemorySnapshot?.heapUsedBytes?.let(::formatMb) ?: "--")
-            append(" / ")
-            append(jvmRuntimeMemorySnapshot?.heapMaxBytes?.let(::formatMb) ?: "--")
-            append("  NHeap ")
-            append(formatMb(nativeHeapBytes))
-            append("  GC ")
+        val nonJvmBytes = resolveNonJvmMemoryBytes(totalMemoryBytes, jvmRuntimeMemorySnapshot, nativeHeapBytes)
+        val jvmText = formatJvmMemory(jvmRuntimeMemorySnapshot)
+        val nativeText = formatMb(nonJvmBytes)
+        val totalText = totalMemoryBytes?.let(::formatMb) ?: "--"
+        val guardianReclaimedText = latestGpuGuardianReclaimedBytes?.let(::formatMb) ?: "--"
+        val gcText = buildString {
             append(gcEventsPerMinute)
             append("/min")
-            gcWarmupAgeSeconds?.let {
-                append("* (")
-                append(it)
-                append("s)")
-            }
-            append('\n')
-            append("PSS* ")
-            append(pssSnapshot?.totalPssBytes?.let(::formatMb) ?: "--")
-            pssAgeSeconds?.let {
-                append(" (")
-                append(it)
-                append("s)")
-            }
-            append("  Dalvik ")
-            append(pssSnapshot?.dalvikPssBytes?.let(::formatMb) ?: "--")
-            append('\n')
-            append("PSS Native ")
-            append(pssSnapshot?.nativePssBytes?.let(::formatMb) ?: "--")
-            append("  Other ")
-            append(pssSnapshot?.otherPssBytes?.let(::formatMb) ?: "--")
-            append('\n')
-            append("NativeHeap ")
-            append(pssSnapshot?.nativeHeapSummaryBytes?.let(::formatMb) ?: "--")
-            append("  Graphics ")
-            append(pssSnapshot?.graphicsSummaryBytes?.let(::formatMb) ?: "--")
-            append('\n')
-            append("GL mtrack ")
-            append(pssSnapshot?.glMtrackPssBytes?.let(::formatMb) ?: "--")
-            append("  Unknown ")
-            append(pssSnapshot?.unknownPssBytes?.let(::formatMb) ?: "--")
+            gcWarmupAgeSeconds?.let { append("*") }
+        }
+
+        overlayView.text = buildString(240) {
+            appendMetric("▣", "渲染", rendererSummary)
+            appendMetric("◷", "FPS", String.format(Locale.US, "%.1f", fps))
+            appendMetric("J", "JVM", jvmText)
+            appendMetric("N", "原生占用", nativeText)
+            appendMetric("Σ", "总计", totalText)
+            appendMetric("G", "守护回收", guardianReclaimedText)
+            appendMetric("↺", "GC", gcText)
         }
     }
 
@@ -319,6 +309,7 @@ internal class GamePerformanceOverlayController(
                 latestRssBytes = readRssBytes()
                 if (nowMs - latestPssSampleElapsedMs >= PSS_REFRESH_INTERVAL_MS) {
                     latestPssSnapshot = readPssSnapshot()
+                    latestGpuGuardianReclaimedBytes = readLatestGpuGuardianReclaimedBytes()
                     latestPssSampleElapsedMs = nowMs
                 }
                 updateGcFrequency(nowMs)
@@ -585,6 +576,42 @@ internal class GamePerformanceOverlayController(
         }
     }
 
+    private fun readLatestGpuGuardianReclaimedBytes(): Long? {
+        if (!latestLogFile.isFile) {
+            return null
+        }
+        return try {
+            val length = latestLogFile.length().coerceAtLeast(0L)
+            val startOffset = (length - GPU_SUMMARY_SCAN_MAX_BYTES).coerceAtLeast(0L)
+            val bytesToRead = (length - startOffset).toInt()
+            if (bytesToRead <= 0) {
+                return null
+            }
+            RandomAccessFile(latestLogFile, "r").use { raf ->
+                raf.seek(startOffset)
+                val buffer = ByteArray(bytesToRead)
+                raf.readFully(buffer)
+                val text = String(buffer, StandardCharsets.UTF_8)
+                val latestSummary = text.lineSequence()
+                    .filter { line -> line.contains("[gdx-diag] GpuResources summary") }
+                    .lastOrNull()
+                    ?: return null
+                val guardianTextureBytes = parseSummaryLong(latestSummary, "guardianTextureBytes") ?: 0L
+                val guardianFboBytes = parseSummaryLong(latestSummary, "guardianFboBytes") ?: 0L
+                guardianTextureBytes + guardianFboBytes
+            }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private fun parseSummaryLong(line: String, key: String): Long? {
+        val regex = synchronized(SUMMARY_NUMBER_REGEX_CACHE) {
+            SUMMARY_NUMBER_REGEX_CACHE.getOrPut(key) { Regex("(?:^| )${Regex.escape(key)}=([0-9]+)") }
+        }
+        return regex.find(line)?.groupValues?.getOrNull(1)?.toLongOrNull()
+    }
+
     private fun readMemoryStatBytes(info: Debug.MemoryInfo, key: String): Long? {
         return info.getMemoryStat(key)
             ?.trim()
@@ -594,24 +621,47 @@ internal class GamePerformanceOverlayController(
     }
 
     private fun formatMb(bytes: Long): String {
-        val valueMb = bytes.coerceAtLeast(0L) / BYTES_PER_MB
-        return String.format(Locale.US, "%.1fMB", valueMb)
+        val valueMb = (bytes.coerceAtLeast(0L) / BYTES_PER_MB).toInt()
+        return String.format(Locale.US, "%dMB", valueMb)
+    }
+
+    private fun formatJvmMemory(snapshot: JvmRuntimeMemorySnapshot?): String {
+        if (snapshot == null) {
+            return "--/--"
+        }
+        return formatMb(snapshot.heapUsedBytes) + "/" + formatMb(snapshot.heapMaxBytes)
+    }
+
+    private fun resolveNonJvmMemoryBytes(
+        totalMemoryBytes: Long?,
+        snapshot: JvmRuntimeMemorySnapshot?,
+        nativeHeapBytes: Long
+    ): Long {
+        val heapUsedBytes = snapshot?.heapUsedBytes
+        if (totalMemoryBytes != null && heapUsedBytes != null) {
+            return (totalMemoryBytes - heapUsedBytes).coerceAtLeast(0L)
+        }
+        return nativeHeapBytes.coerceAtLeast(0L)
+    }
+
+    private fun StringBuilder.appendMetric(icon: String, label: String, value: String) {
+        if (isNotEmpty()) {
+            append("   ")
+        }
+        append(if (labelsExpanded) label else icon)
+        append(' ')
+        append(value)
     }
 
     private fun applyInsets(view: View, insets: WindowInsetsCompat) {
         val layoutParams = view.layoutParams as? FrameLayout.LayoutParams ?: return
         val bars = insets.getInsets(
-            WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.displayCutout()
+            WindowInsetsCompat.Type.navigationBars()
         )
-        val sideMargin = dpToPx(OVERLAY_SIDE_MARGIN_DP)
-        val topMargin = dpToPx(OVERLAY_TOP_MARGIN_DP)
-        layoutParams.leftMargin = bars.left
-        layoutParams.rightMargin = bars.right + sideMargin
-        layoutParams.topMargin = bars.top + topMargin
+        layoutParams.leftMargin = 0
+        layoutParams.rightMargin = 0
+        layoutParams.topMargin = 0
+        layoutParams.bottomMargin = bars.bottom
         view.layoutParams = layoutParams
-    }
-
-    private fun dpToPx(dp: Int): Int {
-        return (dp * activity.resources.displayMetrics.density).toInt()
     }
 }

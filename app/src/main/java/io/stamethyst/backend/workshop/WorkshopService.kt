@@ -1,6 +1,7 @@
 package io.stamethyst.backend.workshop
 
 import android.content.Context
+import android.util.Log
 import io.stamethyst.backend.steamcloud.SteamCloudAcceleratedHttp
 import io.stamethyst.backend.steamcloud.SteamCloudAuthStore
 import io.stamethyst.backend.steamcloud.SteamCloudAuthStore.AuthSnapshot
@@ -79,6 +80,48 @@ internal class WorkshopService(
             pageSize = query.pageSize,
             hasNextPage = page.hasNextPage,
         )
+    }
+
+    suspend fun browseSubscriptions(
+        appId: UInt = 646570u,
+        page: Int = 1,
+        pageSize: Int = 30,
+    ): WorkshopBrowseResult = withContext(Dispatchers.IO) {
+        val diagnostic = StringBuilder()
+        runCatching {
+            val account = readSteamAccountSession()
+                ?: error("Steam 登录信息不完整，请重新登录后查看已订阅模组。")
+            diagnostic.append("account=").append(account.accountName)
+                .append(" steamId=").append(account.steamId)
+                .append(" appId=").append(appId)
+                .append(" page=").append(page)
+                .append(" pageSize=").append(pageSize)
+            val protocolResult = SteamPublishedFileClient(
+                directoryClient = SteamDirectoryClient(client),
+                sessionFactory = { identity.createSession(client) },
+            ).getUserFiles(
+                account = account,
+                appId = appId,
+                page = page.coerceAtLeast(1),
+                pageSize = pageSize,
+                type = "mysubscriptions",
+                language = steamLanguagePreference.protocolLanguage,
+            )
+            diagnostic.append(" protocolTotal=").append(protocolResult.total)
+                .append(" protocolItems=").append(protocolResult.items.size)
+            val parsedPage = protocolResult.toBrowseParseResult(page.coerceAtLeast(1), pageSize)
+            val items = parsedPage.items.take(pageSize)
+            diagnostic.append(" enrichedItems=").append(items.size)
+            WorkshopBrowseResult(
+                items = items,
+                total = items.size,
+                page = parsedPage.page,
+                pageSize = pageSize,
+                hasNextPage = parsedPage.hasNextPage,
+            )
+        }.onFailure { error ->
+            Log.e(TAG, "browseSubscriptions failed. $diagnostic", error)
+        }.getOrThrow()
     }
 
     suspend fun getDetails(appId: UInt, publishedFileId: ULong): WorkshopItemDetails = withContext(Dispatchers.IO) {
@@ -706,7 +749,24 @@ internal class WorkshopService(
             sample.contains("wifi") && sample.contains("login") && !sample.contains("workshopitem")
     }
 
+    private fun looksLikeSteamLoginPage(html: String): Boolean {
+        val sample = html.take(8192).lowercase()
+        return sample.contains("<form") && sample.contains("login_form") ||
+            steamLoggedInFalseRegex.containsMatchIn(sample)
+    }
+
+    private fun looksLikeSteamLoginUrl(url: String): Boolean {
+        val normalized = url.lowercase()
+        return normalized.contains("steamcommunity.com/login/") ||
+            normalized.contains("steamcommunity.com/login/home")
+    }
+
+    private fun summarizeSteamHtmlForLog(html: String): String = html
+        .replace(Regex("""\s+"""), " ")
+        .take(1200)
+
     private companion object {
+        const val TAG = "WorkshopService"
         const val COMMENT_PAGE_SIZE = 5
         const val STEAM_COMMENTS_PAGE_SIZE = 50
         const val USER_AGENT = "SlayTheAmethyst/Workshop"
@@ -780,6 +840,7 @@ internal class WorkshopService(
             """<div\b[^>]*class="[^"]*\bbreadcrumbs\b[^"]*"[^>]*>.*?<a\b[^>]*myworkshopfiles/\?appid=\d+[^>]*>(.*?)</a>""",
             setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
         )
+        val steamLoggedInFalseRegex = Regex("""g_bloggedin\s*=\s*false""", RegexOption.IGNORE_CASE)
     }
 }
 

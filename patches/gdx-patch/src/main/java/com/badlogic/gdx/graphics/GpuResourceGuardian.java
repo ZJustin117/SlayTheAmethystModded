@@ -221,27 +221,31 @@ public final class GpuResourceGuardian {
 	}
 
 	private static boolean isAggressiveMode () {
-		return MODE == Mode.AGGRESSIVE;
+		return MODE == Mode.AGGRESSIVE || MODE == Mode.ULTRA_AGGRESSIVE;
+	}
+
+	private static boolean isUltraAggressiveMode () {
+		return MODE == Mode.ULTRA_AGGRESSIVE;
 	}
 
 	private static long defaultSoftBudgetBytes () {
-		return isAggressiveMode() ? 640L * 1024L * 1024L : 768L * 1024L * 1024L;
+		return isUltraAggressiveMode() ? 512L * 1024L * 1024L : isAggressiveMode() ? 640L * 1024L * 1024L : 768L * 1024L * 1024L;
 	}
 
 	private static long defaultHardBudgetBytes () {
-		return isAggressiveMode() ? 896L * 1024L * 1024L : 1024L * 1024L * 1024L;
+		return isUltraAggressiveMode() ? 768L * 1024L * 1024L : isAggressiveMode() ? 896L * 1024L * 1024L : 1024L * 1024L * 1024L;
 	}
 
 	private static long defaultWatchGrowthBytes () {
-		return isAggressiveMode() ? 96L * 1024L * 1024L : 128L * 1024L * 1024L;
+		return isUltraAggressiveMode() ? 64L * 1024L * 1024L : isAggressiveMode() ? 96L * 1024L * 1024L : 128L * 1024L * 1024L;
 	}
 
 	private static long defaultPressureGrowthBytes () {
-		return isAggressiveMode() ? 160L * 1024L * 1024L : 256L * 1024L * 1024L;
+		return isUltraAggressiveMode() ? 96L * 1024L * 1024L : isAggressiveMode() ? 160L * 1024L * 1024L : 256L * 1024L * 1024L;
 	}
 
 	private static int defaultSweepIntervalFrames () {
-		return isAggressiveMode() ? 60 : 120;
+		return isUltraAggressiveMode() ? 30 : isAggressiveMode() ? 60 : 120;
 	}
 
 	private static int defaultCooldownFrames () {
@@ -249,35 +253,35 @@ public final class GpuResourceGuardian {
 	}
 
 	private static int defaultTextureMinIdleFrames () {
-		return isAggressiveMode() ? 600 : 900;
+		return isUltraAggressiveMode() ? 300 : isAggressiveMode() ? 600 : 900;
 	}
 
 	private static int defaultTextureMaxChecks () {
-		return isAggressiveMode() ? 48 : 24;
+		return isUltraAggressiveMode() ? 96 : isAggressiveMode() ? 48 : 24;
 	}
 
 	private static int defaultTextureMaxReclaims () {
-		return isAggressiveMode() ? 4 : 2;
+		return isUltraAggressiveMode() ? 6 : isAggressiveMode() ? 4 : 2;
 	}
 
 	private static long defaultTextureMaxBytes () {
-		return isAggressiveMode() ? 128L * 1024L * 1024L : 64L * 1024L * 1024L;
+		return isUltraAggressiveMode() ? 256L * 1024L * 1024L : isAggressiveMode() ? 128L * 1024L * 1024L : 64L * 1024L * 1024L;
 	}
 
 	private static int defaultFboMinIdleFrames () {
-		return isAggressiveMode() ? 180 : 300;
+		return isUltraAggressiveMode() ? 120 : isAggressiveMode() ? 180 : 300;
 	}
 
 	private static int defaultFboMaxChecks () {
-		return isAggressiveMode() ? 32 : 16;
+		return isUltraAggressiveMode() ? 48 : isAggressiveMode() ? 32 : 16;
 	}
 
 	private static int defaultFboMaxReclaims () {
-		return isAggressiveMode() ? 2 : 1;
+		return isUltraAggressiveMode() ? 4 : isAggressiveMode() ? 2 : 1;
 	}
 
 	private static long defaultFboMaxBytes () {
-		return isAggressiveMode() ? 64L * 1024L * 1024L : 32L * 1024L * 1024L;
+		return isUltraAggressiveMode() ? 128L * 1024L * 1024L : isAggressiveMode() ? 64L * 1024L * 1024L : 32L * 1024L * 1024L;
 	}
 
 	private static long safeAdd (long left, long right) {
@@ -329,6 +333,7 @@ public final class GpuResourceGuardian {
 		OFF("off"),
 		SAFE("safe"),
 		AGGRESSIVE("aggressive"),
+		ULTRA_AGGRESSIVE("ultra_aggressive"),
 		DIAGNOSTIC("diagnostic");
 
 		final String propertyValue;

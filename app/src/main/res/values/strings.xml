@@ -1311,11 +1311,13 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="settings_gpu_resource_guardian_mode_off">Off</string>
     <string name="settings_gpu_resource_guardian_mode_safe">Safe</string>
     <string name="settings_gpu_resource_guardian_mode_aggressive">Aggressive</string>
+    <string name="settings_gpu_resource_guardian_mode_ultra_aggressive">Ultra aggressive</string>
     <string name="settings_gpu_resource_guardian_mode_diagnostic">Diagnostic</string>
     <string name="settings_gpu_resource_guardian_mode_legacy">Legacy</string>
     <string name="settings_gpu_resource_guardian_mode_off_desc">Disable guardian and leave resource management to the game/mod stack.</string>
     <string name="settings_gpu_resource_guardian_mode_safe_desc">Monitor aggregate tracked bytes with bounded texture/FBO reclaim only after sustained pressure.</string>
     <string name="settings_gpu_resource_guardian_mode_aggressive_desc">Use tighter pressure thresholds and reclaim budgets for severe mod-related GPU memory growth. May cause more rebuild/restore stutter.</string>
+    <string name="settings_gpu_resource_guardian_mode_ultra_aggressive_desc">Use the most aggressive guardian thresholds and allow reclaiming textures that may require up to 64 MB synchronous restore. This can reduce severe GPU pressure but may cause visible stutter when large mod textures are needed again.</string>
     <string name="settings_gpu_resource_guardian_mode_diagnostic_desc">Safe-mode behavior with additional diagnostic logging for short investigations. Do not leave this on for normal play.</string>
     <string name="settings_gpu_resource_guardian_mode_legacy_desc">Disable the new GPU guardian and enable the legacy locked compatibility paths: runtime texture downscale, texture residency manager, FBO manager, FBO idle reclaim, and FBO pressure downscale.</string>
     <string name="settings_status_loading">Loading status...</string>

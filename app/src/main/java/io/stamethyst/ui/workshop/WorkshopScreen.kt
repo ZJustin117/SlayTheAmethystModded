@@ -90,9 +90,14 @@ internal fun WorkshopScreen(
     viewModel: WorkshopViewModel,
     modifier: Modifier = Modifier,
     showBackButton: Boolean = true,
+    initialListMode: WorkshopListMode = WorkshopListMode.Browse,
+    showSubscriptionsButton: Boolean = false,
+    title: String = "模组市场",
+    subtitle: String = "浏览并下载创意工坊模组",
     onBack: () -> Unit,
     onOpenSteamLogin: () -> Unit,
     onOpenDownloadCenter: () -> Unit,
+    onOpenSubscriptions: () -> Unit = {},
     onOpenDetails: (WorkshopItemSummary) -> Unit,
 ) {
     val context = LocalContext.current
@@ -133,8 +138,12 @@ internal fun WorkshopScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
-        viewModel.load(context.applicationContext)
+    LaunchedEffect(initialListMode) {
+        viewModel.load(context.applicationContext, initialListMode)
+    }
+
+    LaunchedEffect(state.listMode) {
+        listState.animateScrollToItem(0)
     }
 
     LaunchedEffect(state.downloadInProgress) {
@@ -186,27 +195,32 @@ internal fun WorkshopScreen(
                 }
                 if (!state.steamLoggedIn) {
                     item(key = "workshop-status-header") {
-                        WorkshopStatusHeader(onOpenSteamLogin = onOpenSteamLogin)
+                        WorkshopStatusHeader(
+                            listMode = state.listMode,
+                            onOpenSteamLogin = onOpenSteamLogin,
+                        )
                     }
                 }
 
-                item(key = "workshop-search-panel") {
-                    SearchPanel(
-                        query = query,
-                        loading = state.browseLoading,
-                        sort = sort,
-                        timeFilter = timeFilter,
-                        onQueryChange = { query = it },
-                        onSearch = ::searchWithPopularAllTime,
-                        onSortChange = { selectedSort ->
-                            sort = selectedSort
-                            viewModel.search(context.applicationContext, query, selectedSort, timeFilter)
-                        },
-                        onTimeFilterChange = { selectedTimeFilter ->
-                            timeFilter = selectedTimeFilter
-                            viewModel.search(context.applicationContext, query, sort, selectedTimeFilter)
-                        },
-                    )
+                if (state.listMode == WorkshopListMode.Browse) {
+                    item(key = "workshop-search-panel") {
+                        SearchPanel(
+                            query = query,
+                            loading = state.browseLoading,
+                            sort = sort,
+                            timeFilter = timeFilter,
+                            onQueryChange = { query = it },
+                            onSearch = ::searchWithPopularAllTime,
+                            onSortChange = { selectedSort ->
+                                sort = selectedSort
+                                viewModel.search(context.applicationContext, query, selectedSort, timeFilter)
+                            },
+                            onTimeFilterChange = { selectedTimeFilter ->
+                                timeFilter = selectedTimeFilter
+                                viewModel.search(context.applicationContext, query, sort, selectedTimeFilter)
+                            },
+                        )
+                    }
                 }
 
                 if (state.errorMessage != null) {
@@ -214,14 +228,22 @@ internal fun WorkshopScreen(
                         ErrorPanel(
                             modifier = Modifier.animateItem(),
                             message = state.errorMessage,
-                            onRetry = { viewModel.search(context.applicationContext, query, sort, timeFilter) },
+                            onRetry = {
+                                when (state.listMode) {
+                                    WorkshopListMode.Browse -> viewModel.search(context.applicationContext, query, sort, timeFilter)
+                                    WorkshopListMode.Subscriptions -> viewModel.showSubscribedWorkshopMods(context.applicationContext)
+                                }
+                            },
                         )
                     }
                 }
 
                 item(key = "workshop-section-title") {
                     SectionTitle(
-                        title = "工坊列表",
+                        title = when (state.listMode) {
+                            WorkshopListMode.Browse -> "工坊列表"
+                            WorkshopListMode.Subscriptions -> "已订阅模组"
+                        },
                         subtitle = when {
                             state.browseLoading -> "正在加载"
                             state.items.isEmpty() -> "没有结果"
@@ -235,7 +257,10 @@ internal fun WorkshopScreen(
                         item(key = "workshop-loading") {
                             LoadingPanel(
                                 modifier = Modifier.animateItem(),
-                                text = "正在连接 Steam 创意工坊",
+                                text = when (state.listMode) {
+                                    WorkshopListMode.Browse -> "正在连接 Steam 创意工坊"
+                                    WorkshopListMode.Subscriptions -> "正在读取已订阅模组"
+                                },
                             )
                         }
                     }
@@ -243,7 +268,24 @@ internal fun WorkshopScreen(
                         item(key = "workshop-empty") {
                             EmptyPanel(
                                 modifier = Modifier.animateItem(),
-                                onRetry = { viewModel.search(context.applicationContext, query, sort, timeFilter) },
+                                title = when (state.listMode) {
+                                    WorkshopListMode.Browse -> "没有找到条目"
+                                    WorkshopListMode.Subscriptions -> "没有已订阅模组"
+                                },
+                                description = when (state.listMode) {
+                                    WorkshopListMode.Browse -> "换个关键词试试，或稍后刷新 Steam 创意工坊。"
+                                    WorkshopListMode.Subscriptions -> "该 Steam 账号暂时没有订阅杀戮尖塔创意工坊模组。"
+                                },
+                                actionLabel = when (state.listMode) {
+                                    WorkshopListMode.Browse -> "刷新"
+                                    WorkshopListMode.Subscriptions -> "刷新订阅"
+                                },
+                                onRetry = {
+                                    when (state.listMode) {
+                                        WorkshopListMode.Browse -> viewModel.search(context.applicationContext, query, sort, timeFilter)
+                                        WorkshopListMode.Subscriptions -> viewModel.showSubscribedWorkshopMods(context.applicationContext)
+                                    }
+                                },
                             )
                         }
                     }
@@ -292,7 +334,11 @@ internal fun WorkshopScreen(
                 WorkshopHeaderPinnedContent(
                     showBackButton = showBackButton,
                     activeDownloadTaskCount = activeDownloadTaskCount,
+                    showSubscriptionsButton = showSubscriptionsButton && state.steamLoggedIn,
+                    title = title,
+                    subtitle = subtitle,
                     onBack = onBack,
+                    onOpenSubscriptions = onOpenSubscriptions,
                     onOpenDownloadCenter = onOpenDownloadCenter,
                 )
             },
@@ -316,7 +362,11 @@ internal fun WorkshopScreen(
 private fun WorkshopHeaderPinnedContent(
     showBackButton: Boolean,
     activeDownloadTaskCount: Int,
+    showSubscriptionsButton: Boolean,
+    title: String,
+    subtitle: String,
     onBack: () -> Unit,
+    onOpenSubscriptions: () -> Unit,
     onOpenDownloadCenter: () -> Unit,
 ) {
     val downloadCenterDescription = if (activeDownloadTaskCount > 0) {
@@ -334,19 +384,30 @@ private fun WorkshopHeaderPinnedContent(
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
-                text = "模组市场",
+                text = title,
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = "浏览并下载创意工坊模组",
+                text = subtitle,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+        }
+        if (showSubscriptionsButton) {
+            IconButton(
+                onClick = onOpenSubscriptions,
+                modifier = Modifier.size(48.dp),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_workshop_subscriptions),
+                    contentDescription = "已订阅模组",
+                )
+            }
         }
         IconButton(
             onClick = onOpenDownloadCenter,
@@ -403,6 +464,7 @@ private fun BrowsePaginationFooter(
 
 @Composable
 private fun WorkshopStatusHeader(
+    listMode: WorkshopListMode,
     onOpenSteamLogin: () -> Unit,
 ) {
     Card(
@@ -411,7 +473,10 @@ private fun WorkshopStatusHeader(
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
-                text = "Steam 尚未登录，部分模组不会显示。",
+                text = when (listMode) {
+                    WorkshopListMode.Browse -> "Steam 尚未登录，部分模组不会显示。"
+                    WorkshopListMode.Subscriptions -> "登录 Steam 后才能查看当前账号已订阅的创意工坊模组。"
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -767,13 +832,16 @@ private fun ErrorPanel(
 @Composable
 private fun EmptyPanel(
     modifier: Modifier = Modifier,
+    title: String = "没有找到条目",
+    description: String = "换个关键词试试，或稍后刷新 Steam 创意工坊。",
+    actionLabel: String = "刷新",
     onRetry: () -> Unit,
 ) {
     Card(modifier = modifier.fillMaxWidth()) {
         Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("没有找到条目", style = MaterialTheme.typography.titleMedium)
-            Text("换个关键词试试，或稍后刷新 Steam 创意工坊。", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedButton(onClick = onRetry) { Text("刷新") }
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(description, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedButton(onClick = onRetry) { Text(actionLabel) }
         }
     }
 }
