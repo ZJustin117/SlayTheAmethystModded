@@ -15,9 +15,10 @@ import android.system.Os;
 import android.util.Log;
 
 import io.stamethyst.backend.render.RendererDecision;
+import io.stamethyst.config.LauncherConfig;
 import io.stamethyst.config.RuntimePaths;
-import io.stamethyst.ui.preferences.LauncherPreferences;
 import io.stamethyst.backend.render.RendererBackend;
+import io.stamethyst.ui.preferences.LauncherPreferences;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -134,6 +135,10 @@ public final class JREUtils {
         env.put("LIBGL_VSYNC", "0");
         env.put("LIBGL_SHADERNOGLES", "1");
         env.put("LIBGL_NOHIGHP", "1");
+        if (LauncherConfig.INSTANCE.isGamePerformanceOverlayEnabled(context)) {
+            env.put("AMETHYST_GDX_SWAP_PROFILER", "1");
+            env.put("AMETHYST_GDX_SWAP_PROFILER_SLOW_MS", "16");
+        }
         env.put("AWTSTUB_WIDTH", Integer.toString(Math.max(1, windowWidth)));
         env.put("AWTSTUB_HEIGHT", Integer.toString(Math.max(1, windowHeight)));
         env.put("MESA_GLSL_CACHE_DIR", context.getCacheDir().getAbsolutePath());

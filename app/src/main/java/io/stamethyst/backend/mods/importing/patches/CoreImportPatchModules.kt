@@ -185,7 +185,7 @@ internal object AtlasOfflineDownscalePatchModule : ImportPatchModule {
     override val displayNameResId = R.string.mod_import_patch_atlas_downscale_title
     override val summaryResId = R.string.mod_import_patch_atlas_downscale_summary
     override val category = ImportPatchCategory.Texture
-    override val defaultEnabled = true
+    override val defaultEnabled = false
     override val userConfigurable = true
     override val order = 400
     override val failurePolicy = ImportPatchFailurePolicy.SkipPatchContinueImport
@@ -197,7 +197,8 @@ internal object AtlasOfflineDownscalePatchModule : ImportPatchModule {
     override fun plan(context: Context, item: ModImportItemPlan, inspectionJar: File): ImportPatchPlan? {
         val result = ModAtlasOfflineDownscalePatcher.inspectOversizedAtlasPages(
             inspectionJar,
-            AtlasOfflineDownscaleStrategy.previewCandidates()
+            AtlasOfflineDownscaleStrategy.previewCandidates(),
+            CompatibilitySettings.readImportDownscaleMaterialPolicy(context)
         )
         if (!result.hasPatchedChanges) {
             return null
@@ -224,7 +225,11 @@ internal object AtlasOfflineDownscalePatchModule : ImportPatchModule {
     ): ImportPatchResult {
         val strategy = decisions.atlasDownscaleStrategy
             ?: AtlasOfflineDownscaleStrategy.maxEdge(AtlasOfflineDownscaleStrategy.DEFAULT_MAX_EDGE_PX)
-        val result = ModAtlasOfflineDownscalePatcher.patchOversizedAtlasPagesInPlace(workingJar, strategy)
+        val result = ModAtlasOfflineDownscalePatcher.patchOversizedAtlasPagesInPlace(
+            workingJar,
+            strategy,
+            CompatibilitySettings.readImportDownscaleMaterialPolicy(context)
+        )
         return ImportPatchResult(
             moduleId = id,
             moduleVersion = version,

@@ -53,6 +53,13 @@ public abstract class GLTexture implements Disposable {
 	private static final String FORCE_LINEAR_MIPMAP_FILTER_ENV = "AMETHYST_GDX_FORCE_LINEAR_MIPMAP_FILTER";
 	private static final String GPU_RESOURCE_DIAG_ENABLED_PROP = "amethyst.gdx.gpu_resource_diag";
 	private static final boolean GPU_RESOURCE_DIAG_ENABLED = readBooleanSystemProperty(GPU_RESOURCE_DIAG_ENABLED_PROP, false);
+	private static final String FRAME_PROFILER_ENABLED_PROP = "amethyst.gdx.frame_profiler";
+	private static final String FRAME_PROFILER_RESOURCE_STALL_MS_PROP = "amethyst.gdx.frame_profiler.resource_stall_ms";
+	private static final boolean FRAME_PROFILER_RESOURCE_ENABLED =
+		readBooleanSystemProperty(FRAME_PROFILER_ENABLED_PROP, false)
+			|| readBooleanSystemProperty(GPU_RESOURCE_DIAG_ENABLED_PROP, false);
+	private static final long FRAME_PROFILER_RESOURCE_STALL_NANOS =
+		readLongSystemProperty(FRAME_PROFILER_RESOURCE_STALL_MS_PROP, 8L, 1L, 10000L) * 1000000L;
 	private static final String GPU_RESOURCE_DIAG_TEXTURE_STACKS_PROP =
 		"amethyst.gdx.gpu_resource_diag.texture_stacks";
 	private static final boolean GPU_RESOURCE_DIAG_TEXTURE_STACKS_ENABLED =
@@ -105,10 +112,10 @@ public abstract class GLTexture implements Disposable {
 		"amethyst.gdx.texture_pressure_downscale_external_min_bytes";
 	private static final long TEXTURE_PRESSURE_DOWNSCALE_EXTERNAL_MIN_BYTES =
 		readLongSystemProperty(TEXTURE_PRESSURE_DOWNSCALE_EXTERNAL_MIN_BYTES_PROP, 8L * 1024L * 1024L, 0L, Long.MAX_VALUE);
-	private static final String TEXTURE_PRESSURE_DOWNSCALE_ART_MIN_BYTES_PROP =
-		"amethyst.gdx.texture_pressure_downscale_art_min_bytes";
-	private static final long TEXTURE_PRESSURE_DOWNSCALE_ART_MIN_BYTES =
-		readLongSystemProperty(TEXTURE_PRESSURE_DOWNSCALE_ART_MIN_BYTES_PROP, 4L * 1024L * 1024L, 0L, Long.MAX_VALUE);
+	private static final String TEXTURE_PRESSURE_DOWNSCALE_STACK_MIN_BYTES_PROP =
+		"amethyst.gdx.texture_pressure_downscale_stack_min_bytes";
+	private static final long TEXTURE_PRESSURE_DOWNSCALE_STACK_MIN_BYTES =
+		readLongSystemProperty(TEXTURE_PRESSURE_DOWNSCALE_STACK_MIN_BYTES_PROP, 4L * 1024L * 1024L, 0L, Long.MAX_VALUE);
 	private static final String TEXTURE_PRESSURE_DOWNSCALE_SOFT_BYTES_PROP =
 		"amethyst.gdx.texture_pressure_downscale_soft_bytes";
 	private static final long TEXTURE_PRESSURE_DOWNSCALE_SOFT_BYTES =
@@ -121,10 +128,22 @@ public abstract class GLTexture implements Disposable {
 		"amethyst.gdx.texture_pressure_downscale_divisor";
 	private static final int TEXTURE_PRESSURE_DOWNSCALE_DIVISOR =
 		readIntSystemProperty(TEXTURE_PRESSURE_DOWNSCALE_DIVISOR_PROP, 2, 2, 4);
+	private static final String TEXTURE_PRESSURE_DOWNSCALE_MAX_PIXELS_PROP =
+		"amethyst.gdx.texture_pressure_downscale_max_pixels";
+	private static final long TEXTURE_PRESSURE_DOWNSCALE_MAX_PIXELS =
+		readLongSystemProperty(TEXTURE_PRESSURE_DOWNSCALE_MAX_PIXELS_PROP, 1920L * 1080L, 1L, Long.MAX_VALUE);
+	private static final String TEXTURE_PRESSURE_DOWNSCALE_MAX_EDGE_PROP =
+		"amethyst.gdx.texture_pressure_downscale_max_edge";
+	private static final int TEXTURE_PRESSURE_DOWNSCALE_MAX_EDGE =
+		readIntSystemProperty(TEXTURE_PRESSURE_DOWNSCALE_MAX_EDGE_PROP, 1920, 1, Integer.MAX_VALUE);
+	private static final boolean TEXTURE_PRESSURE_DOWNSCALE_ALLOW_ORDINARY_TEXTURES =
+		readBooleanSystemProperty("amethyst.gdx.texture_pressure_downscale.allow_ordinary_textures", true);
+	private static final boolean TEXTURE_PRESSURE_DOWNSCALE_ALLOW_TEXTURE_ATLAS_PAGES =
+		readBooleanSystemProperty("amethyst.gdx.texture_pressure_downscale.allow_texture_atlas_pages", false);
+	private static final boolean TEXTURE_PRESSURE_DOWNSCALE_ALLOW_SPINE =
+		readBooleanSystemProperty("amethyst.gdx.texture_pressure_downscale.allow_spine", false);
 	private static final int TEXTURE_PRESSURE_DOWNSCALE_MODE_NONE = 0;
 	private static final int TEXTURE_PRESSURE_DOWNSCALE_MODE_EXTERNAL_FILE = 1;
-	private static final int TEXTURE_PRESSURE_DOWNSCALE_MODE_EXTERNAL_ART = 2;
-	private static final int TEXTURE_PRESSURE_DOWNSCALE_MODE_ART_PRESSURE = 3;
 	private static final int TEXTURE_PRESSURE_DOWNSCALE_MODE_EXTERNAL_PRESSURE = 4;
 	private static final int TEXTURE_PRESSURE_DOWNSCALE_MODE_GENERIC_PRESSURE = 5;
 	private static final String TEXTURE_RESIDENCY_MANAGER_PROP =
@@ -945,11 +964,24 @@ public abstract class GLTexture implements Disposable {
 
 		int newHandle = 0;
 
+		long restoreStartNanos = FRAME_PROFILER_RESOURCE_ENABLED ? nowMonotonicNanos() : 0L;
 		try {
 			newHandle = Gdx.gl.glGenTexture();
 			if (newHandle == 0) return;
 			restoreHandleForReuse(newHandle, "texture_residency_restore_" + reason);
 			texture.load(data);
+			logTextureResourceStall(
+				"texture_restore",
+				restoreStartNanos,
+				restoreBytes,
+				data == null ? 0 : data.getWidth(),
+				data == null ? 0 : data.getHeight(),
+				data == null ? null : data.getFormat(),
+				reason,
+				resolveTextureSourcePath(data),
+				getResidencyOwnerKeyForLog(),
+				null
+			);
 			lastAccessFrame = currentFrameId >= 0L ? currentFrameId : lastAccessFrame;
 			lastAccessTimeNanos = nowMonotonicNanos();
 			lastUseReason = reason == null || reason.length() == 0 ? "restore" : reason;
@@ -1452,6 +1484,7 @@ public abstract class GLTexture implements Disposable {
 		if (data == null) {
 			return;
 		}
+		long uploadStartNanos = FRAME_PROFILER_RESOURCE_ENABLED ? nowMonotonicNanos() : 0L;
 		if (!data.isPrepared()) {
 			data.prepare();
 		}
@@ -1467,6 +1500,18 @@ public abstract class GLTexture implements Disposable {
 				data.getFormat(),
 				data.useMipMaps(),
 				sourcePath,
+				stackKey
+			);
+			logTextureResourceStall(
+				"texture_upload_custom",
+				uploadStartNanos,
+				estimateTextureBytes(data.getWidth(), data.getHeight(), data.getFormat()),
+				data.getWidth(),
+				data.getHeight(),
+				data.getFormat(),
+				"custom",
+				sourcePath,
+				"unknown",
 				stackKey
 			);
 			return;
@@ -1527,9 +1572,48 @@ public abstract class GLTexture implements Disposable {
 			sourcePath,
 			stackKey
 		);
+		logTextureResourceStall(
+			"texture_upload",
+			uploadStartNanos,
+			estimateTextureBytes(pixmap.getWidth(), pixmap.getHeight(), pixmap.getFormat()),
+			pixmap.getWidth(),
+			pixmap.getHeight(),
+			pixmap.getFormat(),
+			data.useMipMaps() ? "mipmap" : "texImage2D",
+			sourcePath,
+			"unknown",
+			stackKey
+		);
 		if (disposePixmap) {
 			pixmap.dispose();
 		}
+	}
+
+	private static void logTextureResourceStall (
+		String event,
+		long startNanos,
+		long bytes,
+		int width,
+		int height,
+		Pixmap.Format format,
+		String reason,
+		String sourcePath,
+		String owner,
+		String stackKey
+	) {
+		if (!FRAME_PROFILER_RESOURCE_ENABLED || startNanos <= 0L) return;
+		long elapsedNanos = nowMonotonicNanos() - startNanos;
+		if (elapsedNanos < FRAME_PROFILER_RESOURCE_STALL_NANOS) return;
+		System.out.println("[gdx-stall] " + event
+			+ " frame=" + currentFrameId
+			+ " elapsedMs=" + formatMillis(elapsedNanos)
+			+ " bytes=" + Math.max(0L, bytes)
+			+ " size=" + width + "x" + height
+			+ " format=" + String.valueOf(format)
+			+ " reason=" + (reason == null ? "unknown" : reason)
+			+ " owner=" + (owner == null ? "unknown" : owner)
+			+ " source=" + (sourcePath == null ? "unknown" : sourcePath)
+			+ " stack=" + (stackKey == null ? "unknown" : stackKey));
 	}
 
 	private static boolean shouldCaptureTextureUploadStackForDiagnostics () {
@@ -1558,7 +1642,7 @@ public abstract class GLTexture implements Disposable {
 	) {
 		if (width <= 0 || height <= 0) return false;
 		long estimatedBytes = estimateTextureBytes(width, height, format);
-		if (estimatedBytes < TEXTURE_PRESSURE_DOWNSCALE_ART_MIN_BYTES) return false;
+		if (estimatedBytes < TEXTURE_PRESSURE_DOWNSCALE_STACK_MIN_BYTES) return false;
 		String normalizedSourcePath = normalizeTextureSourcePath(sourcePath);
 		if (normalizedSourcePath != null) return false;
 		long projectedTotalBytes = safeAdd(
@@ -1599,8 +1683,9 @@ public abstract class GLTexture implements Disposable {
 		if (estimatedBytes < minimumBytes) return pixmap;
 		String reason = resolveTexturePressureDownscaleReason(mode, stackKey, normalizedSourcePath);
 
-		int scaledWidth = Math.max(1, (width + TEXTURE_PRESSURE_DOWNSCALE_DIVISOR - 1) / TEXTURE_PRESSURE_DOWNSCALE_DIVISOR);
-		int scaledHeight = Math.max(1, (height + TEXTURE_PRESSURE_DOWNSCALE_DIVISOR - 1) / TEXTURE_PRESSURE_DOWNSCALE_DIVISOR);
+		int[] scaledSize = calculateTexturePressureDownscaleSize(width, height);
+		int scaledWidth = scaledSize[0];
+		int scaledHeight = scaledSize[1];
 		if (scaledWidth == width && scaledHeight == height) return pixmap;
 
 		Pixmap scaledPixmap = new Pixmap(scaledWidth, scaledHeight, pixmap.getFormat());
@@ -1632,6 +1717,27 @@ public abstract class GLTexture implements Disposable {
 			+ " path=" + (sourcePath == null ? "unknown" : sourcePath)
 			+ " stack=" + (stackKey == null ? "unknown" : stackKey));
 		return scaledPixmap;
+	}
+
+	private static int[] calculateTexturePressureDownscaleSize (int width, int height) {
+		int divisorWidth = Math.max(1, (width + TEXTURE_PRESSURE_DOWNSCALE_DIVISOR - 1) / TEXTURE_PRESSURE_DOWNSCALE_DIVISOR);
+		int divisorHeight = Math.max(1, (height + TEXTURE_PRESSURE_DOWNSCALE_DIVISOR - 1) / TEXTURE_PRESSURE_DOWNSCALE_DIVISOR);
+		double scale = Math.min(1.0, (double)divisorWidth / (double)width);
+		scale = Math.min(scale, (double)divisorHeight / (double)height);
+		int maxEdge = Math.max(1, TEXTURE_PRESSURE_DOWNSCALE_MAX_EDGE);
+		int sourceMaxEdge = Math.max(width, height);
+		if (sourceMaxEdge > maxEdge) {
+			scale = Math.min(scale, (double)maxEdge / (double)sourceMaxEdge);
+		}
+		long maxPixels = Math.max(1L, TEXTURE_PRESSURE_DOWNSCALE_MAX_PIXELS);
+		long sourcePixels = ((long)width) * ((long)height);
+		if (sourcePixels > maxPixels) {
+			scale = Math.min(scale, Math.sqrt((double)maxPixels / (double)sourcePixels));
+		}
+		if (scale >= 1.0) return new int[] {width, height};
+		int scaledWidth = Math.max(1, (int)Math.floor(width * scale));
+		int scaledHeight = Math.max(1, (int)Math.floor(height * scale));
+		return new int[] {scaledWidth, scaledHeight};
 	}
 
 	private static long allocateDebugTextureId () {
@@ -1871,29 +1977,23 @@ public abstract class GLTexture implements Disposable {
 		if (isTexturePressureDownscaleExemptStack(stackKey)) return TEXTURE_PRESSURE_DOWNSCALE_MODE_NONE;
 
 		boolean fileBacked = sourcePath != null && sourcePath.length() > 0;
-		boolean externalMod = containsExternalModNamespace(stackKey);
-		boolean modStoragePath = isModStorageTexturePath(sourcePath);
-		boolean modOwnedSource = externalMod || modStoragePath;
-		boolean atlasLike = isAtlasTextureSource(stackKey);
-		boolean portraitLike = isPortraitLikeTextureSource(stackKey, sourcePath);
-		boolean cardArtLike = isCardArtLikeTextureSource(stackKey, sourcePath);
-		boolean artLike = portraitLike || cardArtLike;
+		boolean spineLike = isSpineTextureSource(stackKey);
+		boolean atlasLike = isTextureAtlasTextureSource(stackKey);
 		boolean largeTexture = width >= 2048 || height >= 2048;
 		boolean mediumTexture = width >= 1024 || height >= 1024;
 		boolean hugeTexture = estimatedBytes >= TEXTURE_PRESSURE_DOWNSCALE_HUGE_MIN_BYTES;
 		boolean pressureExceeded = projectedTotalBytes >= TEXTURE_PRESSURE_DOWNSCALE_SOFT_BYTES;
+		boolean textureDownscaleCategoryAllowed = spineLike
+			? TEXTURE_PRESSURE_DOWNSCALE_ALLOW_SPINE
+			: (atlasLike
+				? TEXTURE_PRESSURE_DOWNSCALE_ALLOW_TEXTURE_ATLAS_PAGES
+				: TEXTURE_PRESSURE_DOWNSCALE_ALLOW_ORDINARY_TEXTURES);
 
-		if (atlasLike) return TEXTURE_PRESSURE_DOWNSCALE_MODE_NONE;
-		if (modOwnedSource && fileBacked && artLike && mediumTexture) {
-			return TEXTURE_PRESSURE_DOWNSCALE_MODE_EXTERNAL_ART;
-		}
-		if (modOwnedSource && fileBacked && largeTexture) {
+		if (!textureDownscaleCategoryAllowed) return TEXTURE_PRESSURE_DOWNSCALE_MODE_NONE;
+		if (fileBacked && largeTexture) {
 			return TEXTURE_PRESSURE_DOWNSCALE_MODE_EXTERNAL_FILE;
 		}
-		if (pressureExceeded && fileBacked && artLike && mediumTexture) {
-			return TEXTURE_PRESSURE_DOWNSCALE_MODE_ART_PRESSURE;
-		}
-		if (pressureExceeded && modOwnedSource && fileBacked && (largeTexture || mediumTexture)) {
+		if (pressureExceeded && fileBacked && mediumTexture) {
 			return TEXTURE_PRESSURE_DOWNSCALE_MODE_EXTERNAL_PRESSURE;
 		}
 		if (pressureExceeded && largeTexture && hugeTexture) {
@@ -1903,10 +2003,6 @@ public abstract class GLTexture implements Disposable {
 	}
 
 	private static long texturePressureDownscaleMinimumBytes (int mode) {
-		if (mode == TEXTURE_PRESSURE_DOWNSCALE_MODE_EXTERNAL_ART
-			|| mode == TEXTURE_PRESSURE_DOWNSCALE_MODE_ART_PRESSURE) {
-			return TEXTURE_PRESSURE_DOWNSCALE_ART_MIN_BYTES;
-		}
 		if (mode == TEXTURE_PRESSURE_DOWNSCALE_MODE_EXTERNAL_FILE
 			|| mode == TEXTURE_PRESSURE_DOWNSCALE_MODE_EXTERNAL_PRESSURE) {
 			return TEXTURE_PRESSURE_DOWNSCALE_EXTERNAL_MIN_BYTES;
@@ -1918,19 +2014,13 @@ public abstract class GLTexture implements Disposable {
 	}
 
 	private static String resolveTexturePressureDownscaleReason (int mode, String stackKey, String sourcePath) {
-		boolean portraitLike = isPortraitLikeTextureSource(stackKey, sourcePath);
 		boolean modStoragePath = isModStorageTexturePath(sourcePath);
-		if (mode == TEXTURE_PRESSURE_DOWNSCALE_MODE_EXTERNAL_ART) {
-			return portraitLike ? "mod_runtime_portrait" : "mod_runtime_card_art";
-		}
+		String category = texturePressureDownscaleCategoryName(stackKey);
 		if (mode == TEXTURE_PRESSURE_DOWNSCALE_MODE_EXTERNAL_FILE) {
-			return modStoragePath ? "mod_storage_large_file" : "external_stack_large_file";
-		}
-		if (mode == TEXTURE_PRESSURE_DOWNSCALE_MODE_ART_PRESSURE) {
-			return portraitLike ? "portrait_pressure" : "card_art_pressure";
+			return (modStoragePath ? "mod_storage" : category) + "_large_file";
 		}
 		if (mode == TEXTURE_PRESSURE_DOWNSCALE_MODE_EXTERNAL_PRESSURE) {
-			return modStoragePath ? "mod_runtime_file_pressure" : "external_stack_pressure";
+			return (modStoragePath ? "mod_storage" : category) + "_pressure";
 		}
 		if (mode == TEXTURE_PRESSURE_DOWNSCALE_MODE_GENERIC_PRESSURE) {
 			return "generic_pressure";
@@ -1955,19 +2045,30 @@ public abstract class GLTexture implements Disposable {
 	private static boolean isTexturePressureDownscaleExemptStack (String stackKey) {
 		return containsAnyStackFragment(
 			stackKey,
-			"com.badlogic.gdx.graphics.g2d.TextureAtlas",
 			"com.badlogic.gdx.graphics.g2d.PixmapPacker",
 			"com.badlogic.gdx.graphics.g2d.freetype.FreeTypeFontGenerator",
 			"com.megacrit.cardcrawl.helpers.FontHelper"
 		);
 	}
 
-	private static boolean isAtlasTextureSource (String stackKey) {
+	private static String texturePressureDownscaleCategoryName (String stackKey) {
+		if (isSpineTextureSource(stackKey)) return "spine_texture";
+		if (isTextureAtlasTextureSource(stackKey)) return "texture_atlas_page";
+		return "ordinary_texture";
+	}
+
+	private static boolean isSpineTextureSource (String stackKey) {
 		return containsAnyStackFragment(
 			stackKey,
-			"com.badlogic.gdx.graphics.g2d.TextureAtlas",
 			"com.esotericsoftware.spine",
 			".spine."
+		);
+	}
+
+	private static boolean isTextureAtlasTextureSource (String stackKey) {
+		return containsAnyStackFragment(
+			stackKey,
+			"com.badlogic.gdx.graphics.g2d.TextureAtlas"
 		);
 	}
 
@@ -2097,6 +2198,10 @@ public abstract class GLTexture implements Disposable {
 		return elapsed < 0L ? 0L : elapsed;
 	}
 
+	private static String formatMillis (long nanos) {
+		return String.format(java.util.Locale.US, "%.3f", nanos / 1000000.0);
+	}
+
 	private static String summarizeLiveTextureSampleSource (String sourcePath, String stackKey, String groupKey) {
 		String normalizedSourcePath = normalizeTextureSourcePath(sourcePath);
 		if (normalizedSourcePath != null) {
@@ -2171,51 +2276,6 @@ public abstract class GLTexture implements Disposable {
 		);
 	}
 
-	private static boolean isPortraitLikeTextureSource (String stackKey, String sourcePath) {
-		if (containsAnyPathFragment(
-			sourcePath,
-			"/1024portraits/",
-			"/1024portraitsbeta/",
-			"/512portraits/",
-			"/512portraitsbeta/",
-			"/portraits/",
-			"/portrait/"
-		)) {
-			return true;
-		}
-		return containsAnyStackFragment(
-			stackKey,
-			"com.megacrit.cardcrawl.screens.SingleCardViewPopup",
-			"#loadPortraitImg",
-			"#getPortraitImage"
-		);
-	}
-
-	private static boolean isCardArtLikeTextureSource (String stackKey, String sourcePath) {
-		if (containsAnyPathFragment(
-			sourcePath,
-			"/cards/",
-			"/cardsbeta/",
-			"/cards_beta/",
-			"/cardimages/",
-			"/cardimage/",
-			"/cardimg/",
-			"/card_art/"
-		)) {
-			return true;
-		}
-		return containsAnyStackFragment(
-			stackKey,
-			"#loadCardImage",
-			"basemod.abstracts.CustomCard",
-			"com.megacrit.cardcrawl.cards."
-		);
-	}
-
-	private static boolean containsExternalModNamespace (String stackKey) {
-		return TextureOwnerSummary.extractExternalNamespaceGroup(stackKey) != null;
-	}
-
 	private static boolean ranksBeforeLiveTextureSummary (
 		long candidateBytes,
 		int candidateCount,
@@ -2233,8 +2293,6 @@ public abstract class GLTexture implements Disposable {
 
 	private static String texturePressureDownscaleModeName (int mode) {
 		if (mode == TEXTURE_PRESSURE_DOWNSCALE_MODE_EXTERNAL_FILE) return "external_file";
-		if (mode == TEXTURE_PRESSURE_DOWNSCALE_MODE_EXTERNAL_ART) return "external_art";
-		if (mode == TEXTURE_PRESSURE_DOWNSCALE_MODE_ART_PRESSURE) return "art_pressure";
 		if (mode == TEXTURE_PRESSURE_DOWNSCALE_MODE_EXTERNAL_PRESSURE) return "external_pressure";
 		if (mode == TEXTURE_PRESSURE_DOWNSCALE_MODE_GENERIC_PRESSURE) return "generic_pressure";
 		return "none";

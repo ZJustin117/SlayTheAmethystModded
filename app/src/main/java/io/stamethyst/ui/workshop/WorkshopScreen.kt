@@ -28,6 +28,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -82,6 +83,8 @@ import io.stamethyst.backend.workshop.WorkshopItemSummary
 import io.stamethyst.backend.workshop.WorkshopPreviewCacheStore
 import io.stamethyst.backend.workshop.isActiveDownload
 import io.stamethyst.ui.CollapsibleFloatingGlassHeader
+import io.stamethyst.ui.Icons
+import io.stamethyst.ui.icon.ArrowBack
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -164,8 +167,6 @@ internal fun WorkshopScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .statusBarsPadding()
-            .padding(start = 16.dp, top = 18.dp, end = 16.dp),
     ) {
         PullToRefreshBox(
             isRefreshing = state.browseLoading && state.items.isNotEmpty(),
@@ -183,7 +184,7 @@ internal fun WorkshopScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .hazeSource(state = headerHazeState)
-                .fillMaxSize(),
+                .padding(start = 16.dp, top = 18.dp, end = 16.dp),
         ) {
             LazyColumn(
                 state = listState,
@@ -322,10 +323,13 @@ internal fun WorkshopScreen(
         }
 
         CollapsibleFloatingGlassHeader(
-            modifier = Modifier.align(Alignment.TopCenter),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth(),
             hazeState = headerHazeState,
             collapsed = headerCollapsed,
             shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
+            contentPadding = PaddingValues(0.dp),
             onHeightChanged = {
                 if (!headerCollapsed) {
                     headerHeightPx = maxOf(headerHeightPx, it)
@@ -376,10 +380,27 @@ private fun WorkshopHeaderPinnedContent(
         stringResource(R.string.workshop_download_center_title)
     }
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(start = 16.dp, top = 18.dp, end = 16.dp, bottom = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Surface(
+            modifier = Modifier.size(52.dp),
+            shape = RoundedCornerShape(18.dp),
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.primary,
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_dock_market),
+                    contentDescription = null,
+                    modifier = Modifier.size(28.dp),
+                )
+            }
+        }
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -428,7 +449,15 @@ private fun WorkshopHeaderPinnedContent(
             }
         }
         if (showBackButton) {
-            TextButton(onClick = onBack) { Text(stringResource(R.string.settings_first_run_action_back)) }
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.size(48.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.ArrowBack,
+                    contentDescription = stringResource(R.string.common_content_desc_back),
+                )
+            }
         }
     }
 }

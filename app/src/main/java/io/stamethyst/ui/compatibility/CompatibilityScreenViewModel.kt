@@ -30,13 +30,21 @@ class CompatibilityScreenViewModel : ViewModel() {
         val nonRenderableFboFormatCompatEnabled: Boolean = true,
         val fboManagerCompatEnabled: Boolean = false,
         val fboIdleReclaimCompatEnabled: Boolean = false,
-        val fboPressureDownscaleCompatEnabled: Boolean = false
+        val fboPressureDownscaleCompatEnabled: Boolean = false,
+        val runtimeDownscaleOrdinaryTexturesEnabled: Boolean = true,
+        val runtimeDownscaleTextureAtlasPagesEnabled: Boolean = false,
+        val runtimeDownscaleSpineTexturesEnabled: Boolean = false,
+        val runtimeDownscaleOffscreenFrameBuffersEnabled: Boolean = true,
+        val importDownscaleSpineAtlasPagesEnabled: Boolean = true,
+        val importDownscaleOrdinaryAtlasPagesEnabled: Boolean = false
     )
 
     var uiState by mutableStateOf(UiState())
         private set
 
     fun refresh(host: Context) {
+        val runtimeDownscalePolicy = CompatibilitySettings.readRuntimeDownscaleMaterialPolicy(host)
+        val importDownscalePolicy = CompatibilitySettings.readImportDownscaleMaterialPolicy(host)
         uiState = uiState.copy(
             busy = false,
             busyMessage = null,
@@ -58,7 +66,13 @@ class CompatibilityScreenViewModel : ViewModel() {
             nonRenderableFboFormatCompatEnabled = CompatibilitySettings.isNonRenderableFboFormatCompatEnabled(host),
             fboManagerCompatEnabled = CompatibilitySettings.isFboManagerCompatEnabled(host),
             fboIdleReclaimCompatEnabled = CompatibilitySettings.isFboIdleReclaimCompatEnabled(host),
-            fboPressureDownscaleCompatEnabled = CompatibilitySettings.isFboPressureDownscaleCompatEnabled(host)
+            fboPressureDownscaleCompatEnabled = CompatibilitySettings.isFboPressureDownscaleCompatEnabled(host),
+            runtimeDownscaleOrdinaryTexturesEnabled = runtimeDownscalePolicy.ordinaryTextures,
+            runtimeDownscaleTextureAtlasPagesEnabled = runtimeDownscalePolicy.textureAtlasPages,
+            runtimeDownscaleSpineTexturesEnabled = runtimeDownscalePolicy.spineTextures,
+            runtimeDownscaleOffscreenFrameBuffersEnabled = runtimeDownscalePolicy.offscreenFrameBuffers,
+            importDownscaleSpineAtlasPagesEnabled = importDownscalePolicy.spineAtlasPages,
+            importDownscaleOrdinaryAtlasPagesEnabled = importDownscalePolicy.ordinaryAtlasPages
         )
     }
 
@@ -189,5 +203,41 @@ class CompatibilityScreenViewModel : ViewModel() {
     fun onFboPressureDownscaleCompatToggled(host: Context, enabled: Boolean) {
         CompatibilitySettings.setFboPressureDownscaleCompatEnabled(host, false)
         uiState = uiState.copy(fboPressureDownscaleCompatEnabled = false)
+    }
+
+    fun onRuntimeDownscaleOrdinaryTexturesToggled(host: Context, enabled: Boolean) {
+        if (uiState.busy) return
+        CompatibilitySettings.setRuntimeDownscaleOrdinaryTexturesEnabled(host, enabled)
+        uiState = uiState.copy(runtimeDownscaleOrdinaryTexturesEnabled = enabled)
+    }
+
+    fun onRuntimeDownscaleTextureAtlasPagesToggled(host: Context, enabled: Boolean) {
+        if (uiState.busy) return
+        CompatibilitySettings.setRuntimeDownscaleTextureAtlasPagesEnabled(host, enabled)
+        uiState = uiState.copy(runtimeDownscaleTextureAtlasPagesEnabled = enabled)
+    }
+
+    fun onRuntimeDownscaleSpineTexturesToggled(host: Context, enabled: Boolean) {
+        if (uiState.busy) return
+        CompatibilitySettings.setRuntimeDownscaleSpineTexturesEnabled(host, enabled)
+        uiState = uiState.copy(runtimeDownscaleSpineTexturesEnabled = enabled)
+    }
+
+    fun onRuntimeDownscaleOffscreenFrameBuffersToggled(host: Context, enabled: Boolean) {
+        if (uiState.busy) return
+        CompatibilitySettings.setRuntimeDownscaleOffscreenFrameBuffersEnabled(host, enabled)
+        uiState = uiState.copy(runtimeDownscaleOffscreenFrameBuffersEnabled = enabled)
+    }
+
+    fun onImportDownscaleSpineAtlasPagesToggled(host: Context, enabled: Boolean) {
+        if (uiState.busy) return
+        CompatibilitySettings.setImportDownscaleSpineAtlasPagesEnabled(host, enabled)
+        uiState = uiState.copy(importDownscaleSpineAtlasPagesEnabled = enabled)
+    }
+
+    fun onImportDownscaleOrdinaryAtlasPagesToggled(host: Context, enabled: Boolean) {
+        if (uiState.busy) return
+        CompatibilitySettings.setImportDownscaleOrdinaryAtlasPagesEnabled(host, enabled)
+        uiState = uiState.copy(importDownscaleOrdinaryAtlasPagesEnabled = enabled)
     }
 }

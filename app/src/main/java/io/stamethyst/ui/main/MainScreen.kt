@@ -139,7 +139,6 @@ private fun LauncherGamePage(
     uiState: MainScreenViewModel.UiState,
     actions: MainScreenActions,
     feedbackUnreadCount: Int,
-    onOpenSettings: () -> Unit,
     onOpenFeedbackUpdates: () -> Unit,
     onEnabledModsClick: () -> Unit,
     onSteamCloudClick: () -> Unit,
@@ -153,7 +152,7 @@ private fun LauncherGamePage(
         enabledMods.sumOf { mod -> File(mod.storagePath).takeIf { it.isFile }?.length() ?: 0L }
     }
     val launchEnabled = !uiState.busy && uiState.storageIssue == null && !uiState.launchInFlight
-    val settingsEnabled = !uiState.busy &&
+    val headerActionsEnabled = !uiState.busy &&
         steamCloudIndicator.state != MainScreenViewModel.SteamCloudIndicatorState.SYNCING
     val gameHeaderHazeState = rememberHazeState()
     val density = LocalDensity.current
@@ -178,7 +177,6 @@ private fun LauncherGamePage(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .statusBarsPadding()
     ) {
         Column(
             modifier = Modifier
@@ -243,9 +241,11 @@ private fun LauncherGamePage(
         CollapsibleFloatingGlassHeader(
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(start = 16.dp, top = 18.dp, end = 16.dp),
+                .fillMaxWidth(),
             hazeState = gameHeaderHazeState,
             collapsed = gameHeaderCollapsed,
+            shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
+            contentPadding = PaddingValues(0.dp),
             onHeightChanged = {
                 if (!gameHeaderCollapsed) {
                     gameHeaderHeightPx = maxOf(gameHeaderHeightPx, it)
@@ -255,11 +255,10 @@ private fun LauncherGamePage(
                 GameHeader(
                     steamCloudIndicator = steamCloudIndicator,
                     feedbackUnreadCount = feedbackUnreadCount,
-                    settingsEnabled = settingsEnabled,
+                    headerActionsEnabled = headerActionsEnabled,
                     busy = uiState.busy,
                     onSteamCloudClick = onSteamCloudClick,
                     onOpenFeedbackUpdates = onOpenFeedbackUpdates,
-                    onOpenSettings = onOpenSettings,
                 )
             },
         )
@@ -270,11 +269,10 @@ private fun LauncherGamePage(
 private fun GameHeader(
     steamCloudIndicator: MainScreenViewModel.SteamCloudIndicatorUi,
     feedbackUnreadCount: Int,
-    settingsEnabled: Boolean,
+    headerActionsEnabled: Boolean,
     busy: Boolean,
     onSteamCloudClick: () -> Unit,
     onOpenFeedbackUpdates: () -> Unit,
-    onOpenSettings: () -> Unit,
 ) {
     HeaderPinnedRow(
         iconResId = R.drawable.ic_dock_game,
@@ -295,7 +293,7 @@ private fun GameHeader(
         if (feedbackUnreadCount > 0) {
             CompactTopBarIconButton(
                 onClick = onOpenFeedbackUpdates,
-                enabled = settingsEnabled,
+                enabled = headerActionsEnabled,
             ) {
                 NotificationBadge(
                     count = feedbackUnreadCount,
@@ -307,15 +305,6 @@ private fun GameHeader(
                     )
                 }
             }
-        }
-        CompactTopBarIconButton(
-            onClick = onOpenSettings,
-            enabled = settingsEnabled,
-        ) {
-            Icon(
-                imageVector = Icons.Settings,
-                contentDescription = stringResource(R.string.main_open_settings),
-            )
         }
     }
 }
@@ -332,7 +321,10 @@ private fun HeaderPinnedRow(
     actions: @Composable RowScope.() -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(start = 16.dp, top = 18.dp, end = 16.dp, bottom = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -568,7 +560,9 @@ private fun ModsHeaderExpandedContent(
     }
 
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -590,11 +584,16 @@ private fun ModsHeaderExpandedContent(
             shape = RoundedCornerShape(16.dp),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.56f)),
             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.36f),
-            modifier = Modifier.height(48.dp),
+            modifier = Modifier
+                .weight(1f)
+                .height(48.dp),
         ) {
-            Box(contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
                 ModLaunchProfileMenu(
-                    modifier = Modifier.padding(horizontal = 6.dp),
+                    modifier = Modifier.fillMaxSize(),
                     profiles = profiles,
                     activeProfileId = activeProfileId,
                     enabled = profileEnabled,
@@ -789,7 +788,6 @@ internal fun steamCloudAutoRetryDelaySeconds(attemptIndex: Int): Int {
 fun LauncherMainScreen(
     modifier: Modifier = Modifier,
     viewModel: MainScreenViewModel,
-    onOpenSettings: () -> Unit = {},
     onOpenFeedback: () -> Unit = {},
     onOpenWorkshop: () -> Unit = {},
     feedbackUnreadCount: Int = 0,
@@ -804,7 +802,6 @@ fun LauncherMainScreen(
             modifier = routeModifier,
             uiState = uiState,
             actions = actions,
-            onOpenSettings = onOpenSettings,
             onOpenFeedback = onOpenFeedback,
             feedbackUnreadCount = feedbackUnreadCount,
             onOpenFeedbackUpdates = onOpenFeedbackUpdates,
@@ -817,7 +814,6 @@ fun LauncherMainScreen(
 fun LauncherModsScreen(
     modifier: Modifier = Modifier,
     viewModel: MainScreenViewModel,
-    onOpenSettings: () -> Unit = {},
     onOpenFeedback: () -> Unit = {},
     onOpenWorkshop: () -> Unit = {},
     feedbackUnreadCount: Int = 0,
@@ -847,7 +843,6 @@ fun LauncherModsScreen(
             modifier = routeModifier,
             uiState = uiState,
             actions = actions,
-            onOpenSettings = onOpenSettings,
             onOpenFeedback = onOpenFeedback,
             onOpenWorkshop = onOpenWorkshop,
             feedbackUnreadCount = feedbackUnreadCount,
@@ -931,10 +926,11 @@ fun LauncherCrashRecoveryScreen(
 }
 
 @Composable
-private fun LauncherMainRoute(
+internal fun LauncherMainRoute(
     modifier: Modifier,
     viewModel: MainScreenViewModel,
     onOpenWorkshop: () -> Unit,
+    handleEffects: Boolean = true,
     content: @Composable (
         modifier: Modifier,
         uiState: MainScreenViewModel.UiState,
@@ -1011,7 +1007,10 @@ private fun LauncherMainRoute(
         }
     }
 
-    LaunchedEffect(viewModel, hostActivity) {
+    LaunchedEffect(viewModel, hostActivity, handleEffects) {
+        if (!handleEffects) {
+            return@LaunchedEffect
+        }
         viewModel.effects.collect { effect ->
             when (effect) {
                 is MainScreenViewModel.Effect.ShowSnackbar ->
@@ -1150,7 +1149,6 @@ internal fun LauncherGameScreenContent(
     modifier: Modifier = Modifier,
     uiState: MainScreenViewModel.UiState,
     actions: MainScreenActions = MainScreenActions(isHostAvailable = false),
-    onOpenSettings: () -> Unit = {},
     onOpenFeedback: () -> Unit = {},
     feedbackUnreadCount: Int = 0,
     onOpenFeedbackUpdates: () -> Unit = {},
@@ -1160,7 +1158,6 @@ internal fun LauncherGameScreenContent(
         uiState = uiState,
         actions = actions,
         contentMode = LauncherMainContentMode.GAME,
-        onOpenSettings = onOpenSettings,
         onOpenFeedback = onOpenFeedback,
         feedbackUnreadCount = feedbackUnreadCount,
         onOpenFeedbackUpdates = onOpenFeedbackUpdates,
@@ -1172,7 +1169,6 @@ internal fun LauncherModsScreenContent(
     modifier: Modifier = Modifier,
     uiState: MainScreenViewModel.UiState,
     actions: MainScreenActions = MainScreenActions(isHostAvailable = false),
-    onOpenSettings: () -> Unit = {},
     onOpenFeedback: () -> Unit = {},
     onOpenWorkshop: () -> Unit = {},
     feedbackUnreadCount: Int = 0,
@@ -1186,7 +1182,6 @@ internal fun LauncherModsScreenContent(
         uiState = uiState,
         actions = actions,
         contentMode = LauncherMainContentMode.MODS,
-        onOpenSettings = onOpenSettings,
         onOpenFeedback = onOpenFeedback,
         onOpenWorkshop = onOpenWorkshop,
         feedbackUnreadCount = feedbackUnreadCount,
@@ -1204,7 +1199,6 @@ private fun LauncherMainScreenContent(
     uiState: MainScreenViewModel.UiState,
     actions: MainScreenActions = MainScreenActions(isHostAvailable = false),
     contentMode: LauncherMainContentMode,
-    onOpenSettings: () -> Unit = {},
     onOpenFeedback: () -> Unit = {},
     onOpenWorkshop: () -> Unit = {},
     feedbackUnreadCount: Int = 0,
@@ -1328,7 +1322,6 @@ private fun LauncherMainScreenContent(
                             uiState = uiState,
                             actions = actions,
                             feedbackUnreadCount = feedbackUnreadCount,
-                            onOpenSettings = onOpenSettings,
                             onOpenFeedbackUpdates = onOpenFeedbackUpdates,
                             onEnabledModsClick = { showEnabledModsDialog = true },
                             onSteamCloudClick = {
@@ -1365,14 +1358,13 @@ private fun LauncherMainScreenContent(
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .statusBarsPadding()
                                 .testTag(MODS_SCREEN_ROOT_TAG)
-                                .padding(start = 16.dp, top = 18.dp, end = 16.dp)
                         ) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .hazeSource(state = hazeState),
+                                    .hazeSource(state = hazeState)
+                                    .padding(start = 16.dp, top = 18.dp, end = 16.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 if (uiState.busy && !uiState.busyOperation.usesBlockingOverlay()) {
@@ -1394,9 +1386,13 @@ private fun LauncherMainScreenContent(
                             }
 
                             CollapsibleFloatingGlassHeader(
-                                modifier = Modifier.align(Alignment.TopCenter),
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .fillMaxWidth(),
                                 hazeState = hazeState,
                                 collapsed = modsHeaderCollapsed,
+                                shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
+                                contentPadding = PaddingValues(0.dp),
                                 onHeightChanged = {
                                     if (!modsHeaderCollapsed) {
                                         modsHeaderHeightPx = maxOf(modsHeaderHeightPx, it)
@@ -2942,10 +2938,11 @@ private fun ModLaunchProfileMenu(
         ?: stringResource(R.string.main_mod_launch_profile_default)
     Box(modifier = modifier) {
         TextButton(
+            modifier = Modifier.fillMaxSize(),
             onClick = { expanded = true },
             enabled = enabled,
             shape = RoundedCornerShape(14.dp),
-            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
         ) {
             Text(
                 text = stringResource(R.string.main_mod_launch_profile_button, activeProfileName),

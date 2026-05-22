@@ -16,6 +16,8 @@ import io.stamethyst.backend.render.MobileGluesSettings
 import io.stamethyst.backend.render.RendererBackend
 import io.stamethyst.backend.render.RendererSelectionMode
 import io.stamethyst.backend.steamcloud.SteamCloudSyncBlacklist
+import io.stamethyst.backend.mods.ImportDownscaleMaterialPolicy
+import io.stamethyst.backend.mods.RuntimeDownscaleMaterialPolicy
 import io.stamethyst.backend.render.VirtualResolutionMode
 import io.stamethyst.config.RuntimePaths
 import java.io.File
@@ -121,6 +123,18 @@ object LauncherConfig {
     private const val PREF_KEY_FBO_IDLE_RECLAIM_COMPAT = "compat_fbo_idle_reclaim"
     private const val PREF_KEY_FBO_PRESSURE_DOWNSCALE_COMPAT =
         "compat_fbo_pressure_downscale"
+    private const val PREF_KEY_RUNTIME_DOWNSCALE_ORDINARY_TEXTURES =
+        "compat_runtime_downscale_ordinary_textures"
+    private const val PREF_KEY_RUNTIME_DOWNSCALE_TEXTURE_ATLAS_PAGES =
+        "compat_runtime_downscale_texture_atlas_pages"
+    private const val PREF_KEY_RUNTIME_DOWNSCALE_SPINE_TEXTURES =
+        "compat_runtime_downscale_spine_textures"
+    private const val PREF_KEY_RUNTIME_DOWNSCALE_OFFSCREEN_FRAME_BUFFERS =
+        "compat_runtime_downscale_offscreen_frame_buffers"
+    private const val PREF_KEY_IMPORT_DOWNSCALE_SPINE_ATLAS_PAGES =
+        "compat_import_downscale_spine_atlas_pages"
+    private const val PREF_KEY_IMPORT_DOWNSCALE_ORDINARY_ATLAS_PAGES =
+        "compat_import_downscale_ordinary_atlas_pages"
     private const val PREF_KEY_LWJGL_DEBUG = "lwjgl_debug"
     private const val PREF_KEY_PRELOAD_ALL_JRE_LIBRARIES = "preload_all_jre_libraries"
     private const val PREF_KEY_LOGCAT_CAPTURE_ENABLED = "logcat_capture_enabled"
@@ -253,6 +267,12 @@ object LauncherConfig {
     const val DEFAULT_FBO_MANAGER_COMPAT_ENABLED = false
     const val DEFAULT_FBO_IDLE_RECLAIM_COMPAT_ENABLED = false
     const val DEFAULT_FBO_PRESSURE_DOWNSCALE_COMPAT_ENABLED = false
+    const val DEFAULT_RUNTIME_DOWNSCALE_ORDINARY_TEXTURES_ENABLED = true
+    const val DEFAULT_RUNTIME_DOWNSCALE_TEXTURE_ATLAS_PAGES_ENABLED = false
+    const val DEFAULT_RUNTIME_DOWNSCALE_SPINE_TEXTURES_ENABLED = false
+    const val DEFAULT_RUNTIME_DOWNSCALE_OFFSCREEN_FRAME_BUFFERS_ENABLED = true
+    const val DEFAULT_IMPORT_DOWNSCALE_SPINE_ATLAS_PAGES_ENABLED = true
+    const val DEFAULT_IMPORT_DOWNSCALE_ORDINARY_ATLAS_PAGES_ENABLED = false
 
     const val DEFAULT_RENDER_SCALE = 1.0f
     const val MIN_RENDER_SCALE = 0.10f
@@ -1089,6 +1109,66 @@ object LauncherConfig {
         prefs(context).edit {
             putBoolean(PREF_KEY_FBO_PRESSURE_DOWNSCALE_COMPAT, false)
         }
+    }
+
+    fun readRuntimeDownscaleMaterialPolicy(context: Context): RuntimeDownscaleMaterialPolicy {
+        val prefs = prefs(context)
+        return RuntimeDownscaleMaterialPolicy(
+            ordinaryTextures = prefs.getBoolean(
+                PREF_KEY_RUNTIME_DOWNSCALE_ORDINARY_TEXTURES,
+                DEFAULT_RUNTIME_DOWNSCALE_ORDINARY_TEXTURES_ENABLED
+            ),
+            textureAtlasPages = prefs.getBoolean(
+                PREF_KEY_RUNTIME_DOWNSCALE_TEXTURE_ATLAS_PAGES,
+                DEFAULT_RUNTIME_DOWNSCALE_TEXTURE_ATLAS_PAGES_ENABLED
+            ),
+            spineTextures = prefs.getBoolean(
+                PREF_KEY_RUNTIME_DOWNSCALE_SPINE_TEXTURES,
+                DEFAULT_RUNTIME_DOWNSCALE_SPINE_TEXTURES_ENABLED
+            ),
+            offscreenFrameBuffers = prefs.getBoolean(
+                PREF_KEY_RUNTIME_DOWNSCALE_OFFSCREEN_FRAME_BUFFERS,
+                DEFAULT_RUNTIME_DOWNSCALE_OFFSCREEN_FRAME_BUFFERS_ENABLED
+            )
+        )
+    }
+
+    fun setRuntimeDownscaleOrdinaryTexturesEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit { putBoolean(PREF_KEY_RUNTIME_DOWNSCALE_ORDINARY_TEXTURES, enabled) }
+    }
+
+    fun setRuntimeDownscaleTextureAtlasPagesEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit { putBoolean(PREF_KEY_RUNTIME_DOWNSCALE_TEXTURE_ATLAS_PAGES, enabled) }
+    }
+
+    fun setRuntimeDownscaleSpineTexturesEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit { putBoolean(PREF_KEY_RUNTIME_DOWNSCALE_SPINE_TEXTURES, enabled) }
+    }
+
+    fun setRuntimeDownscaleOffscreenFrameBuffersEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit { putBoolean(PREF_KEY_RUNTIME_DOWNSCALE_OFFSCREEN_FRAME_BUFFERS, enabled) }
+    }
+
+    fun readImportDownscaleMaterialPolicy(context: Context): ImportDownscaleMaterialPolicy {
+        val prefs = prefs(context)
+        return ImportDownscaleMaterialPolicy(
+            spineAtlasPages = prefs.getBoolean(
+                PREF_KEY_IMPORT_DOWNSCALE_SPINE_ATLAS_PAGES,
+                DEFAULT_IMPORT_DOWNSCALE_SPINE_ATLAS_PAGES_ENABLED
+            ),
+            ordinaryAtlasPages = prefs.getBoolean(
+                PREF_KEY_IMPORT_DOWNSCALE_ORDINARY_ATLAS_PAGES,
+                DEFAULT_IMPORT_DOWNSCALE_ORDINARY_ATLAS_PAGES_ENABLED
+            )
+        )
+    }
+
+    fun setImportDownscaleSpineAtlasPagesEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit { putBoolean(PREF_KEY_IMPORT_DOWNSCALE_SPINE_ATLAS_PAGES, enabled) }
+    }
+
+    fun setImportDownscaleOrdinaryAtlasPagesEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit { putBoolean(PREF_KEY_IMPORT_DOWNSCALE_ORDINARY_ATLAS_PAGES, enabled) }
     }
 
     private fun isLegacyGpuResourceModeEnabled(context: Context): Boolean {

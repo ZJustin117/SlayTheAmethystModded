@@ -64,8 +64,10 @@ import io.stamethyst.backend.render.VirtualResolutionMode
 import io.stamethyst.backend.launch.JvmLogRotationManager
 import io.stamethyst.backend.launch.MtsClasspathWarmupCoordinator
 import io.stamethyst.backend.mods.AtlasOfflineDownscaleStrategy
+import io.stamethyst.backend.mods.ImportDownscaleMaterialPolicy
 import io.stamethyst.backend.mods.ModJarSupport
 import io.stamethyst.backend.mods.ModManager
+import io.stamethyst.backend.mods.RuntimeDownscaleMaterialPolicy
 import io.stamethyst.backend.update.LauncherUpdateService
 import io.stamethyst.backend.update.LauncherUpdateUiReducer
 import io.stamethyst.backend.update.UpdateCheckExecutionResult
@@ -3577,6 +3579,38 @@ class SettingsScreenViewModel : ViewModel() {
             R.string.settings_status_gpu_resource_guardian,
             rendering.gpuResourceGuardianMode.displayName(host)
         )
+        val guardianPressureDownscaleActive =
+            rendering.gpuResourceGuardianMode != GpuResourceGuardianMode.OFF &&
+                rendering.gpuResourceGuardianMode != GpuResourceGuardianMode.LEGACY &&
+                rendering.gpuResourceGuardianPressureDownscaleEnabled
+        val runtimeTexturePressureDownscaleActive =
+            (rendering.gpuResourceGuardianMode == GpuResourceGuardianMode.LEGACY ||
+                guardianPressureDownscaleActive) &&
+                compatibility.runtimeDownscaleMaterialPolicy.allowsAnyTextureDownscale()
+        val runtimeFboPressureDownscaleActive =
+            (rendering.gpuResourceGuardianMode == GpuResourceGuardianMode.LEGACY ||
+                guardianPressureDownscaleActive) &&
+                compatibility.runtimeDownscaleMaterialPolicy.offscreenFrameBuffers
+        lines += host.getString(
+            R.string.settings_status_gpu_resource_guardian_pressure_downscale,
+            toggleStateText(host, guardianPressureDownscaleActive)
+        )
+        lines += host.getString(
+            R.string.settings_status_runtime_texture_pressure_downscale,
+            toggleStateText(host, runtimeTexturePressureDownscaleActive)
+        )
+        lines += host.getString(
+            R.string.settings_status_runtime_fbo_pressure_downscale,
+            toggleStateText(host, runtimeFboPressureDownscaleActive)
+        )
+        lines += host.getString(
+            R.string.settings_status_runtime_downscale_materials,
+            formatRuntimeDownscaleMaterials(host, compatibility.runtimeDownscaleMaterialPolicy)
+        )
+        lines += host.getString(
+            R.string.settings_status_import_downscale_materials,
+            formatImportDownscaleMaterials(host, compatibility.importDownscaleMaterialPolicy)
+        )
         lines += host.getString(
             R.string.settings_status_jvm_heap,
             jvm.heapStartMb,
@@ -3934,6 +3968,32 @@ class SettingsScreenViewModel : ViewModel() {
                 R.string.settings_status_disabled
             }
         )
+    }
+
+    private fun RuntimeDownscaleMaterialPolicy.allowsAnyTextureDownscale(): Boolean {
+        return ordinaryTextures || textureAtlasPages || spineTextures
+    }
+
+    private fun formatRuntimeDownscaleMaterials(
+        host: Activity,
+        policy: RuntimeDownscaleMaterialPolicy
+    ): String {
+        val enabled = ArrayList<String>()
+        if (policy.ordinaryTextures) enabled += host.getString(R.string.compat_runtime_downscale_ordinary_texture_title)
+        if (policy.textureAtlasPages) enabled += host.getString(R.string.compat_runtime_downscale_texture_atlas_title)
+        if (policy.spineTextures) enabled += host.getString(R.string.compat_runtime_downscale_spine_title)
+        if (policy.offscreenFrameBuffers) enabled += host.getString(R.string.compat_runtime_downscale_fbo_title)
+        return enabled.joinToString().ifBlank { host.getString(R.string.settings_status_none) }
+    }
+
+    private fun formatImportDownscaleMaterials(
+        host: Activity,
+        policy: ImportDownscaleMaterialPolicy
+    ): String {
+        val enabled = ArrayList<String>()
+        if (policy.spineAtlasPages) enabled += host.getString(R.string.compat_import_downscale_spine_atlas_title)
+        if (policy.ordinaryAtlasPages) enabled += host.getString(R.string.compat_import_downscale_ordinary_atlas_title)
+        return enabled.joinToString().ifBlank { host.getString(R.string.settings_status_none) }
     }
 
     private fun touchMouseInteractionLabel(host: Activity, mode: TouchMouseInteractionMode): String {

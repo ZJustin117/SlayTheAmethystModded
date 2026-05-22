@@ -4,6 +4,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 class ModAtlasOfflineDownscalePatcherTest {
     @Test
@@ -155,5 +159,44 @@ class ModAtlasOfflineDownscalePatcherTest {
                 entryNames = entryNames
             )
         )
+    }
+
+    @Test
+    fun inspectOversizedAtlasPages_returnsNoCandidatesWhenAllMaterialTypesDisabled() {
+        val tempDir = Files.createTempDirectory("atlas-downscale-policy-disabled")
+        val modJar = tempDir.resolve("policy-disabled.jar").toFile()
+        ZipOutputStream(modJar.outputStream()).use { zipOut ->
+            zipOut.putNextEntry(ZipEntry("hero/hero.atlas"))
+            zipOut.write(
+                """
+                    hero.png
+                    size: 4096,4096
+                    format: RGBA8888
+                    filter: Linear,Linear
+                    repeat: none
+                    body
+                      rotate: false
+                      xy: 0, 0
+                      size: 4096, 4096
+                      orig: 4096, 4096
+                      offset: 0, 0
+                      index: -1
+                """.trimIndent().toByteArray(StandardCharsets.UTF_8)
+            )
+            zipOut.closeEntry()
+            zipOut.putNextEntry(ZipEntry("hero/hero.json"))
+            zipOut.write("{}".toByteArray(StandardCharsets.UTF_8))
+            zipOut.closeEntry()
+        }
+
+        val result = ModAtlasOfflineDownscalePatcher.inspectOversizedAtlasPages(
+            modJar = modJar,
+            materialPolicy = ImportDownscaleMaterialPolicy(
+                spineAtlasPages = false,
+                ordinaryAtlasPages = false
+            )
+        )
+
+        assertFalse(result.hasPatchedChanges)
     }
 }

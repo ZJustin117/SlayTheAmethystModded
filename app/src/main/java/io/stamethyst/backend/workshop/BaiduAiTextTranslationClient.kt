@@ -66,7 +66,11 @@ internal class BaiduAiTextTranslationClient(
             val root = parsePayload(payload)
             val errorCode = root["error_code"]?.jsonPrimitive?.contentOrNull
             if (!response.isSuccessful || !errorCode.isNullOrBlank() && errorCode != "0") {
-                throw IllegalStateException(buildErrorMessage(errorCode, root["error_msg"]?.jsonPrimitive?.contentOrNull))
+                throw BaiduTranslationApiException(
+                    errorCode = errorCode,
+                    errorMessage = root["error_msg"]?.jsonPrimitive?.contentOrNull,
+                    message = buildErrorMessage(errorCode, root["error_msg"]?.jsonPrimitive?.contentOrNull),
+                )
             }
 
             extractTranslatedText(root)?.let { translatedText ->
@@ -159,6 +163,12 @@ internal class BaiduAiTextTranslationClient(
         )
     }
 }
+
+internal class BaiduTranslationApiException(
+    val errorCode: String?,
+    val errorMessage: String?,
+    message: String,
+) : IllegalStateException(message)
 
 internal fun mapLocaleLanguageToBaiduLanguage(locale: Locale): String? =
     when (locale.language.lowercase(Locale.ROOT)) {

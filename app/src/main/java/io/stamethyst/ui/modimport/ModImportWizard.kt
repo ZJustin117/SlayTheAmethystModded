@@ -374,7 +374,9 @@ private fun PatchStep(
     onSetAtlasStrategy: (AtlasOfflineDownscaleStrategy?) -> Unit
 ) {
     val plan = state.plan ?: return
-    val patchItems = plan.importableItems.flatMap { item -> item.patchPlans.map { item to it } }
+    val patchItems = plan.importableItems.flatMap { item ->
+        item.patchPlans.filter { it.userConfigurable }.map { item to it }
+    }
     var showAtlasHelp by remember { mutableStateOf(false) }
     val atlasHelpText = buildAtlasDownscaleHelpText()
     if (showAtlasHelp) {

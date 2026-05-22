@@ -8,7 +8,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -21,16 +23,22 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 import io.stamethyst.R
 import io.stamethyst.backend.nativelib.NativeLibraryMarketAvailability
 import io.stamethyst.backend.nativelib.NativeLibraryMarketPackageState
 import io.stamethyst.navigation.currentNavigator
 import io.stamethyst.ui.Icons
+import io.stamethyst.ui.FloatingGlassHeader
 import io.stamethyst.ui.icon.ArrowBack
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -42,6 +50,7 @@ fun LauncherNativeLibraryMarketScreen(
     val activity = requireNotNull(LocalActivity.current)
     val navigator = currentNavigator
     val uiState = viewModel.uiState
+    val headerHazeState = rememberHazeState()
 
     LaunchedEffect(activity) {
         viewModel.onOpenNativeLibraryMarket(activity)
@@ -49,30 +58,51 @@ fun LauncherNativeLibraryMarketScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.settings_native_library_market_title)) },
-                navigationIcon = {
-                    IconButton(onClick = navigator::goBack) {
-                        Icon(
-                            imageVector = Icons.ArrowBack,
-                            contentDescription = stringResource(R.string.common_content_desc_back)
-                        )
+            FloatingGlassHeader(
+                modifier = Modifier
+                    .statusBarsPadding()
+                    .padding(start = 16.dp, top = 18.dp, end = 16.dp),
+                hazeState = headerHazeState,
+                shape = RoundedCornerShape(24.dp),
+                contentPadding = PaddingValues(0.dp),
+            ) {
+                TopAppBar(
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent,
+                        scrolledContainerColor = Color.Transparent,
+                        titleContentColor = MaterialTheme.colorScheme.onSurface,
+                        actionIconContentColor = MaterialTheme.colorScheme.onSurface,
+                        navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                    ),
+                    windowInsets = TopAppBarDefaults.windowInsets,
+                    title = { Text(stringResource(R.string.settings_native_library_market_title)) },
+                    navigationIcon = {
+                        IconButton(onClick = navigator::goBack) {
+                            Icon(
+                                imageVector = Icons.ArrowBack,
+                                contentDescription = stringResource(R.string.common_content_desc_back)
+                            )
+                        }
+                    },
+                    actions = {
+                        IconButton(
+                            onClick = { viewModel.refreshNativeLibraryMarket(activity) },
+                            enabled = !uiState.busy && !uiState.nativeLibraryMarketLoading
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_refresh),
+                                contentDescription = stringResource(R.string.common_action_refresh)
+                            )
+                        }
                     }
-                },
-                actions = {
-                    TextButton(
-                        onClick = { viewModel.refreshNativeLibraryMarket(activity) },
-                        enabled = !uiState.busy && !uiState.nativeLibraryMarketLoading
-                    ) {
-                        Text(stringResource(R.string.common_action_refresh))
-                    }
-                }
-            )
+                )
+            }
         }
     ) { paddingValues ->
         LazyColumn(
             modifier = modifier
                 .fillMaxSize()
+                .hazeSource(state = headerHazeState)
                 .padding(paddingValues),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)

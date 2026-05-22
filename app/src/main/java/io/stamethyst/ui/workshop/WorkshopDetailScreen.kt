@@ -73,6 +73,7 @@ internal fun WorkshopDetailScreen(
     viewModel: WorkshopViewModel,
     modifier: Modifier = Modifier,
     onBack: () -> Unit,
+    onOpenBaiduTranslationCredentials: (String) -> Unit,
     onOpenDetails: (WorkshopItemSummary) -> Unit,
 ) {
     val context = LocalContext.current
@@ -101,6 +102,11 @@ internal fun WorkshopDetailScreen(
 
     val selectedDetails = state.selected?.takeIf { it.summary.publishedFileId == publishedFileId }
     val isTranslatingDetails = state.detailTranslationLoadingId == publishedFileId
+    val selectedTranslationKey = selectedDetails?.summary?.let { summary ->
+        "${summary.appId}:${summary.publishedFileId}"
+    }
+    val isTranslationMode = selectedTranslationKey != null && state.detailTranslationModeKey == selectedTranslationKey
+    val selectedTranslation = selectedTranslationKey?.let { key -> state.detailTranslations[key] }
     val canTranslateDetails = selectedDetails?.summary?.let { summary ->
         summary.title.isNotBlank() || summary.description.isNotBlank()
     } == true
@@ -116,11 +122,16 @@ internal fun WorkshopDetailScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    val title = state.selected
+                    val originalTitle = state.selected
                         ?.takeIf { it.summary.publishedFileId == publishedFileId }
                         ?.summary
                         ?.title
                         ?.ifBlank { null }
+                    val title = if (isTranslationMode) {
+                        selectedTranslation?.title?.ifBlank { null } ?: originalTitle
+                    } else {
+                        originalTitle
+                    }
                     Column {
                         Text(
                             text = title ?: stringResource(R.string.workshop_detail_title),
@@ -146,15 +157,28 @@ internal fun WorkshopDetailScreen(
                 },
                 actions = {
                     IconButton(
-                        onClick = { viewModel.translateSelectedDetails(context.applicationContext) },
+                        onClick = {
+                            viewModel.toggleSelectedDetailsTranslation(
+                                context = context.applicationContext,
+                                onOpenBaiduTranslationCredentials = onOpenBaiduTranslationCredentials,
+                            )
+                        },
                         enabled = canTranslateDetails && !isTranslatingDetails,
                     ) {
                         if (isTranslatingDetails) {
                             CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
                         } else {
                             Icon(
-                                painter = painterResource(R.drawable.ic_translate),
-                                contentDescription = stringResource(R.string.workshop_translate_action),
+                                painter = painterResource(
+                                    if (isTranslationMode) R.drawable.ic_original_text else R.drawable.ic_translate,
+                                ),
+                                contentDescription = stringResource(
+                                    if (isTranslationMode) {
+                                        R.string.workshop_translate_show_original_action
+                                    } else {
+                                        R.string.workshop_translate_action
+                                    },
+                                ),
                             )
                         }
                     }
@@ -222,7 +246,11 @@ internal fun WorkshopDetailScreen(
                     DetailDescriptionCard(
                         modifier = Modifier.animateItem(),
                         publishedFileId = details.summary.publishedFileId,
-                        text = details.summary.description,
+                        text = if (isTranslationMode) {
+                            selectedTranslation?.description ?: details.summary.description
+                        } else {
+                            details.summary.description
+                        },
                         isTranslating = isTranslatingDetails,
                         translationErrorMessage = state.detailTranslationErrorMessage,
                     )

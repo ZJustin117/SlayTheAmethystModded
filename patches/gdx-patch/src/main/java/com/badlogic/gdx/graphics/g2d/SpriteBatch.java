@@ -33,6 +33,7 @@ import com.badlogic.gdx.utils.NumberUtils;
 import java.util.Collections;
 import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /** Draws batched quads using indices.
  * @see Batch
@@ -47,6 +48,9 @@ public class SpriteBatch implements Batch {
 		readBooleanProperty(GLOBAL_ATLAS_FILTER_COMPAT_PROP, true);
 	private static final boolean GLOBAL_TEXTURE_COMPAT_VERBOSE_ENABLED =
 		readBooleanProperty(GLOBAL_TEXTURE_COMPAT_VERBOSE_PROP, false);
+	private static final AtomicInteger FRAME_FLUSHES = new AtomicInteger();
+	private static final AtomicInteger FRAME_TEXTURE_SWITCHES = new AtomicInteger();
+	private static final AtomicInteger FRAME_MAX_SPRITES_IN_BATCH = new AtomicInteger();
 
 	/** @deprecated Do not use, this field is for testing only and is likely to be removed. Sets the {@link VertexDataType} to be
 	 *             used when gles 3 is not available, defaults to {@link VertexDataType#VertexArray}. */
@@ -78,6 +82,12 @@ public class SpriteBatch implements Batch {
 	private final Set<Texture> compatTouchedTextures = Collections.newSetFromMap(new WeakHashMap<Texture, Boolean>());
 	private int compatAppliedTotal;
 	private int compatSkippedTotal;
+
+	public static String consumeFrameDiagnostics () {
+		return "spriteFlushes=" + FRAME_FLUSHES.getAndSet(0)
+			+ " textureSwitches=" + FRAME_TEXTURE_SWITCHES.getAndSet(0)
+			+ " maxSpritesInBatch=" + FRAME_MAX_SPRITES_IN_BATCH.getAndSet(0);
+	}
 
 	/** Number of render calls since the last {@link #begin()}. **/
 	public int renderCalls = 0;
@@ -1128,6 +1138,8 @@ public class SpriteBatch implements Batch {
 		totalRenderCalls++;
 		int spritesInBatch = idx / 20;
 		if (spritesInBatch > maxSpritesInBatch) maxSpritesInBatch = spritesInBatch;
+		FRAME_FLUSHES.incrementAndGet();
+		updateFrameMaxSpritesInBatch(spritesInBatch);
 		int count = spritesInBatch * 6;
 
 		lastTexture.bind();
@@ -1223,11 +1235,20 @@ public class SpriteBatch implements Batch {
 	}
 
 	protected void switchTexture (Texture texture) {
+		FRAME_TEXTURE_SWITCHES.incrementAndGet();
 		flush();
 		lastTexture = texture;
 		applyGlobalAtlasCompatIfNeeded(texture);
 		invTexWidth = 1.0f / texture.getWidth();
 		invTexHeight = 1.0f / texture.getHeight();
+	}
+
+	private static void updateFrameMaxSpritesInBatch (int spritesInBatch) {
+		while (true) {
+			int current = FRAME_MAX_SPRITES_IN_BATCH.get();
+			if (spritesInBatch <= current) return;
+			if (FRAME_MAX_SPRITES_IN_BATCH.compareAndSet(current, spritesInBatch)) return;
+		}
 	}
 
 	@Override

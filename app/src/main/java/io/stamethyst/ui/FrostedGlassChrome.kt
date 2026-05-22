@@ -29,6 +29,7 @@ fun FrostedGlassChrome(
     shape: Shape,
     contentPadding: PaddingValues = PaddingValues(0.dp),
     shadowElevation: Dp = 0.dp,
+    showBorder: Boolean = true,
     content: @Composable BoxScope.() -> Unit,
 ) {
     Surface(
@@ -43,10 +44,14 @@ fun FrostedGlassChrome(
             },
         shape = shape,
         color = Color.Transparent,
-        border = BorderStroke(
-            width = 1.dp,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f),
-        ),
+        border = if (showBorder) {
+            BorderStroke(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f),
+            )
+        } else {
+            null
+        },
         tonalElevation = 0.dp,
         shadowElevation = shadowElevation,
     ) {

@@ -48,6 +48,8 @@ internal object LauncherSettingsDiagnosticsFormatter {
         val touchscreenInputMode = LauncherConfig.readTouchscreenInputMode(context)
         val nativeTouchscreenAllowlistCompatEnabled =
             CompatibilitySettings.isNativeTouchscreenAllowlistCompatEnabled(context)
+        val runtimeDownscalePolicy = CompatibilitySettings.readRuntimeDownscaleMaterialPolicy(context)
+        val importDownscalePolicy = CompatibilitySettings.readImportDownscaleMaterialPolicy(context)
         return LauncherSettingsDiagnosticsSnapshot(
             sections = listOf(
                 LauncherSettingsDiagnosticsSection(
@@ -263,6 +265,24 @@ internal object LauncherSettingsDiagnosticsFormatter {
                         ),
                         "fboPressureDownscaleCompat" to formatBoolean(
                             CompatibilitySettings.isFboPressureDownscaleCompatEnabled(context)
+                        ),
+                        "runtimeDownscaleOrdinaryTextures" to formatBoolean(
+                            runtimeDownscalePolicy.ordinaryTextures
+                        ),
+                        "runtimeDownscaleTextureAtlasPages" to formatBoolean(
+                            runtimeDownscalePolicy.textureAtlasPages
+                        ),
+                        "runtimeDownscaleSpineTextures" to formatBoolean(
+                            runtimeDownscalePolicy.spineTextures
+                        ),
+                        "runtimeDownscaleOffscreenFrameBuffers" to formatBoolean(
+                            runtimeDownscalePolicy.offscreenFrameBuffers
+                        ),
+                        "importDownscaleSpineAtlasPages" to formatBoolean(
+                            importDownscalePolicy.spineAtlasPages
+                        ),
+                        "importDownscaleOrdinaryAtlasPages" to formatBoolean(
+                            importDownscalePolicy.ordinaryAtlasPages
                         )
                     )
                 )

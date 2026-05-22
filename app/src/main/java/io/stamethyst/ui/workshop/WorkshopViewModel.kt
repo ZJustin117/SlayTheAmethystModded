@@ -13,6 +13,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.stamethyst.R
 import io.stamethyst.backend.workshop.BaiduAiTextTranslationClient
+import io.stamethyst.backend.workshop.BaiduTranslationApiException
 import io.stamethyst.backend.workshop.BaiduTranslationCredentials
 import io.stamethyst.backend.workshop.BaiduTranslationCredentialsRepository
 import io.stamethyst.backend.workshop.WorkshopBrowseQuery
@@ -298,6 +299,7 @@ internal class WorkshopViewModel : ViewModel() {
                 errorMessage = null,
                 commentLoadingId = null,
                 commentErrorMessage = null,
+                detailTranslationModeKey = null,
                 detailTranslationLoadingId = null,
                 detailTranslationErrorMessage = null,
             )
@@ -409,9 +411,27 @@ internal class WorkshopViewModel : ViewModel() {
         startDownloadAfterDependencyCheck(context, details.summary, details)
     }
 
-    fun translateSelectedDetails(context: Context) {
+    fun toggleSelectedDetailsTranslation(
+        context: Context,
+        onOpenBaiduTranslationCredentials: (String) -> Unit = {},
+    ) {
         val details = uiState.selected ?: return
         val summary = details.summary
+        val translationKey = details.cacheKey()
+        if (uiState.detailTranslationModeKey == translationKey) {
+            uiState = uiState.copy(
+                detailTranslationModeKey = null,
+                detailTranslationErrorMessage = null,
+            )
+            return
+        }
+        if (uiState.detailTranslations.containsKey(translationKey)) {
+            uiState = uiState.copy(
+                detailTranslationModeKey = translationKey,
+                detailTranslationErrorMessage = null,
+            )
+            return
+        }
         if (uiState.detailTranslationLoadingId == summary.publishedFileId) return
 
         val originalTitle = summary.title.trim()
@@ -424,12 +444,14 @@ internal class WorkshopViewModel : ViewModel() {
         val credentials = BaiduTranslationCredentialsRepository(context).getCredentials()
         validateBaiduTranslationCredentials(context, credentials)?.let { message ->
             uiState = uiState.copy(detailTranslationErrorMessage = message)
+            onOpenBaiduTranslationCredentials(message)
             return
         }
 
         val appId = summary.appId
         val publishedFileId = summary.publishedFileId
         uiState = uiState.copy(
+            detailTranslationModeKey = translationKey,
             detailTranslationLoadingId = publishedFileId,
             detailTranslationErrorMessage = null,
         )
@@ -465,7 +487,7 @@ internal class WorkshopViewModel : ViewModel() {
                             )
                         }
                     }
-                    TranslatedWorkshopDetailText(
+                    WorkshopDetailTranslation(
                         title = translatedTitle?.await()?.trim()?.takeIf(String::isNotBlank) ?: summary.title,
                         description = translatedDescription?.await()?.trim()?.takeIf(String::isNotBlank) ?: summary.description,
                     )
@@ -478,26 +500,25 @@ internal class WorkshopViewModel : ViewModel() {
                     uiState = uiState.copy(detailTranslationLoadingId = null)
                     return@onSuccess
                 }
-                val translatedSummary = current.summary.copy(
-                    title = translated.title,
-                    description = translated.description,
-                )
-                val translatedDetails = current.copy(summary = translatedSummary)
-                detailsCache[translatedDetails.cacheKey()] = translatedDetails
+                val currentTranslationKey = current.cacheKey()
                 uiState = uiState.copy(
-                    selected = translatedDetails,
-                    items = uiState.items.map { item ->
-                        if (item.appId == appId && item.publishedFileId == publishedFileId) {
-                            item.copy(title = translated.title, description = translated.description)
-                        } else {
-                            item
-                        }
-                    },
+                    detailTranslations = uiState.detailTranslations + (currentTranslationKey to translated),
                     detailTranslationLoadingId = null,
                     detailTranslationErrorMessage = null,
                 )
             }.onFailure { error ->
+                if (error is BaiduTranslationApiException) {
+                    val message = error.message ?: context.getString(R.string.workshop_translate_invalid_api_credentials)
+                    uiState = uiState.copy(
+                        detailTranslationModeKey = null,
+                        detailTranslationLoadingId = null,
+                        detailTranslationErrorMessage = message,
+                    )
+                    onOpenBaiduTranslationCredentials(message)
+                    return@onFailure
+                }
                 uiState = uiState.copy(
+                    detailTranslationModeKey = null,
                     detailTranslationLoadingId = null,
                     detailTranslationErrorMessage = error.message ?: context.getString(R.string.workshop_translate_failed),
                 )
@@ -842,6 +863,8 @@ internal data class WorkshopUiState(
     val pendingDependencyDownload: WorkshopPendingDependencyDownload? = null,
     val commentLoadingId: ULong? = null,
     val commentErrorMessage: String? = null,
+    val detailTranslationModeKey: String? = null,
+    val detailTranslations: Map<String, WorkshopDetailTranslation> = emptyMap(),
     val detailTranslationLoadingId: ULong? = null,
     val detailTranslationErrorMessage: String? = null,
     val errorMessage: String? = null,
@@ -861,7 +884,7 @@ internal data class WorkshopPendingDependencyDownload(
     val missingDependencies: List<WorkshopItemSummary>,
 )
 
-private data class TranslatedWorkshopDetailText(
+internal data class WorkshopDetailTranslation(
     val title: String,
     val description: String,
 )

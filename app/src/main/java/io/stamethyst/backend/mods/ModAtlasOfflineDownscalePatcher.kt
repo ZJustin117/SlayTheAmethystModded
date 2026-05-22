@@ -104,10 +104,18 @@ internal object ModAtlasOfflineDownscalePatcher {
     fun inspectOversizedAtlasPages(
         modJar: File,
         strategy: AtlasOfflineDownscaleStrategy =
-            AtlasOfflineDownscaleStrategy.maxEdge(DEFAULT_MAX_OUTPUT_EDGE_PX)
+            AtlasOfflineDownscaleStrategy.maxEdge(DEFAULT_MAX_OUTPUT_EDGE_PX),
+        materialPolicy: ImportDownscaleMaterialPolicy = DEFAULT_IMPORT_DOWNSCALE_MATERIAL_POLICY
     ): AtlasOfflineDownscaleResult {
         if (!modJar.isFile) {
             throw IOException("Mod jar not found: ${modJar.absolutePath}")
+        }
+        if (!materialPolicy.allowsAnyAtlasPage()) {
+            return AtlasOfflineDownscaleResult(
+                scannedAtlasEntries = 0,
+                patchedAtlasEntries = 0,
+                downscaledPageEntries = 0
+            )
         }
 
         var scannedAtlasEntries = 0
@@ -122,7 +130,8 @@ internal object ModAtlasOfflineDownscalePatcher {
                 val entryName = entry.name
                 scannedAtlasEntries++
                 val atlasText = JarFileIoUtils.readEntry(zipFile, entry)
-                if (!isLikelySpineAtlas(entryName, zipIndex.entriesByNormalizedName.keys)) {
+                val spineAtlas = isLikelySpineAtlas(entryName, zipIndex.entriesByNormalizedName.keys)
+                if (!spineAtlas && !materialPolicy.ordinaryAtlasPages) {
                     continue
                 }
                 val pageScales = collectPageScales(
@@ -130,7 +139,9 @@ internal object ModAtlasOfflineDownscalePatcher {
                     entriesByNormalizedName = zipIndex.entriesByNormalizedName,
                     atlasEntryName = entryName,
                     atlasText = atlasText,
-                    strategy = strategy
+                    strategy = strategy,
+                    spineAtlas = spineAtlas,
+                    materialPolicy = materialPolicy
                 )
                 if (pageScales.isEmpty()) {
                     continue
@@ -157,10 +168,18 @@ internal object ModAtlasOfflineDownscalePatcher {
     fun patchOversizedAtlasPagesInPlace(
         modJar: File,
         strategy: AtlasOfflineDownscaleStrategy =
-            AtlasOfflineDownscaleStrategy.maxEdge(DEFAULT_MAX_OUTPUT_EDGE_PX)
+            AtlasOfflineDownscaleStrategy.maxEdge(DEFAULT_MAX_OUTPUT_EDGE_PX),
+        materialPolicy: ImportDownscaleMaterialPolicy = DEFAULT_IMPORT_DOWNSCALE_MATERIAL_POLICY
     ): AtlasOfflineDownscaleResult {
         if (!modJar.isFile) {
             throw IOException("Mod jar not found: ${modJar.absolutePath}")
+        }
+        if (!materialPolicy.allowsAnyAtlasPage()) {
+            return AtlasOfflineDownscaleResult(
+                scannedAtlasEntries = 0,
+                patchedAtlasEntries = 0,
+                downscaledPageEntries = 0
+            )
         }
 
         val replacements: MutableMap<String, ByteArray> = HashMap()
@@ -176,7 +195,8 @@ internal object ModAtlasOfflineDownscalePatcher {
                 val entryName = entry.name
                 scannedAtlasEntries++
                 val atlasText = JarFileIoUtils.readEntry(zipFile, entry)
-                if (!isLikelySpineAtlas(entryName, zipIndex.entriesByNormalizedName.keys)) {
+                val spineAtlas = isLikelySpineAtlas(entryName, zipIndex.entriesByNormalizedName.keys)
+                if (!spineAtlas && !materialPolicy.ordinaryAtlasPages) {
                     continue
                 }
                 val plan = buildPatchPlan(
@@ -184,7 +204,9 @@ internal object ModAtlasOfflineDownscalePatcher {
                     entriesByNormalizedName = zipIndex.entriesByNormalizedName,
                     atlasEntryName = entryName,
                     atlasText = atlasText,
-                    strategy = strategy
+                    strategy = strategy,
+                    spineAtlas = spineAtlas,
+                    materialPolicy = materialPolicy
                 ) ?: continue
                 replacements[entryName] = plan.patchedAtlasText.toByteArray(StandardCharsets.UTF_8)
                 replacements.putAll(plan.imageReplacements)
@@ -297,14 +319,18 @@ internal object ModAtlasOfflineDownscalePatcher {
         entriesByNormalizedName: Map<String, ZipEntry>,
         atlasEntryName: String,
         atlasText: String,
-        strategy: AtlasOfflineDownscaleStrategy
+        strategy: AtlasOfflineDownscaleStrategy,
+        spineAtlas: Boolean,
+        materialPolicy: ImportDownscaleMaterialPolicy
     ): PatchPlan? {
         val pageScales = collectPageScales(
             zipFile = zipFile,
             entriesByNormalizedName = entriesByNormalizedName,
             atlasEntryName = atlasEntryName,
             atlasText = atlasText,
-            strategy = strategy
+            strategy = strategy,
+            spineAtlas = spineAtlas,
+            materialPolicy = materialPolicy
         )
         if (pageScales.isEmpty()) {
             return null
@@ -319,6 +345,9 @@ internal object ModAtlasOfflineDownscalePatcher {
             val page = findNextAtlasPageSpan(lines, index) ?: break
             index = page.endIndexExclusive
             val resolvedEntryName = resolveAtlasPageEntryName(atlasEntryName, page.pageNameLine.trim())
+            if (!materialPolicy.allowsAtlasPage(spineAtlas)) {
+                continue
+            }
             if (!pageScales.containsKey(resolvedEntryName.lowercase(Locale.ROOT))) {
                 continue
             }
@@ -357,7 +386,9 @@ internal object ModAtlasOfflineDownscalePatcher {
         entriesByNormalizedName: Map<String, ZipEntry>,
         atlasEntryName: String,
         atlasText: String,
-        strategy: AtlasOfflineDownscaleStrategy
+        strategy: AtlasOfflineDownscaleStrategy,
+        spineAtlas: Boolean,
+        materialPolicy: ImportDownscaleMaterialPolicy
     ): Map<String, PageScale> {
         val pageScales = LinkedHashMap<String, PageScale>()
         val normalizedText = atlasText.replace("\r\n", "\n").replace('\r', '\n')
@@ -368,6 +399,9 @@ internal object ModAtlasOfflineDownscalePatcher {
             val page = findNextAtlasPageSpan(lines, index) ?: break
             index = page.endIndexExclusive
             val resolvedEntryName = resolveAtlasPageEntryName(atlasEntryName, page.pageNameLine.trim())
+            if (!materialPolicy.allowsAtlasPage(spineAtlas)) {
+                continue
+            }
             val pageScale = inspectPageScale(
                 zipFile,
                 entriesByNormalizedName,
@@ -379,6 +413,14 @@ internal object ModAtlasOfflineDownscalePatcher {
         }
 
         return pageScales
+    }
+
+    private fun ImportDownscaleMaterialPolicy.allowsAnyAtlasPage(): Boolean {
+        return spineAtlasPages || ordinaryAtlasPages
+    }
+
+    private fun ImportDownscaleMaterialPolicy.allowsAtlasPage(spineAtlas: Boolean): Boolean {
+        return if (spineAtlas) spineAtlasPages else ordinaryAtlasPages
     }
 
     private fun patchAtlasText(

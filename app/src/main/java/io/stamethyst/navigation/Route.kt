@@ -26,6 +26,10 @@ sealed interface Route : NavKey {
     @Serializable
     data object Settings : Route
     @Serializable
+    data class BaiduTranslationCredentials(
+        val notice: String? = null,
+    ) : Route
+    @Serializable
     data object Workshop : Route
     @Serializable
     data object WorkshopSubscriptions : Route

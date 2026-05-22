@@ -53,8 +53,8 @@ internal interface ImportPatchModule {
             displayName = displayName,
             summary = summary,
             category = category,
-            defaultEnabled = true,
-            userConfigurable = true,
+            defaultEnabled = this.defaultEnabled,
+            userConfigurable = this.userConfigurable,
             failurePolicy = failurePolicy,
             applicable = applicable,
             details = details

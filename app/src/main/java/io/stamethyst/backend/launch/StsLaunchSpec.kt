@@ -145,6 +145,10 @@ object StsLaunchSpec {
             args.add("-XX:+UnlockDiagnosticVMOptions")
             args.add("-verbose:gc")
             args.add("-Xloggc:${RuntimePaths.jvmGcLog(context).absolutePath}")
+            args.add("-Damethyst.gdx.frame_profiler=true")
+            args.add("-Damethyst.gdx.frame_profiler.stack=true")
+            args.add("-Damethyst.gdx.frame_profiler.slow_ms=33")
+            args.add("-Damethyst.gdx.frame_profiler.summary_frames=300")
         }
         if (isMtsLaunchMode(launchMode)) {
             // BaseMod bytecode can fail verification on some Android/OpenJDK 8 combos after MTS patching.
@@ -318,6 +322,7 @@ object StsLaunchSpec {
                     "false"
                 }
         )
+        val runtimeDownscalePolicy = CompatibilitySettings.readRuntimeDownscaleMaterialPolicy(context)
         args.add(
             "-Damethyst.gdx.texture_pressure_downscale=" +
                 if (CompatibilitySettings.isLargeTextureDownscaleCompatEnabled(context)) "true" else "false"
@@ -337,6 +342,20 @@ object StsLaunchSpec {
         args.add(
             "-Damethyst.gdx.texture_pressure_downscale_divisor=" +
                 CompatibilitySettings.readTexturePressureDownscaleDivisor(context)
+        )
+        args.add("-Damethyst.gdx.texture_pressure_downscale_max_pixels=2073600")
+        args.add("-Damethyst.gdx.texture_pressure_downscale_max_edge=1920")
+        args.add(
+            "-Damethyst.gdx.texture_pressure_downscale.allow_ordinary_textures=" +
+                if (runtimeDownscalePolicy.ordinaryTextures) "true" else "false"
+        )
+        args.add(
+            "-Damethyst.gdx.texture_pressure_downscale.allow_texture_atlas_pages=" +
+                if (runtimeDownscalePolicy.textureAtlasPages) "true" else "false"
+        )
+        args.add(
+            "-Damethyst.gdx.texture_pressure_downscale.allow_spine=" +
+                if (runtimeDownscalePolicy.spineTextures) "true" else "false"
         )
         val gpuResourceGuardianMode = LauncherConfig.readGpuResourceGuardianMode(context)
         args.add(
@@ -373,7 +392,9 @@ object StsLaunchSpec {
         )
         args.add(
             "-Damethyst.gdx.fbo_pressure_downscale=" +
-                if (CompatibilitySettings.isFboPressureDownscaleCompatEnabled(context)) "true" else "false"
+                if (CompatibilitySettings.isFboPressureDownscaleCompatEnabled(context) &&
+                    runtimeDownscalePolicy.offscreenFrameBuffers
+                ) "true" else "false"
         )
         args.add(
             "-Damethyst.gdx.fragment_shader_precision_compat=" +

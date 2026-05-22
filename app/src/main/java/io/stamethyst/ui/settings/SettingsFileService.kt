@@ -527,7 +527,8 @@ internal object SettingsFileService {
             if (importAtlasDownscaleStrategy != null) {
                 val patchResult = ModAtlasOfflineDownscalePatcher.patchOversizedAtlasPagesInPlace(
                     tempFile,
-                    importAtlasDownscaleStrategy
+                    importAtlasDownscaleStrategy,
+                    CompatibilitySettings.readImportDownscaleMaterialPolicy(host)
                 )
                 downscaledAtlasEntries = patchResult.patchedAtlasEntries
                 downscaledAtlasPageEntries = patchResult.downscaledPageEntries
@@ -1829,7 +1830,8 @@ internal object SettingsFileService {
             }
             val patchResult = ModAtlasOfflineDownscalePatcher.inspectOversizedAtlasPages(
                 tempFile,
-                AtlasOfflineDownscaleStrategy.previewCandidates()
+                AtlasOfflineDownscaleStrategy.previewCandidates(),
+                CompatibilitySettings.readImportDownscaleMaterialPolicy(host)
             )
             if (!patchResult.hasPatchedChanges) {
                 return null

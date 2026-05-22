@@ -21,6 +21,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -30,13 +31,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
@@ -57,10 +58,12 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -79,16 +82,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 import io.stamethyst.R
 import io.stamethyst.backend.steamcloud.SteamCloudAcceleratedHttp
 import io.stamethyst.backend.steamcloud.SteamCloudConflict
@@ -103,7 +107,6 @@ import io.stamethyst.backend.render.RendererBackend
 import io.stamethyst.backend.render.RendererSelectionMode
 import io.stamethyst.backend.render.VirtualResolutionMode
 import io.stamethyst.backend.update.UpdateSource
-import io.stamethyst.backend.workshop.BaiduTranslationCredentials
 import io.stamethyst.backend.workshop.SteamLanguagePreference
 import io.stamethyst.config.BackBehavior
 import io.stamethyst.config.GpuResourceGuardianMode
@@ -116,6 +119,7 @@ import io.stamethyst.config.TouchscreenInputMode
 import io.stamethyst.navigation.Route
 import io.stamethyst.navigation.currentNavigator
 import io.stamethyst.ui.feedback.FeedbackSubmissionNotice
+import io.stamethyst.ui.FloatingGlassHeader
 import io.stamethyst.ui.Icons
 import io.stamethyst.ui.SimpleMarkdownCard
 import io.stamethyst.ui.resolve
@@ -170,6 +174,7 @@ fun LauncherSettingsScreen(
         onOpenSteamCloudSaveSettings = { navigator.push(Route.SteamCloudSaveSettings) },
         onClearSteamCloudCredentials = { viewModel.onClearSteamCloudCredentials(activity) },
         onOpenNativeLibraryMarket = { navigator.push(Route.NativeLibraryMarket) },
+        onOpenBaiduTranslationCredentials = { navigator.push(Route.BaiduTranslationCredentials()) },
         onWorkshopMaxConcurrentDownloadsChanged = { value ->
             viewModel.onWorkshopMaxConcurrentDownloadsChanged(activity, value)
         },
@@ -186,12 +191,6 @@ fun LauncherSettingsScreen(
             viewModel.onWorkshopAutoImportChanged(activity, enabled)
         },
         onClearWorkshopPreviewCache = { viewModel.onClearWorkshopPreviewCache(activity) },
-        onLoadBaiduTranslationCredentials = {
-            viewModel.readBaiduTranslationCredentials(activity)
-        },
-        onSaveBaiduTranslationCredentials = { appId, apiKey ->
-            viewModel.onSaveBaiduTranslationCredentials(activity, appId, apiKey)
-        },
         onRenderScaleSelected = { value -> viewModel.onRenderScaleSelected(activity, value) },
         onTargetFpsSelected = { fps -> viewModel.onTargetFpsSelected(activity, fps) },
         onVirtualResolutionModeChanged = { mode ->
@@ -444,14 +443,13 @@ private fun LauncherSettingsScreenContent(
     onOpenSteamCloudSaveSettings: () -> Unit = {},
     onClearSteamCloudCredentials: () -> Unit = {},
     onOpenNativeLibraryMarket: () -> Unit = {},
+    onOpenBaiduTranslationCredentials: () -> Unit = {},
     onWorkshopMaxConcurrentDownloadsChanged: (Int) -> Unit = {},
     onWorkshopDownloadThreadsChanged: (Int) -> Unit = {},
     onWorkshopWattAccelerationChanged: (Boolean) -> Unit = {},
     onWorkshopSteamLanguageChanged: (SteamLanguagePreference) -> Unit = {},
     onWorkshopAutoImportChanged: (Boolean) -> Unit = {},
     onClearWorkshopPreviewCache: () -> Unit = {},
-    onLoadBaiduTranslationCredentials: () -> BaiduTranslationCredentials = { BaiduTranslationCredentials() },
-    onSaveBaiduTranslationCredentials: (String, String) -> Unit = { _, _ -> },
     onRenderScaleSelected: (Float) -> Unit = {},
     onTargetFpsSelected: (Int) -> Unit = {},
     onVirtualResolutionModeChanged: (VirtualResolutionMode) -> Unit = {},
@@ -506,33 +504,22 @@ private fun LauncherSettingsScreenContent(
     val blockingInteractionLocked = uiState.busyOperation.usesBlockingOverlay()
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.settings_title)) },
-                navigationIcon = {
-                    if (showBackButton) {
-                        HapticIconButton(
-                            onClick = onGoBack,
-                            enabled = !blockingInteractionLocked
-                        ) {
-                            Icon(
-                                imageVector = Icons.ArrowBack,
-                                contentDescription = stringResource(R.string.common_content_desc_back),
-                            )
-                        }
-                    }
-                },
-            )
-        },
-    ) { paddingValues ->
+    val density = LocalDensity.current
+    val headerHazeState = rememberHazeState()
+    var headerHeightPx by remember { mutableIntStateOf(0) }
+    val measuredHeaderHeight = with(density) { headerHeightPx.toDp() }
+    val headerContentTopInset = (if (headerHeightPx == 0) 88.dp else measuredHeaderHeight) + 16.dp
+    Box(modifier = modifier.fillMaxSize()) {
         LazyColumn(
-            modifier = modifier
+            modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues),
-            contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 132.dp),
+                .hazeSource(state = headerHazeState),
+            contentPadding = PaddingValues(start = 16.dp, top = 18.dp, end = 16.dp, bottom = 132.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            item {
+                Spacer(modifier = Modifier.height(headerContentTopInset))
+            }
             item {
                 SettingsBusyIndicator(uiState = uiState)
             }
@@ -577,7 +564,7 @@ private fun LauncherSettingsScreenContent(
                     SettingsAppearanceSection(
                         uiState = uiState,
                         onThemeModeChanged = onThemeModeChanged,
-                        onThemeColorChanged = onThemeColorChanged
+                        onThemeColorChanged = onThemeColorChanged,
                     )
                 }
             }
@@ -619,8 +606,7 @@ private fun LauncherSettingsScreenContent(
                         onWorkshopSteamLanguageChanged = onWorkshopSteamLanguageChanged,
                         onWorkshopAutoImportChanged = onWorkshopAutoImportChanged,
                         onClearWorkshopPreviewCache = onClearWorkshopPreviewCache,
-                        onLoadBaiduTranslationCredentials = onLoadBaiduTranslationCredentials,
-                        onSaveBaiduTranslationCredentials = onSaveBaiduTranslationCredentials,
+                        onOpenBaiduTranslationCredentials = onOpenBaiduTranslationCredentials,
                     )
                 }
             }
@@ -689,6 +675,22 @@ private fun LauncherSettingsScreenContent(
                     SettingsAuthorInfoSection()
                 }
             }
+        }
+
+        FloatingGlassHeader(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth(),
+            hazeState = headerHazeState,
+            shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
+            contentPadding = PaddingValues(0.dp),
+            onHeightChanged = { headerHeightPx = maxOf(headerHeightPx, it) },
+        ) {
+            SettingsHeaderPinnedContent(
+                showBackButton = showBackButton,
+                enabled = !blockingInteractionLocked,
+                onGoBack = onGoBack,
+            )
         }
     }
 
@@ -819,12 +821,8 @@ private fun SettingsMarketSection(
     onWorkshopSteamLanguageChanged: (SteamLanguagePreference) -> Unit,
     onWorkshopAutoImportChanged: (Boolean) -> Unit,
     onClearWorkshopPreviewCache: () -> Unit,
-    onLoadBaiduTranslationCredentials: () -> BaiduTranslationCredentials,
-    onSaveBaiduTranslationCredentials: (String, String) -> Unit,
+    onOpenBaiduTranslationCredentials: () -> Unit,
 ) {
-    var showBaiduTranslationDialog by remember { mutableStateOf(false) }
-    var baiduTranslationAppIdInput by remember { mutableStateOf("") }
-    var baiduTranslationApiKeyInput by remember { mutableStateOf("") }
     Text(
         text = stringResource(R.string.settings_market_intro),
         style = MaterialTheme.typography.bodySmall,
@@ -889,12 +887,7 @@ private fun SettingsMarketSection(
             }
         ),
         enabled = !uiState.busy,
-        onClick = {
-            val credentials = onLoadBaiduTranslationCredentials()
-            baiduTranslationAppIdInput = credentials.appId
-            baiduTranslationApiKeyInput = credentials.apiKey
-            showBaiduTranslationDialog = true
-        },
+        onClick = onOpenBaiduTranslationCredentials,
     )
     Spacer(modifier = Modifier.size(8.dp))
     SettingsActionListItem(
@@ -904,56 +897,6 @@ private fun SettingsMarketSection(
         onClick = onClearWorkshopPreviewCache,
     )
 
-    if (showBaiduTranslationDialog) {
-        AlertDialog(
-            onDismissRequest = { showBaiduTranslationDialog = false },
-            title = { Text(stringResource(R.string.settings_baidu_translation_credentials_title)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        text = stringResource(R.string.settings_baidu_translation_credentials_desc),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    OutlinedTextField(
-                        value = baiduTranslationAppIdInput,
-                        onValueChange = { baiduTranslationAppIdInput = it.trim() },
-                        label = { Text(stringResource(R.string.settings_baidu_translation_app_id_label)) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    OutlinedTextField(
-                        value = baiduTranslationApiKeyInput,
-                        onValueChange = { baiduTranslationApiKeyInput = it.trim() },
-                        label = { Text(stringResource(R.string.settings_baidu_translation_api_key_label)) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        visualTransformation = PasswordVisualTransformation(),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        onSaveBaiduTranslationCredentials(
-                            baiduTranslationAppIdInput,
-                            baiduTranslationApiKeyInput,
-                        )
-                        showBaiduTranslationDialog = false
-                    },
-                ) {
-                    Text(stringResource(R.string.common_action_save))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showBaiduTranslationDialog = false }) {
-                    Text(stringResource(android.R.string.cancel))
-                }
-            },
-        )
-    }
 }
 
 @Composable
@@ -1070,6 +1013,66 @@ internal fun SteamCloudAccountCard(
                 onClick = onLogin
             ) {
                 Text(stringResource(R.string.settings_steam_cloud_login_action))
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsHeaderPinnedContent(
+    showBackButton: Boolean,
+    enabled: Boolean,
+    onGoBack: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(start = 16.dp, top = 18.dp, end = 16.dp, bottom = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Surface(
+            modifier = Modifier.size(52.dp),
+            shape = RoundedCornerShape(18.dp),
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.primary,
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_dock_settings),
+                    contentDescription = null,
+                    modifier = Modifier.size(28.dp),
+                )
+            }
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.settings_title),
+                style = MaterialTheme.typography.headlineSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = stringResource(R.string.settings_input_basic_title),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (showBackButton) {
+            HapticIconButton(
+                onClick = onGoBack,
+                enabled = enabled,
+            ) {
+                Icon(
+                    imageVector = Icons.ArrowBack,
+                    contentDescription = stringResource(R.string.common_content_desc_back),
+                )
             }
         }
     }
@@ -1993,27 +1996,45 @@ private fun LauncherDeveloperSettingsScreenContent(
     onResetLauncherSettingsToDefaults: () -> Unit = {},
 ) {
     val blockingInteractionLocked = uiState.busyOperation.usesBlockingOverlay()
+    val headerHazeState = rememberHazeState()
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.settings_developer_title)) },
-                navigationIcon = {
-                    HapticIconButton(
-                        onClick = onGoBack,
-                        enabled = !blockingInteractionLocked
-                    ) {
-                        Icon(
-                            imageVector = Icons.ArrowBack,
-                            contentDescription = stringResource(R.string.common_content_desc_back),
-                        )
-                    }
-                },
-            )
+            FloatingGlassHeader(
+                modifier = Modifier
+                    .statusBarsPadding()
+                    .padding(start = 16.dp, top = 18.dp, end = 16.dp),
+                hazeState = headerHazeState,
+                contentPadding = PaddingValues(0.dp),
+            ) {
+                TopAppBar(
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent,
+                        scrolledContainerColor = Color.Transparent,
+                        titleContentColor = MaterialTheme.colorScheme.onSurface,
+                        actionIconContentColor = MaterialTheme.colorScheme.onSurface,
+                        navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                    ),
+                    windowInsets = TopAppBarDefaults.windowInsets,
+                    title = { Text(stringResource(R.string.settings_developer_title)) },
+                    navigationIcon = {
+                        HapticIconButton(
+                            onClick = onGoBack,
+                            enabled = !blockingInteractionLocked
+                        ) {
+                            Icon(
+                                imageVector = Icons.ArrowBack,
+                                contentDescription = stringResource(R.string.common_content_desc_back),
+                            )
+                        }
+                    },
+                )
+            }
         },
     ) { paddingValues ->
         LazyColumn(
             modifier = modifier
                 .fillMaxSize()
+                .hazeSource(state = headerHazeState)
                 .padding(paddingValues),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)

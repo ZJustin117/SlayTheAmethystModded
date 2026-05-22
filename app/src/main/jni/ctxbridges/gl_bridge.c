@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <pthread.h>
+#include <time.h>
 #include <environ/environ.h>
 #include "gl_bridge.h"
 #include "egl_loader.h"
@@ -24,6 +25,9 @@ static pthread_mutex_t g_surface_mutex = PTHREAD_MUTEX_INITIALIZER;
 static uint32_t g_swap_diag_counter = 0;
 static uint32_t g_next_surface_restore_poll_swap = 0;
 static bool g_swap_heartbeat_logging_enabled = false;
+static bool g_swap_profiler_initialized = false;
+static bool g_swap_profiler_enabled = false;
+static int64_t g_swap_profiler_slow_ns = 16000000LL;
 
 #define GL_RESTORE_SURFACE_POLL_INTERVAL_SWAPS 30
 
@@ -56,6 +60,40 @@ void gl_set_swap_heartbeat_logging_enabled(bool enabled) {
 
 uint32_t gl_get_swap_count(void) {
     return g_swap_diag_counter;
+}
+
+static int64_t gl_now_monotonic_ns() {
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
+        return 0;
+    }
+    return ((int64_t)ts.tv_sec * 1000000000LL) + (int64_t)ts.tv_nsec;
+}
+
+static bool gl_env_flag_enabled(const char* name) {
+    const char* value = getenv(name);
+    if (value == NULL || value[0] == '\0') return false;
+    if (strcmp(value, "0") == 0) return false;
+    if (strcmp(value, "false") == 0 || strcmp(value, "FALSE") == 0) return false;
+    if (strcmp(value, "off") == 0 || strcmp(value, "OFF") == 0) return false;
+    return true;
+}
+
+static int64_t gl_env_int_ns(const char* name, int64_t default_ms) {
+    const char* value = getenv(name);
+    if (value == NULL || value[0] == '\0') return default_ms * 1000000LL;
+    char* end = NULL;
+    long parsed = strtol(value, &end, 10);
+    if (end == value || parsed <= 0) return default_ms * 1000000LL;
+    if (parsed > 10000) parsed = 10000;
+    return ((int64_t)parsed) * 1000000LL;
+}
+
+static void gl_init_swap_profiler_if_needed() {
+    if (g_swap_profiler_initialized) return;
+    g_swap_profiler_initialized = true;
+    g_swap_profiler_enabled = gl_env_flag_enabled("AMETHYST_GDX_SWAP_PROFILER");
+    g_swap_profiler_slow_ns = gl_env_int_ns("AMETHYST_GDX_SWAP_PROFILER_SLOW_MS", 16);
 }
 
 static void gl_advance_context_generation(const char* reason) {
@@ -529,6 +567,13 @@ void gl_swap_buffers() {
     if (currentBundle == NULL) {
         return;
     }
+    gl_init_swap_profiler_if_needed();
+    int64_t swapStartNs = g_swap_profiler_enabled ? gl_now_monotonic_ns() : 0;
+    int64_t preflightNs = 0;
+    int64_t windowSwitchNs = 0;
+    int64_t contextRecoveryNs = 0;
+    int64_t eglSwapNs = 0;
+    int64_t stageStartNs = swapStartNs;
 
     // If we were forced onto a pbuffer but the Java bridge window is back,
     // promote back to the on-screen surface automatically. Normal surface
@@ -541,6 +586,11 @@ void gl_swap_buffers() {
             g_swap_diag_counter + GL_RESTORE_SURFACE_POLL_INTERVAL_SWAPS;
         gl_try_restore_main_window_surface(currentBundle, "swap preflight");
     }
+    if (g_swap_profiler_enabled) {
+        int64_t nowNs = gl_now_monotonic_ns();
+        preflightNs += nowNs - stageStartNs;
+        stageStartNs = nowNs;
+    }
 
     if(currentBundle->state == STATE_RENDERER_NEW_WINDOW) {
         // Detach everything to destroy the old EGLSurface safely.
@@ -551,12 +601,22 @@ void gl_swap_buffers() {
         }
         currentBundle->state = STATE_RENDERER_ALIVE;
     }
+    if (g_swap_profiler_enabled) {
+        int64_t nowNs = gl_now_monotonic_ns();
+        windowSwitchNs += nowNs - stageStartNs;
+        stageStartNs = nowNs;
+    }
 
     // If context was silently dropped/unbound, recover before swap.
     if (eglGetCurrentContext_p != NULL && eglGetCurrentContext_p() != currentBundle->context) {
         if (!gl_make_current_with_recovery(currentBundle, "swap preflight")) {
             return;
         }
+    }
+    if (g_swap_profiler_enabled) {
+        int64_t nowNs = gl_now_monotonic_ns();
+        contextRecoveryNs += nowNs - stageStartNs;
+        stageStartNs = nowNs;
     }
 
     if(currentBundle->surface != NULL && currentBundle->surface != EGL_NO_SURFACE) {
@@ -584,8 +644,28 @@ void gl_swap_buffers() {
             return;
         }
     }
+    if (g_swap_profiler_enabled) {
+        int64_t nowNs = gl_now_monotonic_ns();
+        eglSwapNs += nowNs - stageStartNs;
+        stageStartNs = nowNs;
+    }
 
     g_swap_diag_counter++;
+    if (g_swap_profiler_enabled) {
+        int64_t totalNs = stageStartNs - swapStartNs;
+        if (totalNs >= g_swap_profiler_slow_ns) {
+            printf("GLBridgePerf: swap slow #%u totalMs=%.3f preflightMs=%.3f windowSwitchMs=%.3f contextRecoveryMs=%.3f eglSwapMs=%.3f surface=%p native=%p state=%d\n",
+                   g_swap_diag_counter,
+                   ((double)totalNs) / 1000000.0,
+                   ((double)preflightNs) / 1000000.0,
+                   ((double)windowSwitchNs) / 1000000.0,
+                   ((double)contextRecoveryNs) / 1000000.0,
+                   ((double)eglSwapNs) / 1000000.0,
+                   currentBundle->surface,
+                   currentBundle->nativeSurface,
+                   currentBundle->state);
+        }
+    }
     if (g_swap_heartbeat_logging_enabled) {
         if ((g_swap_diag_counter % 600) == 0) {
             printf("GLBridgeDiag: swap heartbeat #%u surface=%p native=%p state=%d\n",

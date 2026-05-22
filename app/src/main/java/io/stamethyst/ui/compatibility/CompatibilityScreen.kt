@@ -91,6 +91,24 @@ fun LauncherCompatibilityScreen(
         onFboPressureDownscaleCompatToggled = { enabled ->
             viewModel.onFboPressureDownscaleCompatToggled(context, enabled)
         },
+        onRuntimeDownscaleOrdinaryTexturesToggled = { enabled ->
+            viewModel.onRuntimeDownscaleOrdinaryTexturesToggled(context, enabled)
+        },
+        onRuntimeDownscaleTextureAtlasPagesToggled = { enabled ->
+            viewModel.onRuntimeDownscaleTextureAtlasPagesToggled(context, enabled)
+        },
+        onRuntimeDownscaleSpineTexturesToggled = { enabled ->
+            viewModel.onRuntimeDownscaleSpineTexturesToggled(context, enabled)
+        },
+        onRuntimeDownscaleOffscreenFrameBuffersToggled = { enabled ->
+            viewModel.onRuntimeDownscaleOffscreenFrameBuffersToggled(context, enabled)
+        },
+        onImportDownscaleSpineAtlasPagesToggled = { enabled ->
+            viewModel.onImportDownscaleSpineAtlasPagesToggled(context, enabled)
+        },
+        onImportDownscaleOrdinaryAtlasPagesToggled = { enabled ->
+            viewModel.onImportDownscaleOrdinaryAtlasPagesToggled(context, enabled)
+        },
     )
 }
 @OptIn(ExperimentalMaterial3Api::class)
@@ -145,6 +163,12 @@ private fun LauncherCompatibilityScreenContent(
     onFboManagerCompatToggled: (Boolean) -> Unit = {},
     onFboIdleReclaimCompatToggled: (Boolean) -> Unit = {},
     onFboPressureDownscaleCompatToggled: (Boolean) -> Unit = {},
+    onRuntimeDownscaleOrdinaryTexturesToggled: (Boolean) -> Unit = {},
+    onRuntimeDownscaleTextureAtlasPagesToggled: (Boolean) -> Unit = {},
+    onRuntimeDownscaleSpineTexturesToggled: (Boolean) -> Unit = {},
+    onRuntimeDownscaleOffscreenFrameBuffersToggled: (Boolean) -> Unit = {},
+    onImportDownscaleSpineAtlasPagesToggled: (Boolean) -> Unit = {},
+    onImportDownscaleOrdinaryAtlasPagesToggled: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
 
@@ -228,7 +252,7 @@ private fun LauncherCompatibilityScreenContent(
                         context,
                         uiState.texturePressureDownscaleDivisor
                     ),
-                    enabled = false,
+                    enabled = !uiState.busy && uiState.largeTextureDownscaleCompatEnabled,
                     supportingText = stringResource(
                         R.string.compat_texture_pressure_downscale_divisor_desc
                     ),
@@ -288,6 +312,64 @@ private fun LauncherCompatibilityScreenContent(
                     checked = uiState.fboPressureDownscaleCompatEnabled,
                     enabled = false,
                     onCheckedChange = onFboPressureDownscaleCompatToggled
+                )
+            }
+
+            CompatibilitySectionCard(
+                title = stringResource(R.string.compat_downscale_material_section_title),
+                description = stringResource(R.string.compat_downscale_material_section_desc)
+            ) {
+                Text(
+                    text = stringResource(R.string.compat_downscale_material_runtime_group_title),
+                    style = MaterialTheme.typography.titleSmall
+                )
+                CompatibilitySwitchRow(
+                    title = stringResource(R.string.compat_runtime_downscale_ordinary_texture_title),
+                    description = stringResource(R.string.compat_runtime_downscale_ordinary_texture_desc),
+                    checked = uiState.runtimeDownscaleOrdinaryTexturesEnabled,
+                    enabled = !uiState.busy,
+                    onCheckedChange = onRuntimeDownscaleOrdinaryTexturesToggled
+                )
+                CompatibilitySwitchRow(
+                    title = stringResource(R.string.compat_runtime_downscale_texture_atlas_title),
+                    description = stringResource(R.string.compat_runtime_downscale_texture_atlas_desc),
+                    checked = uiState.runtimeDownscaleTextureAtlasPagesEnabled,
+                    enabled = !uiState.busy,
+                    onCheckedChange = onRuntimeDownscaleTextureAtlasPagesToggled
+                )
+                CompatibilitySwitchRow(
+                    title = stringResource(R.string.compat_runtime_downscale_spine_title),
+                    description = stringResource(R.string.compat_runtime_downscale_spine_desc),
+                    checked = uiState.runtimeDownscaleSpineTexturesEnabled,
+                    enabled = !uiState.busy,
+                    onCheckedChange = onRuntimeDownscaleSpineTexturesToggled
+                )
+                CompatibilitySwitchRow(
+                    title = stringResource(R.string.compat_runtime_downscale_fbo_title),
+                    description = stringResource(R.string.compat_runtime_downscale_fbo_desc),
+                    checked = uiState.runtimeDownscaleOffscreenFrameBuffersEnabled,
+                    enabled = !uiState.busy,
+                    onCheckedChange = onRuntimeDownscaleOffscreenFrameBuffersToggled
+                )
+
+                HorizontalDivider()
+                Text(
+                    text = stringResource(R.string.compat_downscale_material_import_group_title),
+                    style = MaterialTheme.typography.titleSmall
+                )
+                CompatibilitySwitchRow(
+                    title = stringResource(R.string.compat_import_downscale_spine_atlas_title),
+                    description = stringResource(R.string.compat_import_downscale_spine_atlas_desc),
+                    checked = uiState.importDownscaleSpineAtlasPagesEnabled,
+                    enabled = !uiState.busy,
+                    onCheckedChange = onImportDownscaleSpineAtlasPagesToggled
+                )
+                CompatibilitySwitchRow(
+                    title = stringResource(R.string.compat_import_downscale_ordinary_atlas_title),
+                    description = stringResource(R.string.compat_import_downscale_ordinary_atlas_desc),
+                    checked = uiState.importDownscaleOrdinaryAtlasPagesEnabled,
+                    enabled = !uiState.busy,
+                    onCheckedChange = onImportDownscaleOrdinaryAtlasPagesToggled
                 )
             }
 

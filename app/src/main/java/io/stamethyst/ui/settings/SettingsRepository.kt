@@ -4,6 +4,8 @@ import android.content.Context
 import io.stamethyst.BuildConfig
 import io.stamethyst.R
 import io.stamethyst.backend.mods.CompatibilitySettings
+import io.stamethyst.backend.mods.ImportDownscaleMaterialPolicy
+import io.stamethyst.backend.mods.RuntimeDownscaleMaterialPolicy
 import io.stamethyst.backend.render.AndroidGameModeSnapshot
 import io.stamethyst.backend.render.AndroidGameModeSupport
 import io.stamethyst.backend.render.MobileGluesConfigFile
@@ -110,7 +112,9 @@ internal object SettingsRepository {
         val runtimeTextureCompatEnabled: Boolean,
         val nativeTouchscreenAllowlistCompatEnabled: Boolean,
         val texturePressureDownscaleDivisor: Int,
-        val forceLinearMipmapFilterEnabled: Boolean
+        val forceLinearMipmapFilterEnabled: Boolean,
+        val runtimeDownscaleMaterialPolicy: RuntimeDownscaleMaterialPolicy,
+        val importDownscaleMaterialPolicy: ImportDownscaleMaterialPolicy
     )
 
     data class UpdateStateSnapshot(
@@ -220,7 +224,11 @@ internal object SettingsRepository {
                 texturePressureDownscaleDivisor =
                     CompatibilitySettings.readTexturePressureDownscaleDivisor(context),
                 forceLinearMipmapFilterEnabled =
-                    CompatibilitySettings.isForceLinearMipmapFilterEnabled(context)
+                    CompatibilitySettings.isForceLinearMipmapFilterEnabled(context),
+                runtimeDownscaleMaterialPolicy =
+                    CompatibilitySettings.readRuntimeDownscaleMaterialPolicy(context),
+                importDownscaleMaterialPolicy =
+                    CompatibilitySettings.readImportDownscaleMaterialPolicy(context)
             )
         )
     }

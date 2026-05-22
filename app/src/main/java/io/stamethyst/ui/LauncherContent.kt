@@ -8,8 +8,10 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.core.tween
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +28,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -34,7 +39,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
@@ -90,7 +97,10 @@ import io.stamethyst.ui.feedback.LauncherFeedbackSubscriptionsScreen
 import io.stamethyst.ui.feedback.FeedbackSubmissionNotice
 import io.stamethyst.ui.main.LauncherMainScreen
 import io.stamethyst.ui.main.LauncherCrashRecoveryScreen
+import io.stamethyst.ui.main.LauncherGameScreenContent
+import io.stamethyst.ui.main.LauncherMainRoute
 import io.stamethyst.ui.main.LauncherModsScreen
+import io.stamethyst.ui.main.LauncherModsScreenContent
 import io.stamethyst.ui.main.MainScreenViewModel
 import io.stamethyst.ui.modimport.ModImportHost
 import io.stamethyst.ui.workshop.WorkshopScreen
@@ -103,6 +113,7 @@ import io.stamethyst.ui.quickstart.QuickStartJarImportScreen
 import io.stamethyst.ui.quickstart.QuickStartSteamDownloadScreen
 import io.stamethyst.ui.settings.LauncherFirstRunSetupScreen
 import io.stamethyst.ui.settings.LauncherDeveloperSettingsScreen
+import io.stamethyst.ui.settings.LauncherBaiduTranslationCredentialsScreen
 import io.stamethyst.ui.settings.LauncherMobileGluesSettingsScreen
 import io.stamethyst.ui.settings.LauncherNativeLibraryMarketScreen
 import io.stamethyst.ui.settings.LauncherSettingsScreen
@@ -112,9 +123,17 @@ import io.stamethyst.ui.settings.LauncherSteamCloudSaveSettingsScreen
 import io.stamethyst.ui.settings.LauncherSteamCloudSyncBlacklistSettingsScreen
 import io.stamethyst.ui.settings.SettingsScreenViewModel
 import io.stamethyst.ui.preferences.LauncherPreferences
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 
 private const val PAGE_TRANSITION_DURATION_MS = 420
 internal const val LAUNCHER_DOCK_ITEM_TAG_PREFIX = "launcher_dock_item_"
+private val LauncherDockRoutes = listOf(
+    Route.Main,
+    Route.Mods,
+    Route.Workshop,
+    Route.Settings,
+)
 
 @Composable
 fun LauncherContent(
@@ -137,11 +156,19 @@ fun LauncherContent(
     val mainUiState = mainViewModel.uiState
     val settingsUiState = settingsViewModel.uiState
     val workshopViewModel: WorkshopViewModel = viewModel()
+    val workshopSubscriptionsViewModel: WorkshopViewModel = viewModel(key = "workshop-subscriptions")
     val currentRoute = navigator.backStack.lastOrNull() as? Route
-    val showLauncherDock = isLauncherDockRoute(currentRoute)
+    val initialDockPage = initialRoute.launcherDockIndex() ?: 0
+    val dockPagerState = rememberPagerState(initialPage = initialDockPage) {
+        LauncherDockRoutes.size
+    }
+    val dockPageRoute = dockPagerState.currentLauncherDockRoute()
+    val coroutineScope = rememberCoroutineScope()
+    val showDockPager = currentRoute.launcherDockIndex() != null
+    val showOverlayNav = currentRoute.launcherDockIndex() == null || navigator.stackSize > 1
     var forwardPageTransition by remember { mutableStateOf(true) }
     var modsBatchSelectionMode by remember { mutableStateOf(false) }
-    val showAnimatedLauncherDock = showLauncherDock && !modsBatchSelectionMode
+    val showAnimatedLauncherDock = showDockPager && !showOverlayNav && !modsBatchSelectionMode
     val launcherDockHazeState = rememberHazeState()
     val isBlockingBusyInteractionLocked =
         mainUiState.busyOperation.usesBlockingOverlay() ||
@@ -163,10 +190,63 @@ fun LauncherContent(
         else -> null
     }
 
+    fun selectDockRoute(route: Route) {
+        val page = route.launcherDockIndex() ?: return
+        forwardPageTransition = isForwardDockTransition(
+            from = dockPagerState.currentLauncherDockRoute(),
+            to = route,
+        )
+        if (dockPagerState.currentPage == page) {
+            if (currentRoute != route || navigator.stackSize > 1) {
+                navigator.resetRoot(route)
+            }
+            return
+        }
+        coroutineScope.launch {
+            dockPagerState.animateScrollToPage(page)
+            navigator.resetRoot(route)
+        }
+    }
+
+    fun openFeedbackUpdates() {
+        val unreadIssues = feedbackInboxState.subscriptions.filter { it.unread }
+        when {
+            unreadIssues.size == 1 -> {
+                navigator.push(
+                    Route.FeedbackConversation(unreadIssues.first().issueNumber)
+                )
+            }
+
+            else -> {
+                navigator.push(Route.FeedbackSubscriptions)
+            }
+        }
+    }
+
     LaunchedEffect(currentRoute) {
         if (currentRoute != Route.Mods) {
             modsBatchSelectionMode = false
         }
+    }
+
+    LaunchedEffect(currentRoute) {
+        val page = currentRoute.launcherDockIndex() ?: return@LaunchedEffect
+        if (dockPagerState.currentPage != page) {
+            dockPagerState.scrollToPage(page)
+        }
+    }
+
+    LaunchedEffect(dockPagerState, showOverlayNav, currentRoute, navigator.stackSize) {
+        snapshotFlow { dockPagerState.settledPage }
+            .distinctUntilChanged()
+            .collect { page ->
+                if (!showOverlayNav) {
+                    val route = LauncherDockRoutes[page]
+                    if (currentRoute != route || navigator.stackSize > 1) {
+                        navigator.resetRoot(route)
+                    }
+                }
+            }
     }
 
     LaunchedEffect(mainUiState.crashRecovery) {
@@ -215,6 +295,9 @@ fun LauncherContent(
                 )
             }
         }
+        BackHandler(enabled = isBlockingBusyInteractionLocked) {
+            // Keep system back from dismissing the launcher while a blocking operation owns input.
+        }
         Surface(
             modifier = Modifier
                 .fillMaxSize()
@@ -227,32 +310,66 @@ fun LauncherContent(
                     modifier = Modifier.fillMaxSize(),
                     contentWindowInsets = WindowInsets(0, 0, 0, 0),
                 ) { scaffoldPadding ->
-                    NavDisplay(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(scaffoldPadding)
-                            .hazeSource(state = launcherDockHazeState),
-                    entryDecorators = listOf(
-                        rememberSaveableStateHolderNavEntryDecorator(),
-                        rememberViewModelStoreNavEntryDecorator(),
-                    ),
-                    onBack = {
-                        if (!isBlockingBusyInteractionLocked) {
-                            if (currentRoute == Route.CrashRecovery) {
-                                mainViewModel.dismissCrashRecovery()
-                            } else {
-                                navigator.goBack()
-                            }
-                        }
-                    },
-                    backStack = navigator.backStack,
-                    transitionSpec = {
-                        horizontalPageTransition(forward = forwardPageTransition)
-                    },
-                    popTransitionSpec = {
-                        horizontalPageTransition(forward = false)
-                    },
-                    entryProvider = entryProvider {
+                    if (showDockPager) {
+                        LauncherDockPager(
+                            pagerState = dockPagerState,
+                            mainViewModel = mainViewModel,
+                            settingsViewModel = settingsViewModel,
+                            workshopViewModel = workshopViewModel,
+                            feedbackUnreadCount = feedbackInboxState.unreadIssueCount,
+                            feedbackSubmissionNotice = pendingFeedbackNotice,
+                            onDismissFeedbackSubmissionNotice = {
+                                pendingFeedbackNotice = null
+                            },
+                            onOpenFeedback = { navigator.push(Route.Feedback) },
+                            onOpenWorkshop = { selectDockRoute(Route.Workshop) },
+                            onOpenFeedbackUpdates = { openFeedbackUpdates() },
+                            onOpenSteamLogin = { navigator.push(Route.SteamCloudLogin) },
+                            onOpenDownloadCenter = { navigator.push(Route.WorkshopDownloadCenter) },
+                            onOpenSubscriptions = { navigator.push(Route.WorkshopSubscriptions) },
+                            onOpenWorkshopDetails = { item ->
+                                navigator.push(
+                                    Route.WorkshopDetail(
+                                        publishedFileId = item.publishedFileId.toString(),
+                                        appId = item.appId.toLong(),
+                                    )
+                                )
+                            },
+                            onBatchSelectionModeChange = { modsBatchSelectionMode = it },
+                            userScrollEnabled = !modsBatchSelectionMode && !showOverlayNav,
+                            handleMainEffects = !showOverlayNav,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(scaffoldPadding)
+                                .hazeSource(state = launcherDockHazeState),
+                        )
+                    }
+                    if (showOverlayNav) {
+                        NavDisplay(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(scaffoldPadding),
+                            entryDecorators = listOf(
+                                rememberSaveableStateHolderNavEntryDecorator(),
+                                rememberViewModelStoreNavEntryDecorator(),
+                            ),
+                            onBack = {
+                                if (!isBlockingBusyInteractionLocked) {
+                                    if (currentRoute == Route.CrashRecovery) {
+                                        mainViewModel.dismissCrashRecovery()
+                                    } else {
+                                        navigator.goBack()
+                                    }
+                                }
+                            },
+                            backStack = navigator.backStack,
+                            transitionSpec = {
+                                horizontalPageTransition(forward = forwardPageTransition)
+                            },
+                            popTransitionSpec = {
+                                horizontalPageTransition(forward = false)
+                            },
+                            entryProvider = entryProvider {
                         entry<Route.QuickStart> {
                             QuickStartScreen(
                                 viewModel = settingsViewModel,
@@ -312,29 +429,18 @@ fun LauncherContent(
                         }
 
                         entry<Route.Main> {
-                            LauncherMainScreen(
-                                viewModel = mainViewModel,
-                                modifier = Modifier.fillMaxSize(),
-                                onOpenSettings = { navigator.resetRoot(Route.Settings) },
-                                onOpenFeedback = { navigator.push(Route.Feedback) },
-                                onOpenWorkshop = { navigator.resetRoot(Route.Workshop) },
-                                feedbackUnreadCount = feedbackInboxState.unreadIssueCount,
-                                onOpenFeedbackUpdates = {
-                                    val unreadIssues = feedbackInboxState.subscriptions
-                                        .filter { it.unread }
-                                    when {
-                                        unreadIssues.size == 1 -> {
-                                            navigator.push(
-                                                Route.FeedbackConversation(unreadIssues.first().issueNumber)
-                                            )
-                                        }
-
-                                        else -> {
-                                            navigator.push(Route.FeedbackSubscriptions)
-                                        }
-                                    }
-                                }
-                            )
+                            if (showDockPager) {
+                                Box(modifier = Modifier.fillMaxSize())
+                            } else {
+                                LauncherMainScreen(
+                                    viewModel = mainViewModel,
+                                    modifier = Modifier.fillMaxSize(),
+                                    onOpenFeedback = { navigator.push(Route.Feedback) },
+                                    onOpenWorkshop = { selectDockRoute(Route.Workshop) },
+                                    feedbackUnreadCount = feedbackInboxState.unreadIssueCount,
+                                    onOpenFeedbackUpdates = { openFeedbackUpdates() },
+                                )
+                            }
                         }
 
                         entry<Route.CrashRecovery> {
@@ -354,68 +460,65 @@ fun LauncherContent(
                         }
 
                         entry<Route.Mods> {
-                            LauncherModsScreen(
-                                viewModel = mainViewModel,
-                                modifier = Modifier.fillMaxSize(),
-                                onOpenSettings = { navigator.resetRoot(Route.Settings) },
-                                onOpenFeedback = { navigator.push(Route.Feedback) },
-                                onOpenWorkshop = { navigator.resetRoot(Route.Workshop) },
-                                feedbackUnreadCount = feedbackInboxState.unreadIssueCount,
-                                onOpenFeedbackUpdates = {
-                                    val unreadIssues = feedbackInboxState.subscriptions
-                                        .filter { it.unread }
-                                    when {
-                                        unreadIssues.size == 1 -> {
-                                            navigator.push(
-                                                Route.FeedbackConversation(unreadIssues.first().issueNumber)
-                                            )
-                                        }
-
-                                        else -> {
-                                            navigator.push(Route.FeedbackSubscriptions)
-                                        }
-                                    }
-                                },
-                                onBatchSelectionModeChange = { modsBatchSelectionMode = it }
-                            )
+                            if (showDockPager) {
+                                Box(modifier = Modifier.fillMaxSize())
+                            } else {
+                                LauncherModsScreen(
+                                    viewModel = mainViewModel,
+                                    modifier = Modifier.fillMaxSize(),
+                                    onOpenFeedback = { navigator.push(Route.Feedback) },
+                                    onOpenWorkshop = { selectDockRoute(Route.Workshop) },
+                                    feedbackUnreadCount = feedbackInboxState.unreadIssueCount,
+                                    onOpenFeedbackUpdates = { openFeedbackUpdates() },
+                                    onBatchSelectionModeChange = { modsBatchSelectionMode = it }
+                                )
+                            }
                         }
 
                         entry<Route.Settings> {
-                            LauncherSettingsScreen(
-                                viewModel = settingsViewModel,
-                                modifier = Modifier.fillMaxSize(),
-                                showBackButton = false,
-                                feedbackSubmissionNotice = pendingFeedbackNotice,
-                                onDismissFeedbackSubmissionNotice = {
-                                    pendingFeedbackNotice = null
-                                }
-                            )
+                            if (showDockPager) {
+                                Box(modifier = Modifier.fillMaxSize())
+                            } else {
+                                LauncherSettingsScreen(
+                                    viewModel = settingsViewModel,
+                                    modifier = Modifier.fillMaxSize(),
+                                    showBackButton = navigator.stackSize > 1,
+                                    feedbackSubmissionNotice = pendingFeedbackNotice,
+                                    onDismissFeedbackSubmissionNotice = {
+                                        pendingFeedbackNotice = null
+                                    }
+                                )
+                            }
                         }
 
                         entry<Route.Workshop> {
-                            WorkshopScreen(
-                                viewModel = workshopViewModel,
-                                modifier = Modifier.fillMaxSize(),
-                                showBackButton = false,
-                                showSubscriptionsButton = true,
-                                onBack = { navigator.goBack() },
-                                onOpenSteamLogin = { navigator.push(Route.SteamCloudLogin) },
-                                onOpenDownloadCenter = { navigator.push(Route.WorkshopDownloadCenter) },
-                                onOpenSubscriptions = { navigator.push(Route.WorkshopSubscriptions) },
-                                onOpenDetails = { item ->
-                                    navigator.push(
-                                        Route.WorkshopDetail(
-                                            publishedFileId = item.publishedFileId.toString(),
-                                            appId = item.appId.toLong(),
+                            if (showDockPager) {
+                                Box(modifier = Modifier.fillMaxSize())
+                            } else {
+                                WorkshopScreen(
+                                    viewModel = workshopViewModel,
+                                    modifier = Modifier.fillMaxSize(),
+                                    showBackButton = navigator.stackSize > 1,
+                                    showSubscriptionsButton = true,
+                                    onBack = { navigator.goBack() },
+                                    onOpenSteamLogin = { navigator.push(Route.SteamCloudLogin) },
+                                    onOpenDownloadCenter = { navigator.push(Route.WorkshopDownloadCenter) },
+                                    onOpenSubscriptions = { navigator.push(Route.WorkshopSubscriptions) },
+                                    onOpenDetails = { item ->
+                                        navigator.push(
+                                            Route.WorkshopDetail(
+                                                publishedFileId = item.publishedFileId.toString(),
+                                                appId = item.appId.toLong(),
+                                            )
                                         )
-                                    )
-                                },
-                            )
+                                    },
+                                )
+                            }
                         }
 
                         entry<Route.WorkshopSubscriptions> {
                             WorkshopScreen(
-                                viewModel = workshopViewModel,
+                                viewModel = workshopSubscriptionsViewModel,
                                 modifier = Modifier.fillMaxSize(),
                                 showBackButton = true,
                                 initialListMode = WorkshopListMode.Subscriptions,
@@ -443,6 +546,9 @@ fun LauncherContent(
                                 viewModel = workshopViewModel,
                                 modifier = Modifier.fillMaxSize(),
                                 onBack = { navigator.goBack() },
+                                onOpenBaiduTranslationCredentials = { notice ->
+                                    navigator.push(Route.BaiduTranslationCredentials(notice))
+                                },
                                 onOpenDetails = { item ->
                                     navigator.push(
                                         Route.WorkshopDetail(
@@ -463,6 +569,15 @@ fun LauncherContent(
                                 onResume = { workshopViewModel.resumeDownload(context.applicationContext, it) },
                                 onCancel = { workshopViewModel.cancelDownload(context.applicationContext, it) },
                                 onRetry = { workshopViewModel.retryDownload(context.applicationContext, it) },
+                            )
+                        }
+
+                        entry<Route.BaiduTranslationCredentials> { route ->
+                            LauncherBaiduTranslationCredentialsScreen(
+                                viewModel = settingsViewModel,
+                                modifier = Modifier.fillMaxSize(),
+                                notice = route.notice,
+                                onBack = { navigator.goBack() },
                             )
                         }
 
@@ -584,6 +699,7 @@ fun LauncherContent(
                     }
                     )
                 }
+                }
                 AnimatedVisibility(
                     visible = showAnimatedLauncherDock,
                     modifier = Modifier.align(Alignment.BottomCenter),
@@ -598,16 +714,8 @@ fun LauncherContent(
                 ) {
                     LauncherDockBar(
                         hazeState = launcherDockHazeState,
-                        currentRoute = currentRoute,
-                        onSelectRoute = { route ->
-                            if (currentRoute != route || navigator.stackSize > 1) {
-                                forwardPageTransition = isForwardDockTransition(
-                                    from = currentRoute.launcherDockRoute(),
-                                    to = route.launcherDockRoute(),
-                                )
-                                navigator.resetRoot(route)
-                            }
-                        }
+                        currentRoute = dockPageRoute,
+                        onSelectRoute = { route -> selectDockRoute(route) },
                     )
                 }
                 if (shouldShowBlockingBusyWindow) {
@@ -908,6 +1016,122 @@ fun LauncherContent(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun LauncherDockPager(
+    modifier: Modifier = Modifier,
+    pagerState: PagerState,
+    mainViewModel: MainScreenViewModel,
+    settingsViewModel: SettingsScreenViewModel,
+    workshopViewModel: WorkshopViewModel,
+    feedbackUnreadCount: Int,
+    feedbackSubmissionNotice: FeedbackSubmissionNotice?,
+    onDismissFeedbackSubmissionNotice: () -> Unit,
+    onOpenFeedback: () -> Unit,
+    onOpenWorkshop: () -> Unit,
+    onOpenFeedbackUpdates: () -> Unit,
+    onOpenSteamLogin: () -> Unit,
+    onOpenDownloadCenter: () -> Unit,
+    onOpenSubscriptions: () -> Unit,
+    onOpenWorkshopDetails: (WorkshopItemSummary) -> Unit,
+    onBatchSelectionModeChange: (Boolean) -> Unit,
+    userScrollEnabled: Boolean,
+    handleMainEffects: Boolean,
+) {
+    val activity = LocalActivity.current
+    val context = LocalContext.current
+    val workshopUpdateCheckState by WorkshopUpdateCheckCoordinator.uiState.collectAsState()
+
+    LaunchedEffect(context) {
+        WorkshopUpdateCheckCoordinator.bind(context.applicationContext)
+    }
+
+    LaunchedEffect(workshopUpdateCheckState.lastCompletedAtMs) {
+        val hostActivity = activity
+        if (hostActivity != null && workshopUpdateCheckState.lastCompletedAtMs > 0L) {
+            mainViewModel.refresh(hostActivity)
+        }
+    }
+
+    LauncherMainRoute(
+        modifier = modifier,
+        viewModel = mainViewModel,
+        onOpenWorkshop = onOpenWorkshop,
+        handleEffects = handleMainEffects,
+    ) { routeModifier, uiState, actions ->
+        HorizontalPager(
+            state = pagerState,
+            modifier = routeModifier,
+            beyondViewportPageCount = LauncherDockRoutes.lastIndex,
+            userScrollEnabled = userScrollEnabled,
+            key = { page -> LauncherDockRoutes[page].launcherDockTagSuffix() },
+        ) { page ->
+            when (LauncherDockRoutes[page]) {
+                Route.Main -> {
+                    LauncherGameScreenContent(
+                        modifier = Modifier.fillMaxSize(),
+                        uiState = uiState,
+                        actions = actions,
+                        onOpenFeedback = onOpenFeedback,
+                        feedbackUnreadCount = feedbackUnreadCount,
+                        onOpenFeedbackUpdates = onOpenFeedbackUpdates,
+                    )
+                }
+
+                Route.Mods -> {
+                    LauncherModsScreenContent(
+                        modifier = Modifier.fillMaxSize(),
+                        uiState = uiState,
+                        actions = actions,
+                        onOpenFeedback = onOpenFeedback,
+                        onOpenWorkshop = onOpenWorkshop,
+                        feedbackUnreadCount = feedbackUnreadCount,
+                        onOpenFeedbackUpdates = onOpenFeedbackUpdates,
+                        workshopUpdateCheckState = workshopUpdateCheckState,
+                        onBatchSelectionModeChange = onBatchSelectionModeChange,
+                        onCheckWorkshopUpdates = {
+                            WorkshopUpdateCheckCoordinator.requestCheck(
+                                context = context.applicationContext,
+                                force = true,
+                                notifyResult = true,
+                            )
+                            LauncherTransientNoticeBus.show(
+                                UiText.StringResource(R.string.main_workshop_checking_notice)
+                            )
+                        },
+                    )
+                }
+
+                Route.Workshop -> {
+                    WorkshopScreen(
+                        viewModel = workshopViewModel,
+                        modifier = Modifier.fillMaxSize(),
+                        showBackButton = false,
+                        showSubscriptionsButton = true,
+                        onBack = {},
+                        onOpenSteamLogin = onOpenSteamLogin,
+                        onOpenDownloadCenter = onOpenDownloadCenter,
+                        onOpenSubscriptions = onOpenSubscriptions,
+                        onOpenDetails = onOpenWorkshopDetails,
+                    )
+                }
+
+                Route.Settings -> {
+                    LauncherSettingsScreen(
+                        viewModel = settingsViewModel,
+                        modifier = Modifier.fillMaxSize(),
+                        showBackButton = false,
+                        feedbackSubmissionNotice = feedbackSubmissionNotice,
+                        onDismissFeedbackSubmissionNotice = onDismissFeedbackSubmissionNotice,
+                    )
+                }
+
+                else -> Unit
+            }
+        }
+    }
+}
+
 @Composable
 private fun LauncherDockBar(
     modifier: Modifier = Modifier,
@@ -918,15 +1142,17 @@ private fun LauncherDockBar(
     val selectedRoute = currentRoute.launcherDockRoute() ?: Route.Main
     FrostedGlassChrome(
         modifier = modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(start = 14.dp, end = 14.dp, bottom = 10.dp),
+            .fillMaxWidth(),
         hazeState = hazeState,
-        shape = RoundedCornerShape(28.dp),
-        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(0.dp),
+        contentPadding = PaddingValues(0.dp),
+        showBorder = false,
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 8.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -1009,10 +1235,6 @@ private fun RowScope.LauncherDockItem(
     }
 }
 
-private fun isLauncherDockRoute(route: Route?): Boolean {
-    return route.launcherDockRoute() != null
-}
-
 private fun horizontalPageTransition(forward: Boolean): ContentTransform {
     val direction = if (forward) 1 else -1
     return slideInHorizontally(
@@ -1046,6 +1268,10 @@ private fun Route?.launcherDockIndex(): Int? {
     }
 }
 
+private fun PagerState.currentLauncherDockRoute(): Route {
+    return LauncherDockRoutes[currentPage.coerceIn(LauncherDockRoutes.indices)]
+}
+
 private fun io.stamethyst.backend.workshop.WorkshopUpdateCheckCompletion.toNoticeMessage(): String {
     val error = errorSummary
     if (!error.isNullOrBlank()) {
@@ -1072,12 +1298,12 @@ private fun Route?.launcherDockRoute(): Route? {
         Route.Settings -> Route.Settings
         Route.CrashRecovery,
         is Route.WorkshopDetail,
-        Route.WorkshopSubscriptions,
         Route.WorkshopDownloadCenter,
         Route.SteamCloudLogin,
         Route.SteamCloudGuard,
         Route.SteamCloudSaveSettings,
         Route.SteamCloudSyncBlacklistSettings,
+        is Route.BaiduTranslationCredentials,
         Route.DeveloperSettings,
         Route.NativeLibraryMarket,
         Route.Compatibility,

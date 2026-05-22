@@ -50,6 +50,30 @@ object CompatibilitySettings {
             context,
             LauncherConfig.DEFAULT_FBO_PRESSURE_DOWNSCALE_COMPAT_ENABLED
         )
+        setRuntimeDownscaleOrdinaryTexturesEnabled(
+            context,
+            LauncherConfig.DEFAULT_RUNTIME_DOWNSCALE_ORDINARY_TEXTURES_ENABLED
+        )
+        setRuntimeDownscaleTextureAtlasPagesEnabled(
+            context,
+            LauncherConfig.DEFAULT_RUNTIME_DOWNSCALE_TEXTURE_ATLAS_PAGES_ENABLED
+        )
+        setRuntimeDownscaleSpineTexturesEnabled(
+            context,
+            LauncherConfig.DEFAULT_RUNTIME_DOWNSCALE_SPINE_TEXTURES_ENABLED
+        )
+        setRuntimeDownscaleOffscreenFrameBuffersEnabled(
+            context,
+            LauncherConfig.DEFAULT_RUNTIME_DOWNSCALE_OFFSCREEN_FRAME_BUFFERS_ENABLED
+        )
+        setImportDownscaleSpineAtlasPagesEnabled(
+            context,
+            LauncherConfig.DEFAULT_IMPORT_DOWNSCALE_SPINE_ATLAS_PAGES_ENABLED
+        )
+        setImportDownscaleOrdinaryAtlasPagesEnabled(
+            context,
+            LauncherConfig.DEFAULT_IMPORT_DOWNSCALE_ORDINARY_ATLAS_PAGES_ENABLED
+        )
     }
 
     @JvmStatic
@@ -255,5 +279,45 @@ object CompatibilitySettings {
     @JvmStatic
     fun setFboPressureDownscaleCompatEnabled(context: Context, enabled: Boolean) {
         LauncherConfig.setFboPressureDownscaleCompatEnabled(context, enabled)
+    }
+
+    @JvmStatic
+    fun readRuntimeDownscaleMaterialPolicy(context: Context): RuntimeDownscaleMaterialPolicy {
+        return LauncherConfig.readRuntimeDownscaleMaterialPolicy(context)
+    }
+
+    @JvmStatic
+    fun setRuntimeDownscaleOrdinaryTexturesEnabled(context: Context, enabled: Boolean) {
+        LauncherConfig.setRuntimeDownscaleOrdinaryTexturesEnabled(context, enabled)
+    }
+
+    @JvmStatic
+    fun setRuntimeDownscaleTextureAtlasPagesEnabled(context: Context, enabled: Boolean) {
+        LauncherConfig.setRuntimeDownscaleTextureAtlasPagesEnabled(context, enabled)
+    }
+
+    @JvmStatic
+    fun setRuntimeDownscaleSpineTexturesEnabled(context: Context, enabled: Boolean) {
+        LauncherConfig.setRuntimeDownscaleSpineTexturesEnabled(context, enabled)
+    }
+
+    @JvmStatic
+    fun setRuntimeDownscaleOffscreenFrameBuffersEnabled(context: Context, enabled: Boolean) {
+        LauncherConfig.setRuntimeDownscaleOffscreenFrameBuffersEnabled(context, enabled)
+    }
+
+    @JvmStatic
+    fun readImportDownscaleMaterialPolicy(context: Context): ImportDownscaleMaterialPolicy {
+        return LauncherConfig.readImportDownscaleMaterialPolicy(context)
+    }
+
+    @JvmStatic
+    fun setImportDownscaleSpineAtlasPagesEnabled(context: Context, enabled: Boolean) {
+        LauncherConfig.setImportDownscaleSpineAtlasPagesEnabled(context, enabled)
+    }
+
+    @JvmStatic
+    fun setImportDownscaleOrdinaryAtlasPagesEnabled(context: Context, enabled: Boolean) {
+        LauncherConfig.setImportDownscaleOrdinaryAtlasPagesEnabled(context, enabled)
     }
 }

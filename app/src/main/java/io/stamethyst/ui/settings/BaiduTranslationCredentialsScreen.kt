@@ -1,0 +1,406 @@
+package io.stamethyst.ui.settings
+
+import androidx.activity.compose.LocalActivity
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import io.stamethyst.R
+import io.stamethyst.backend.workshop.BaiduAiTextTranslationClient
+import io.stamethyst.backend.workshop.BaiduTranslationCredentials
+import io.stamethyst.ui.Icons
+import io.stamethyst.ui.icon.ArrowBack
+import kotlinx.coroutines.launch
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+internal fun LauncherBaiduTranslationCredentialsScreen(
+    viewModel: SettingsScreenViewModel,
+    modifier: Modifier = Modifier,
+    notice: String? = null,
+    onBack: () -> Unit,
+) {
+    val activity = requireNotNull(LocalActivity.current)
+    val uriHandler = LocalUriHandler.current
+    val coroutineScope = rememberCoroutineScope()
+    val translationClient = remember { BaiduAiTextTranslationClient() }
+    var appIdInput by remember { mutableStateOf("") }
+    var apiKeyInput by remember { mutableStateOf("") }
+    var isTesting by remember { mutableStateOf(false) }
+    var testResultText by remember { mutableStateOf<String?>(null) }
+    var testFailureReason by remember { mutableStateOf<String?>(null) }
+    var successMessage by remember { mutableStateOf<String?>(null) }
+    var pendingNotice by remember(notice) { mutableStateOf(notice?.takeIf(String::isNotBlank)) }
+
+    LaunchedEffect(activity) {
+        val credentials = viewModel.readBaiduTranslationCredentials(activity)
+        appIdInput = credentials.appId
+        apiKeyInput = credentials.apiKey
+    }
+
+    pendingNotice?.let { message ->
+        AlertDialog(
+            onDismissRequest = { pendingNotice = null },
+            title = { Text(stringResource(R.string.settings_baidu_translation_notice_title)) },
+            text = { Text(message) },
+            confirmButton = {
+                TextButton(onClick = { pendingNotice = null }) {
+                    Text(stringResource(R.string.common_action_confirm))
+                }
+            },
+        )
+    }
+
+    Scaffold(
+        modifier = modifier,
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.settings_baidu_translation_credentials_title)) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.ArrowBack,
+                            contentDescription = stringResource(R.string.common_content_desc_back),
+                        )
+                    }
+                },
+            )
+        },
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            SettingsPanelCard {
+                Text(
+                    text = stringResource(R.string.settings_baidu_translation_credentials_title),
+                    style = MaterialTheme.typography.titleLarge,
+                )
+                Text(
+                    text = if (viewModel.uiState.baiduTranslationCredentialsConfigured) {
+                        stringResource(R.string.settings_baidu_translation_credentials_page_configured_desc)
+                    } else {
+                        stringResource(R.string.settings_baidu_translation_credentials_page_not_configured_desc)
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                OutlinedTextField(
+                    value = appIdInput,
+                    onValueChange = { appIdInput = it.trim() },
+                    label = { Text(stringResource(R.string.settings_baidu_translation_app_id_label)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+
+                OutlinedTextField(
+                    value = apiKeyInput,
+                    onValueChange = { apiKeyInput = it.trim() },
+                    label = { Text(stringResource(R.string.settings_baidu_translation_api_key_label)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+
+                Button(
+                    onClick = {
+                        viewModel.onSaveBaiduTranslationCredentials(activity, appIdInput, apiKeyInput)
+                        successMessage = null
+                        testResultText = null
+                        testFailureReason = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.common_action_save))
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        if (isTesting) return@OutlinedButton
+                        val credentials = BaiduTranslationCredentials(
+                            appId = appIdInput,
+                            apiKey = apiKeyInput,
+                        )
+                        val validationMessage = validateBaiduCredentialsForScreen(credentials)
+                        if (validationMessage != null) {
+                            testResultText = null
+                            testFailureReason = validationMessage
+                            successMessage = null
+                            return@OutlinedButton
+                        }
+                        isTesting = true
+                        testResultText = null
+                        testFailureReason = null
+                        successMessage = null
+                        coroutineScope.launch {
+                            runCatching {
+                                translationClient.translate(
+                                    text = BAIDU_TRANSLATION_SAMPLE_TEXT,
+                                    sourceLanguage = BAIDU_AUTO_DETECT_LANGUAGE,
+                                    targetLanguage = BAIDU_DEFAULT_TARGET_LANGUAGE,
+                                    credentials = credentials,
+                                    reference = BAIDU_TRANSLATION_SAMPLE_REFERENCE,
+                                )
+                            }.onSuccess { translatedText ->
+                                isTesting = false
+                                testResultText = translatedText
+                                testFailureReason = null
+                                successMessage = activity.getString(R.string.settings_baidu_translation_test_success)
+                            }.onFailure { error ->
+                                isTesting = false
+                                testResultText = null
+                                testFailureReason = error.message
+                                    ?: activity.getString(R.string.settings_baidu_translation_test_failed)
+                                successMessage = null
+                            }
+                        }
+                    },
+                    enabled = !isTesting,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    if (isTesting) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Text(stringResource(R.string.settings_baidu_translation_test_loading))
+                        }
+                    } else {
+                        Text(stringResource(R.string.settings_baidu_translation_test_action))
+                    }
+                }
+            }
+
+            SettingsPanelCard {
+                Text(stringResource(R.string.settings_baidu_translation_sample_title), style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = BAIDU_TRANSLATION_SAMPLE_TEXT,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+
+                testResultText?.let { resultText ->
+                    Text(stringResource(R.string.settings_baidu_translation_test_result_title), style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        text = resultText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+
+                testFailureReason?.let { failureReason ->
+                    Text(
+                        text = stringResource(R.string.settings_baidu_translation_test_failure_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    Text(
+                        text = failureReason,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+
+            successMessage?.let { message ->
+                SettingsPanelCard {
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+
+            SettingsPanelCard {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text(stringResource(R.string.settings_baidu_translation_tutorial_title), style = MaterialTheme.typography.titleLarge)
+                    OutlinedButton(
+                        onClick = { uriHandler.openUri(BAIDU_TRANSLATION_GUIDE_URL) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(R.string.settings_baidu_translation_open_platform))
+                    }
+
+                    baiduTutorialSteps.forEachIndexed { index, step ->
+                        BaiduTranslationTutorialStep(
+                            stepNumber = index + 1,
+                            step = step,
+                            topPadding = if (index == 0) 0.dp else 4.dp,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsPanelCard(
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        shape = RoundedCornerShape(24.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(PaddingValues(16.dp)),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            content = content,
+        )
+    }
+}
+
+@Composable
+private fun BaiduTranslationTutorialStep(
+    stepNumber: Int,
+    step: BaiduTutorialStep,
+    topPadding: Dp,
+) {
+    Column(
+        modifier = Modifier.padding(top = topPadding),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            text = "$stepNumber. ${step.text}",
+            style = MaterialTheme.typography.titleMedium,
+        )
+
+        step.note?.let { note ->
+            Text(
+                text = note,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        step.imageResId?.let { imageResId ->
+            Image(
+                painter = painterResource(id = imageResId),
+                contentDescription = step.text,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp)),
+                contentScale = ContentScale.FillWidth,
+            )
+        }
+    }
+}
+
+private fun validateBaiduCredentialsForScreen(credentials: BaiduTranslationCredentials): String? = when {
+    credentials.appId.isBlank() && credentials.apiKey.isBlank() -> "未配置百度大模型文本翻译的 AppID 和 API Key。"
+    credentials.appId.isBlank() -> "未配置百度大模型文本翻译的 AppID。"
+    credentials.apiKey.isBlank() -> "未配置百度大模型文本翻译的 API Key。"
+    else -> null
+}
+
+private data class BaiduTutorialStep(
+    val text: String,
+    val imageResId: Int? = null,
+    val note: String? = null,
+)
+
+private val baiduTutorialSteps = listOf(
+    BaiduTutorialStep(
+        text = "进入百度翻译开放平台。",
+        note = "入口地址：$BAIDU_TRANSLATION_GUIDE_URL",
+    ),
+    BaiduTutorialStep(
+        text = "点击“立即使用”。",
+        imageResId = R.drawable.baidu_ai_text_tutorial_step_02,
+    ),
+    BaiduTutorialStep(
+        text = "根据提示填写个人信息。",
+        imageResId = R.drawable.baidu_ai_text_tutorial_step_03,
+    ),
+    BaiduTutorialStep(
+        text = "完成实名认证。",
+        imageResId = R.drawable.baidu_ai_text_tutorial_step_04,
+    ),
+    BaiduTutorialStep(
+        text = "认证完成后回到控制台，点击“立即开通”。",
+        imageResId = R.drawable.baidu_ai_text_tutorial_step_05,
+    ),
+    BaiduTutorialStep(
+        text = "选择“大模型文本翻译”。",
+        imageResId = R.drawable.baidu_ai_text_tutorial_step_06,
+    ),
+    BaiduTutorialStep(
+        text = "随便填一点测试内容后提交申请。",
+        imageResId = R.drawable.baidu_ai_text_tutorial_step_07,
+    ),
+    BaiduTutorialStep(
+        text = "回到主界面，点击“开发者信息”。",
+        imageResId = R.drawable.baidu_ai_text_tutorial_step_08,
+    ),
+    BaiduTutorialStep(text = "把 AppID 记下来。"),
+    BaiduTutorialStep(
+        text = "进入“API Key 管理”，创建一个新的 API Key，名称可以随便填。",
+        imageResId = R.drawable.baidu_ai_text_tutorial_step_10,
+    ),
+    BaiduTutorialStep(
+        text = "把新建出来的 API Key 也记下来。",
+        imageResId = R.drawable.baidu_ai_text_tutorial_step_10_result,
+    ),
+    BaiduTutorialStep(text = "回到 App，把 AppID 和 API Key 填进上面的配置区后保存即可使用。"),
+)
+
+private const val BAIDU_TRANSLATION_GUIDE_URL = "https://fanyi-api.baidu.com/product/13"
+private const val BAIDU_TRANSLATION_SAMPLE_TEXT =
+    "This mod adds a new relic and several balance changes for a smoother run."
+private const val BAIDU_TRANSLATION_SAMPLE_REFERENCE = "将内容视为 Steam 创意工坊模组说明进行翻译。"
+private const val BAIDU_AUTO_DETECT_LANGUAGE = "auto"
+private const val BAIDU_DEFAULT_TARGET_LANGUAGE = "zh"

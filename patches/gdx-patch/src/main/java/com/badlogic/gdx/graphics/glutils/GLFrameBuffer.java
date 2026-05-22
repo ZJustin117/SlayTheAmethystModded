@@ -62,6 +62,13 @@ public abstract class GLFrameBuffer<T extends GLTexture> implements Disposable {
 		"amethyst.gdx.non_renderable_fbo_format_compat";
 	private final static String GPU_RESOURCE_DIAG_ENABLED_PROP = "amethyst.gdx.gpu_resource_diag";
 	private final static boolean GPU_RESOURCE_DIAG_ENABLED = readBooleanSystemProperty(GPU_RESOURCE_DIAG_ENABLED_PROP, false);
+	private final static String FRAME_PROFILER_ENABLED_PROP = "amethyst.gdx.frame_profiler";
+	private final static String FRAME_PROFILER_RESOURCE_STALL_MS_PROP = "amethyst.gdx.frame_profiler.resource_stall_ms";
+	private final static boolean FRAME_PROFILER_RESOURCE_ENABLED =
+		readBooleanSystemProperty(FRAME_PROFILER_ENABLED_PROP, false)
+			|| readBooleanSystemProperty(GPU_RESOURCE_DIAG_ENABLED_PROP, false);
+	private final static long FRAME_PROFILER_RESOURCE_STALL_NANOS =
+		readLongSystemProperty(FRAME_PROFILER_RESOURCE_STALL_MS_PROP, 8L, 1L, 10000L) * 1000000L;
 	private final static String GPU_RESOURCE_DIAG_FBO_STACKS_PROP =
 		"amethyst.gdx.gpu_resource_diag.fbo_stacks";
 	private final static boolean GPU_RESOURCE_DIAG_FBO_STACKS_ENABLED =
@@ -408,6 +415,10 @@ public abstract class GLFrameBuffer<T extends GLTexture> implements Disposable {
 		}
 	}
 
+	private static String formatMillis (long nanos) {
+		return String.format(java.util.Locale.US, "%.3f", nanos / 1000000.0);
+	}
+
 	private static long defaultFrameBufferManagerLowWaterBytes (long softBudgetBytes) {
 		if (softBudgetBytes <= 0L) return 0L;
 		return softBudgetBytes - softBudgetBytes / 3L;
@@ -428,6 +439,7 @@ public abstract class GLFrameBuffer<T extends GLTexture> implements Disposable {
 			return;
 		}
 
+		long buildStartNanos = FRAME_PROFILER_RESOURCE_ENABLED ? System.nanoTime() : 0L;
 		buildInProgress = true;
 		String buildStackKey = captureRelevantFrameBufferBuildStack();
 		noteRebuildAfterReclaimIfNeeded();
@@ -586,9 +598,27 @@ public abstract class GLFrameBuffer<T extends GLTexture> implements Disposable {
 			}
 			recordFrameBufferBuild(colorTextureWidth, colorTextureHeight, "build", buildStackKey);
 		} finally {
+			logFrameBufferResourceStall("fbo_build", buildStartNanos, buildStackKey);
 			buildInProgress = false;
 			gl.glBindFramebuffer(GL20.GL_FRAMEBUFFER, previousFramebufferHandle);
 		}
+	}
+
+	private void logFrameBufferResourceStall (String event, long startNanos, String stackKey) {
+		if (!FRAME_PROFILER_RESOURCE_ENABLED || startNanos <= 0L) return;
+		long elapsedNanos = System.nanoTime() - startNanos;
+		if (elapsedNanos < FRAME_PROFILER_RESOURCE_STALL_NANOS) return;
+		System.out.println("[gdx-stall] " + event
+			+ " frame=" + currentFrameId
+			+ " id=" + debugFrameBufferId
+			+ " elapsedMs=" + formatMillis(elapsedNanos)
+			+ " requested=" + width + "x" + height
+			+ " allocated=" + getColorTextureWidth() + "x" + getColorTextureHeight()
+			+ " bytes=" + estimatedNativeBytes
+			+ " hasDepth=" + hasDepth
+			+ " hasStencil=" + hasStencil
+			+ " owner=" + getFrameBufferOwnerKey()
+			+ " stack=" + (stackKey == null ? "unknown" : stackKey));
 	}
 
 	private int tryRecoverUnknownFramebufferStatus (GL20 gl) {
