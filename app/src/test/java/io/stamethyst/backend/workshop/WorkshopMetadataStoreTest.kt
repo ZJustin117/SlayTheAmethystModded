@@ -6,6 +6,8 @@ import android.content.ContextWrapper
 import java.io.File
 import java.nio.file.Files
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WorkshopMetadataStoreTest {
@@ -40,6 +42,107 @@ class WorkshopMetadataStoreTest {
         assertEquals(listOf("Newer", "Older"), store.list().map { it.title })
     }
 
+    @Test
+    fun recoverFinishedTransferRestoresDownloadedJarAsUnpatched() {
+        val roots = TestRoots.create("workshop-metadata-store-recover-complete")
+        val metadataStore = WorkshopMetadataStore(roots.context)
+        val taskStore = WorkshopDownloadTaskStore(roots.context)
+        val details = details(publishedFileId = 123uL, title = "Recovered Mod")
+        val outputDir = File(roots.context.filesDir, "workshop/646570/123").apply { mkdirs() }
+        File(outputDir, "Recovered Mod.jar").writeText("jar-bytes")
+        val task = task(details).copy(
+            status = WorkshopDownloadTaskStatus.Downloading,
+            progressPercent = 100,
+            downloadedBytes = 9L,
+            totalBytes = 9L,
+            completedFiles = 1,
+            totalFiles = 1,
+        )
+        taskStore.upsert(task)
+
+        val recovered = WorkshopInterruptedDownloadRecovery.recoverFinishedTransferIfPossible(
+            context = roots.context,
+            metadataStore = metadataStore,
+            taskStore = taskStore,
+            task = task,
+        )
+
+        assertTrue(recovered)
+        val record = metadataStore.findByPublishedFileId(646570u, 123uL)
+        assertEquals(WorkshopModCardState.ImportedUnpatched, record?.cardState)
+        assertEquals("Recovered Mod.jar", record?.localJarPath)
+        assertEquals(WorkshopDownloadTaskStatus.Completed, taskStore.find(123uL)?.status)
+    }
+
+    @Test
+    fun recoverFinishedTransferIgnoresPartialDownloadEvenWhenJarExists() {
+        val roots = TestRoots.create("workshop-metadata-store-recover-partial")
+        val metadataStore = WorkshopMetadataStore(roots.context)
+        val taskStore = WorkshopDownloadTaskStore(roots.context)
+        val details = details(publishedFileId = 124uL, title = "Partial Mod")
+        val outputDir = File(roots.context.filesDir, "workshop/646570/124").apply { mkdirs() }
+        File(outputDir, "Partial Mod.jar").writeText("partial")
+        val task = task(details).copy(
+            status = WorkshopDownloadTaskStatus.Downloading,
+            progressPercent = 50,
+            downloadedBytes = 4L,
+            totalBytes = 8L,
+        )
+        taskStore.upsert(task)
+
+        val recovered = WorkshopInterruptedDownloadRecovery.recoverFinishedTransferIfPossible(
+            context = roots.context,
+            metadataStore = metadataStore,
+            taskStore = taskStore,
+            task = task,
+        )
+
+        assertFalse(recovered)
+        assertEquals(null, metadataStore.findByPublishedFileId(646570u, 124uL))
+        assertEquals(WorkshopDownloadTaskStatus.Downloading, taskStore.find(124uL)?.status)
+    }
+
+    @Test
+    fun recoverFinishedTransferKeepsExistingInstalledJarDuringInterruptedUpdate() {
+        val roots = TestRoots.create("workshop-metadata-store-recover-update")
+        val metadataStore = WorkshopMetadataStore(roots.context)
+        val taskStore = WorkshopDownloadTaskStore(roots.context)
+        val details = details(publishedFileId = 125uL, title = "Updated Mod")
+        val installedJar = File(roots.rootDir, "optional/Updated Mod.jar").apply {
+            parentFile?.mkdirs()
+            writeText("old-installed-jar")
+        }
+        metadataStore.upsert(
+            record(title = "Updated Mod", publishedFileId = 125uL, updatedAtMillis = 100L).copy(
+                localJarPath = installedJar.absolutePath,
+                cardState = WorkshopModCardState.Downloading,
+                statusText = "正在更新",
+            )
+        )
+        val outputDir = File(roots.context.filesDir, "workshop/646570/125").apply { mkdirs() }
+        File(outputDir, "Updated Mod.jar").writeText("new-downloaded-jar")
+        val task = task(details).copy(
+            status = WorkshopDownloadTaskStatus.Completed,
+            progressPercent = 100,
+            completedFiles = 1,
+            totalFiles = 1,
+        )
+        taskStore.upsert(task)
+
+        val recovered = WorkshopInterruptedDownloadRecovery.recoverFinishedTransferIfPossible(
+            context = roots.context,
+            metadataStore = metadataStore,
+            taskStore = taskStore,
+            task = task,
+        )
+
+        assertTrue(recovered)
+        val record = metadataStore.findByPublishedFileId(646570u, 125uL)
+        assertEquals(WorkshopModCardState.UpdateAvailable, record?.cardState)
+        assertEquals(installedJar.absolutePath, record?.localJarPath)
+        assertEquals(WorkshopDownloadTaskStatus.Completed, taskStore.find(125uL)?.status)
+    }
+
     private fun record(
         title: String,
         publishedFileId: ULong = 1605060445u,
@@ -56,6 +159,26 @@ class WorkshopMetadataStoreTest {
         localJarPath = "mods/$title.jar",
     )
 
+    private fun details(publishedFileId: ULong, title: String): WorkshopItemDetails = WorkshopItemDetails(
+        summary = WorkshopItemSummary(
+            appId = 646570u,
+            publishedFileId = publishedFileId,
+            title = title,
+            previewUrl = "https://cdn.example/$publishedFileId.jpg",
+            description = "description",
+            fileSizeBytes = 9L,
+            updatedAtMillis = 200L,
+        )
+    )
+
+    private fun task(details: WorkshopItemDetails): WorkshopDownloadTaskRecord = WorkshopDownloadTaskRecord(
+        publishedFileId = details.summary.publishedFileId,
+        title = details.summary.title,
+        status = WorkshopDownloadTaskStatus.Downloading,
+        message = "正在下载",
+        details = details,
+    )
+
     private class TestRoots private constructor(
         val rootDir: File,
         val context: Context,
@@ -68,6 +191,8 @@ class WorkshopMetadataStoreTest {
                     rootDir = rootDir,
                     context = object : ContextWrapper(Application()) {
                         override fun getFilesDir(): File = filesDir
+
+                        override fun getApplicationContext(): Context = this
 
                         override fun getPackageName(): String = "io.stamethyst.test"
                     }

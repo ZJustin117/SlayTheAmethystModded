@@ -77,6 +77,8 @@ import io.stamethyst.backend.update.UpdateReleaseInfo
 import io.stamethyst.backend.update.UpdateUiMessage
 import io.stamethyst.backend.update.GithubMirrorFallback
 import io.stamethyst.backend.update.UpdateSource
+import io.stamethyst.backend.workshop.BaiduTranslationCredentials
+import io.stamethyst.backend.workshop.BaiduTranslationCredentialsRepository
 import io.stamethyst.backend.workshop.SteamLanguagePreference
 import io.stamethyst.backend.workshop.WorkshopPreviewCacheStore
 import io.stamethyst.R
@@ -321,6 +323,7 @@ class SettingsScreenViewModel : ViewModel() {
             LauncherPreferences.DEFAULT_WORKSHOP_STEAM_LANGUAGE,
         val workshopAutoImportEnabled: Boolean =
             LauncherPreferences.DEFAULT_WORKSHOP_AUTO_IMPORT_ENABLED,
+        val baiduTranslationCredentialsConfigured: Boolean = false,
         val steamCloudCredentialsSummary: String = "",
         val steamCloudStatusText: String = "",
         val steamCloudManifestSummary: String = "",
@@ -1012,6 +1015,7 @@ class SettingsScreenViewModel : ViewModel() {
                         workshopMaxConcurrentDownloads = LauncherPreferences.readWorkshopMaxConcurrentDownloads(host),
                         workshopDownloadThreads = LauncherPreferences.readWorkshopDownloadThreads(host),
                         workshopWattAccelerationEnabled = LauncherPreferences.isWorkshopWattAccelerationEnabled(host),
+                        baiduTranslationCredentialsConfigured = BaiduTranslationCredentialsRepository(host).hasConfiguredCredentials(),
                         steamCloudCredentialsSummary = buildSteamCloudCredentialsSummary(
                             host,
                             steamCloudAuthSnapshot
@@ -1586,6 +1590,33 @@ class SettingsScreenViewModel : ViewModel() {
                 )
             }
         }
+    }
+
+    internal fun readBaiduTranslationCredentials(host: Activity): BaiduTranslationCredentials =
+        BaiduTranslationCredentialsRepository(host).getCredentials()
+
+    fun onSaveBaiduTranslationCredentials(
+        host: Activity,
+        appId: String,
+        apiKey: String,
+    ) {
+        val repository = BaiduTranslationCredentialsRepository(host)
+        repository.setCredentials(BaiduTranslationCredentials(appId = appId, apiKey = apiKey))
+        val savedCredentials = repository.getCredentials()
+        uiState = uiState.copy(
+            baiduTranslationCredentialsConfigured = savedCredentials.isConfigured(),
+        )
+        showToast(
+            host,
+            UiText.DynamicString(
+                when {
+                    savedCredentials.isConfigured() -> host.getString(R.string.settings_baidu_translation_credentials_saved)
+                    savedCredentials.appId.isBlank() && savedCredentials.apiKey.isBlank() ->
+                        host.getString(R.string.settings_baidu_translation_credentials_cleared)
+                    else -> host.getString(R.string.settings_baidu_translation_credentials_incomplete)
+                },
+            ),
+        )
     }
 
     fun onSteamCloudSaveModeChanged(host: Activity, mode: SteamCloudSaveMode) {
@@ -3109,6 +3140,7 @@ class SettingsScreenViewModel : ViewModel() {
             workshopWattAccelerationEnabled = market.workshopWattAccelerationEnabled,
             workshopSteamLanguage = market.workshopSteamLanguage,
             workshopAutoImportEnabled = market.workshopAutoImportEnabled,
+            baiduTranslationCredentialsConfigured = market.baiduTranslationCredentialsConfigured,
         )
     }
 

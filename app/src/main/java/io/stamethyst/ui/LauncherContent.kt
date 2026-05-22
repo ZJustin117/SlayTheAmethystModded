@@ -443,7 +443,6 @@ fun LauncherContent(
                                 viewModel = workshopViewModel,
                                 modifier = Modifier.fillMaxSize(),
                                 onBack = { navigator.goBack() },
-                                onOpenDownloadCenter = { navigator.push(Route.WorkshopDownloadCenter) },
                                 onOpenDetails = { item ->
                                     navigator.push(
                                         Route.WorkshopDetail(

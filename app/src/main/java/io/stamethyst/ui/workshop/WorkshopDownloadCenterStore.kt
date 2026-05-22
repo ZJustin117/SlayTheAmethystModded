@@ -6,6 +6,7 @@ import io.stamethyst.R
 import io.stamethyst.backend.workshop.WorkshopDownloadTaskRecord
 import io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus
 import io.stamethyst.backend.workshop.WorkshopDownloadTaskStore
+import io.stamethyst.backend.workshop.WorkshopInterruptedDownloadRecovery
 import io.stamethyst.backend.workshop.WorkshopItemDetails
 import io.stamethyst.backend.workshop.WorkshopMetadataStore
 import io.stamethyst.backend.workshop.WorkshopModCardState
@@ -61,12 +62,32 @@ internal object WorkshopDownloadCenterStore {
     fun nextQueuedTask(): WorkshopDownloadTaskUi? = store?.nextQueuedTask()?.toUi()
 
     private fun recoverInterruptedDownloads(context: Context) {
+        val taskStore = store ?: return
+        val metadataStore = WorkshopMetadataStore(context)
+        taskStore.list().forEach { task ->
+            if (!io.stamethyst.backend.workshop.WorkshopDownloadProcessService.isActiveDownload(task.publishedFileId)) {
+                WorkshopInterruptedDownloadRecovery.recoverFinishedTransferIfPossible(
+                    context = context,
+                    metadataStore = metadataStore,
+                    taskStore = taskStore,
+                    task = task,
+                )
+            }
+        }
         val recovered = store?.recoverInterruptedTasksWithResult { task ->
             !io.stamethyst.backend.workshop.WorkshopDownloadProcessService.isActiveDownload(task.publishedFileId)
         }.orEmpty()
         if (recovered.isEmpty()) return
-        val metadataStore = WorkshopMetadataStore(context)
         recovered.forEach { task ->
+            if (WorkshopInterruptedDownloadRecovery.recoverFinishedTransferIfPossible(
+                    context = context,
+                    metadataStore = metadataStore,
+                    taskStore = taskStore,
+                    task = task,
+                )
+            ) {
+                return@forEach
+            }
             val summary = task.details.summary
             metadataStore.updateState(
                 appId = summary.appId,

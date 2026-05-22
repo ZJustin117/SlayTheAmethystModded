@@ -21,6 +21,15 @@
     <string name="settings_market_workshop_auto_import_enabled_title">Workshop auto import: Enabled</string>
     <string name="settings_market_workshop_auto_import_disabled_title">Workshop auto import: Disabled</string>
     <string name="settings_market_workshop_auto_import_desc">Automatically imports downloaded Workshop jar mods. If disabled, downloaded jars stay in the Workshop card until you import them manually.</string>
+    <string name="settings_baidu_translation_credentials_title">Baidu translation credentials</string>
+    <string name="settings_baidu_translation_credentials_configured">Configured</string>
+    <string name="settings_baidu_translation_credentials_not_configured">Not configured. Translation needs AppID and API Key.</string>
+    <string name="settings_baidu_translation_credentials_desc">Used by the market detail translate button. Fill both AppID and API Key from Baidu AI text translation. Leave both blank and save to clear them.</string>
+    <string name="settings_baidu_translation_app_id_label">AppID</string>
+    <string name="settings_baidu_translation_api_key_label">API Key</string>
+    <string name="settings_baidu_translation_credentials_saved">Baidu translation credentials saved.</string>
+    <string name="settings_baidu_translation_credentials_cleared">Baidu translation credentials cleared.</string>
+    <string name="settings_baidu_translation_credentials_incomplete">Saved current fields, but translation requires both AppID and API Key.</string>
     <string name="settings_market_clear_preview_cache_title">Clear cover cache</string>
     <string name="settings_market_clear_preview_cache_desc">Removes cached Workshop mod cover images stored on this device. Covers will be downloaded again when shown.</string>
     <string name="settings_market_clear_preview_cache_done">Cleared %1$d cached cover images.</string>
@@ -798,6 +807,7 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="settings_launcher_logcat_capture_desc">Capture launcher-related logcat while the launcher process is alive and include it in exported diagnostics archives. Enabled by default.</string>
     <string name="common_action_confirm">OK</string>
     <string name="common_action_close">Close</string>
+    <string name="common_action_save">Save</string>
     <string name="common_action_undo">Undo</string>
     <string name="common_action_acknowledge">Got it</string>
     <string name="common_action_refresh">Refresh</string>
@@ -2002,6 +2012,13 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="workshop_description_empty">This mod has no description.</string>
     <string name="workshop_description_collapse">Collapse description</string>
     <string name="workshop_description_expand">Expand description</string>
+    <string name="workshop_translate_action">Translate title and description</string>
+    <string name="workshop_translate_loading">Translating title and description...</string>
+    <string name="workshop_translate_no_text">This mod has no title or description to translate.</string>
+    <string name="workshop_translate_failed">Translation failed. Please try again later.</string>
+    <string name="workshop_translate_missing_app_id_api_key">Baidu AI text translation AppID and API Key are not configured. Configure them in Settings &gt; Market first.</string>
+    <string name="workshop_translate_missing_app_id">Baidu AI text translation AppID is not configured.</string>
+    <string name="workshop_translate_missing_api_key">Baidu AI text translation API Key is not configured.</string>
     <string name="workshop_comments_title">Comments</string>
     <string name="workshop_action_retry_comments">Retry loading comments</string>
     <string name="workshop_action_previous_page">Previous page</string>

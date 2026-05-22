@@ -14,6 +14,7 @@ import io.stamethyst.backend.mods.ModManager
 import io.stamethyst.backend.mods.MtsLaunchManifestValidator
 import io.stamethyst.backend.workshop.WorkshopDownloadProcessService
 import io.stamethyst.backend.workshop.WorkshopDownloadTaskStore
+import io.stamethyst.backend.workshop.WorkshopInterruptedDownloadRecovery
 import io.stamethyst.backend.workshop.WorkshopInstalledModRecord
 import io.stamethyst.backend.workshop.WorkshopMetadataStore
 import io.stamethyst.backend.workshop.WorkshopModCardState
@@ -140,6 +141,7 @@ internal class MainModManagementController(
         if (!storageAccessible) {
             return
         }
+        recoverInterruptedWorkshopDownloads(host)
         WorkshopMetadataStore(host).markMissingFiles()
         val mods = loadModItems(host)
         requiredModsSnapshot.clear()
@@ -163,6 +165,41 @@ internal class MainModManagementController(
         profileState = profileStore.sanitizeSelections(host, profileState, collectInstalledOptionalModKeys())
         sanitizeFolderAssignments(optionalMods)
         persistFolderState(host)
+    }
+
+    private fun recoverInterruptedWorkshopDownloads(host: Activity) {
+        val metadataStore = WorkshopMetadataStore(host)
+        val taskStore = WorkshopDownloadTaskStore(host)
+        taskStore.list().forEach { task ->
+            if (!WorkshopDownloadProcessService.isActiveDownload(task.publishedFileId)) {
+                WorkshopInterruptedDownloadRecovery.recoverFinishedTransferIfPossible(
+                    context = host,
+                    metadataStore = metadataStore,
+                    taskStore = taskStore,
+                    task = task,
+                )
+            }
+        }
+        taskStore.recoverInterruptedTasksWithResult { task ->
+            !WorkshopDownloadProcessService.isActiveDownload(task.publishedFileId)
+        }.forEach { task ->
+            if (WorkshopInterruptedDownloadRecovery.recoverFinishedTransferIfPossible(
+                    context = host,
+                    metadataStore = metadataStore,
+                    taskStore = taskStore,
+                    task = task,
+                )
+            ) {
+                return@forEach
+            }
+            val summary = task.details.summary
+            metadataStore.updateState(
+                appId = summary.appId,
+                publishedFileId = summary.publishedFileId,
+                state = WorkshopModCardState.DownloadPaused,
+                statusText = task.message.ifBlank { host.getString(R.string.workshop_download_task_message_paused) },
+            )
+        }
     }
 
     fun snapshot(): Snapshot {

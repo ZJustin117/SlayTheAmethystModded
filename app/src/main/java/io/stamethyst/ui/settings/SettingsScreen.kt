@@ -36,6 +36,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
@@ -82,6 +83,8 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -100,6 +103,7 @@ import io.stamethyst.backend.render.RendererBackend
 import io.stamethyst.backend.render.RendererSelectionMode
 import io.stamethyst.backend.render.VirtualResolutionMode
 import io.stamethyst.backend.update.UpdateSource
+import io.stamethyst.backend.workshop.BaiduTranslationCredentials
 import io.stamethyst.backend.workshop.SteamLanguagePreference
 import io.stamethyst.config.BackBehavior
 import io.stamethyst.config.GpuResourceGuardianMode
@@ -182,6 +186,12 @@ fun LauncherSettingsScreen(
             viewModel.onWorkshopAutoImportChanged(activity, enabled)
         },
         onClearWorkshopPreviewCache = { viewModel.onClearWorkshopPreviewCache(activity) },
+        onLoadBaiduTranslationCredentials = {
+            viewModel.readBaiduTranslationCredentials(activity)
+        },
+        onSaveBaiduTranslationCredentials = { appId, apiKey ->
+            viewModel.onSaveBaiduTranslationCredentials(activity, appId, apiKey)
+        },
         onRenderScaleSelected = { value -> viewModel.onRenderScaleSelected(activity, value) },
         onTargetFpsSelected = { fps -> viewModel.onTargetFpsSelected(activity, fps) },
         onVirtualResolutionModeChanged = { mode ->
@@ -440,6 +450,8 @@ private fun LauncherSettingsScreenContent(
     onWorkshopSteamLanguageChanged: (SteamLanguagePreference) -> Unit = {},
     onWorkshopAutoImportChanged: (Boolean) -> Unit = {},
     onClearWorkshopPreviewCache: () -> Unit = {},
+    onLoadBaiduTranslationCredentials: () -> BaiduTranslationCredentials = { BaiduTranslationCredentials() },
+    onSaveBaiduTranslationCredentials: (String, String) -> Unit = { _, _ -> },
     onRenderScaleSelected: (Float) -> Unit = {},
     onTargetFpsSelected: (Int) -> Unit = {},
     onVirtualResolutionModeChanged: (VirtualResolutionMode) -> Unit = {},
@@ -607,6 +619,8 @@ private fun LauncherSettingsScreenContent(
                         onWorkshopSteamLanguageChanged = onWorkshopSteamLanguageChanged,
                         onWorkshopAutoImportChanged = onWorkshopAutoImportChanged,
                         onClearWorkshopPreviewCache = onClearWorkshopPreviewCache,
+                        onLoadBaiduTranslationCredentials = onLoadBaiduTranslationCredentials,
+                        onSaveBaiduTranslationCredentials = onSaveBaiduTranslationCredentials,
                     )
                 }
             }
@@ -805,7 +819,12 @@ private fun SettingsMarketSection(
     onWorkshopSteamLanguageChanged: (SteamLanguagePreference) -> Unit,
     onWorkshopAutoImportChanged: (Boolean) -> Unit,
     onClearWorkshopPreviewCache: () -> Unit,
+    onLoadBaiduTranslationCredentials: () -> BaiduTranslationCredentials,
+    onSaveBaiduTranslationCredentials: (String, String) -> Unit,
 ) {
+    var showBaiduTranslationDialog by remember { mutableStateOf(false) }
+    var baiduTranslationAppIdInput by remember { mutableStateOf("") }
+    var baiduTranslationApiKeyInput by remember { mutableStateOf("") }
     Text(
         text = stringResource(R.string.settings_market_intro),
         style = MaterialTheme.typography.bodySmall,
@@ -861,11 +880,80 @@ private fun SettingsMarketSection(
     )
     Spacer(modifier = Modifier.size(8.dp))
     SettingsActionListItem(
+        title = stringResource(R.string.settings_baidu_translation_credentials_title),
+        supportingText = stringResource(
+            if (uiState.baiduTranslationCredentialsConfigured) {
+                R.string.settings_baidu_translation_credentials_configured
+            } else {
+                R.string.settings_baidu_translation_credentials_not_configured
+            }
+        ),
+        enabled = !uiState.busy,
+        onClick = {
+            val credentials = onLoadBaiduTranslationCredentials()
+            baiduTranslationAppIdInput = credentials.appId
+            baiduTranslationApiKeyInput = credentials.apiKey
+            showBaiduTranslationDialog = true
+        },
+    )
+    Spacer(modifier = Modifier.size(8.dp))
+    SettingsActionListItem(
         title = stringResource(R.string.settings_market_clear_preview_cache_title),
         supportingText = stringResource(R.string.settings_market_clear_preview_cache_desc),
         enabled = !uiState.busy,
         onClick = onClearWorkshopPreviewCache,
     )
+
+    if (showBaiduTranslationDialog) {
+        AlertDialog(
+            onDismissRequest = { showBaiduTranslationDialog = false },
+            title = { Text(stringResource(R.string.settings_baidu_translation_credentials_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = stringResource(R.string.settings_baidu_translation_credentials_desc),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedTextField(
+                        value = baiduTranslationAppIdInput,
+                        onValueChange = { baiduTranslationAppIdInput = it.trim() },
+                        label = { Text(stringResource(R.string.settings_baidu_translation_app_id_label)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = baiduTranslationApiKeyInput,
+                        onValueChange = { baiduTranslationApiKeyInput = it.trim() },
+                        label = { Text(stringResource(R.string.settings_baidu_translation_api_key_label)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onSaveBaiduTranslationCredentials(
+                            baiduTranslationAppIdInput,
+                            baiduTranslationApiKeyInput,
+                        )
+                        showBaiduTranslationDialog = false
+                    },
+                ) {
+                    Text(stringResource(R.string.common_action_save))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBaiduTranslationDialog = false }) {
+                    Text(stringResource(android.R.string.cancel))
+                }
+            },
+        )
+    }
 }
 
 @Composable

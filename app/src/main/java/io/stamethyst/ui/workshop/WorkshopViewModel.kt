@@ -12,6 +12,9 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.stamethyst.R
+import io.stamethyst.backend.workshop.BaiduAiTextTranslationClient
+import io.stamethyst.backend.workshop.BaiduTranslationCredentials
+import io.stamethyst.backend.workshop.BaiduTranslationCredentialsRepository
 import io.stamethyst.backend.workshop.WorkshopBrowseQuery
 import io.stamethyst.backend.workshop.WorkshopBrowseSort
 import io.stamethyst.backend.workshop.WorkshopBrowseTimeFilter
@@ -25,10 +28,15 @@ import io.stamethyst.backend.workshop.WorkshopModCardState
 import io.stamethyst.backend.workshop.WorkshopService
 import io.stamethyst.backend.workshop.WorkshopUpdateCheckResult
 import io.stamethyst.backend.workshop.WorkshopUpdateChecker
+import io.stamethyst.backend.workshop.buildBaiduModDescriptionReference
 import io.stamethyst.backend.workshop.isActiveDownload
 import io.stamethyst.backend.workshop.isRunningDownload
+import io.stamethyst.backend.workshop.mapLocaleLanguageToBaiduLanguage
 import java.io.File
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -45,6 +53,7 @@ internal class WorkshopViewModel : ViewModel() {
     private var activeSort: WorkshopBrowseSort = WorkshopBrowseSort.MostPopular
     private var activeTimeFilter: WorkshopBrowseTimeFilter = WorkshopBrowseTimeFilter.OneWeek
     private val detailsCache = mutableMapOf<String, WorkshopItemDetails>()
+    private val translationClient = BaiduAiTextTranslationClient()
 
     fun load(context: Context, initialListMode: WorkshopListMode = WorkshopListMode.Browse) {
         WorkshopDownloadCenterStore.initialize(context)
@@ -289,6 +298,8 @@ internal class WorkshopViewModel : ViewModel() {
                 errorMessage = null,
                 commentLoadingId = null,
                 commentErrorMessage = null,
+                detailTranslationLoadingId = null,
+                detailTranslationErrorMessage = null,
             )
             runCatching {
                 withContext(Dispatchers.IO) { currentService.getDetails(appId, publishedFileId) }
@@ -396,6 +407,127 @@ internal class WorkshopViewModel : ViewModel() {
     fun downloadSelected(context: Context) {
         val details = uiState.selected ?: return
         startDownloadAfterDependencyCheck(context, details.summary, details)
+    }
+
+    fun translateSelectedDetails(context: Context) {
+        val details = uiState.selected ?: return
+        val summary = details.summary
+        if (uiState.detailTranslationLoadingId == summary.publishedFileId) return
+
+        val originalTitle = summary.title.trim()
+        val originalDescription = summary.description.trim()
+        if (originalTitle.isBlank() && originalDescription.isBlank()) {
+            uiState = uiState.copy(detailTranslationErrorMessage = context.getString(R.string.workshop_translate_no_text))
+            return
+        }
+
+        val credentials = BaiduTranslationCredentialsRepository(context).getCredentials()
+        validateBaiduTranslationCredentials(context, credentials)?.let { message ->
+            uiState = uiState.copy(detailTranslationErrorMessage = message)
+            return
+        }
+
+        val appId = summary.appId
+        val publishedFileId = summary.publishedFileId
+        uiState = uiState.copy(
+            detailTranslationLoadingId = publishedFileId,
+            detailTranslationErrorMessage = null,
+        )
+        viewModelScope.launch {
+            runCatching {
+                val targetLanguage = mapLocaleLanguageToBaiduLanguage(Locale.getDefault()) ?: BAIDU_DEFAULT_TARGET_LANGUAGE
+                val reference = buildBaiduModDescriptionReference(
+                    modTitle = originalTitle,
+                    gameTitle = BAIDU_STS_GAME_TITLE,
+                )
+                coroutineScope {
+                    val translatedTitle = if (originalTitle.isBlank()) {
+                        null
+                    } else {
+                        async {
+                            translateWithBaiduCredentials(
+                                text = originalTitle,
+                                targetLanguage = targetLanguage,
+                                credentials = credentials,
+                                reference = reference,
+                            )
+                        }
+                    }
+                    val translatedDescription = if (originalDescription.isBlank()) {
+                        null
+                    } else {
+                        async {
+                            translateWithBaiduCredentials(
+                                text = originalDescription,
+                                targetLanguage = targetLanguage,
+                                credentials = credentials,
+                                reference = reference,
+                            )
+                        }
+                    }
+                    TranslatedWorkshopDetailText(
+                        title = translatedTitle?.await()?.trim()?.takeIf(String::isNotBlank) ?: summary.title,
+                        description = translatedDescription?.await()?.trim()?.takeIf(String::isNotBlank) ?: summary.description,
+                    )
+                }
+            }.onSuccess { translated ->
+                val current = uiState.selected?.takeIf { selected ->
+                    selected.summary.appId == appId && selected.summary.publishedFileId == publishedFileId
+                }
+                if (current == null) {
+                    uiState = uiState.copy(detailTranslationLoadingId = null)
+                    return@onSuccess
+                }
+                val translatedSummary = current.summary.copy(
+                    title = translated.title,
+                    description = translated.description,
+                )
+                val translatedDetails = current.copy(summary = translatedSummary)
+                detailsCache[translatedDetails.cacheKey()] = translatedDetails
+                uiState = uiState.copy(
+                    selected = translatedDetails,
+                    items = uiState.items.map { item ->
+                        if (item.appId == appId && item.publishedFileId == publishedFileId) {
+                            item.copy(title = translated.title, description = translated.description)
+                        } else {
+                            item
+                        }
+                    },
+                    detailTranslationLoadingId = null,
+                    detailTranslationErrorMessage = null,
+                )
+            }.onFailure { error ->
+                uiState = uiState.copy(
+                    detailTranslationLoadingId = null,
+                    detailTranslationErrorMessage = error.message ?: context.getString(R.string.workshop_translate_failed),
+                )
+            }
+        }
+    }
+
+    private suspend fun translateWithBaiduCredentials(
+        text: String,
+        targetLanguage: String,
+        credentials: BaiduTranslationCredentials,
+        reference: String,
+    ): String = translationClient.translate(
+        text = text,
+        sourceLanguage = BAIDU_AUTO_DETECT_LANGUAGE,
+        targetLanguage = targetLanguage,
+        credentials = credentials,
+        reference = reference,
+    )
+
+    private fun validateBaiduTranslationCredentials(
+        context: Context,
+        credentials: BaiduTranslationCredentials,
+    ): String? = when {
+        credentials.appId.isBlank() && credentials.apiKey.isBlank() ->
+            context.getString(R.string.workshop_translate_missing_app_id_api_key)
+
+        credentials.appId.isBlank() -> context.getString(R.string.workshop_translate_missing_app_id)
+        credentials.apiKey.isBlank() -> context.getString(R.string.workshop_translate_missing_api_key)
+        else -> null
     }
 
     fun pauseDownload(context: Context, task: WorkshopDownloadTaskUi) {
@@ -710,6 +842,8 @@ internal data class WorkshopUiState(
     val pendingDependencyDownload: WorkshopPendingDependencyDownload? = null,
     val commentLoadingId: ULong? = null,
     val commentErrorMessage: String? = null,
+    val detailTranslationLoadingId: ULong? = null,
+    val detailTranslationErrorMessage: String? = null,
     val errorMessage: String? = null,
 ) {
     companion object {
@@ -725,6 +859,11 @@ internal enum class WorkshopListMode {
 internal data class WorkshopPendingDependencyDownload(
     val details: WorkshopItemDetails,
     val missingDependencies: List<WorkshopItemSummary>,
+)
+
+private data class TranslatedWorkshopDetailText(
+    val title: String,
+    val description: String,
 )
 
 private fun WorkshopItemDetails.shouldLoadWorkshopComments(): Boolean =
@@ -756,3 +895,7 @@ private fun String.toTaskStatus(): WorkshopDownloadTaskStatus? = when (this) {
 private fun Bundle.optionalInt(key: String): Int? = if (containsKey(key)) getInt(key) else null
 
 private fun Bundle.optionalLong(key: String): Long? = if (containsKey(key)) getLong(key) else null
+
+private const val BAIDU_AUTO_DETECT_LANGUAGE = "auto"
+private const val BAIDU_DEFAULT_TARGET_LANGUAGE = "zh"
+private const val BAIDU_STS_GAME_TITLE = "Slay the Spire"

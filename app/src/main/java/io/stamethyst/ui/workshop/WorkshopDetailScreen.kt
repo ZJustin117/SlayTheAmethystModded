@@ -37,7 +37,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -59,6 +58,8 @@ import io.stamethyst.R
 import io.stamethyst.backend.workshop.WorkshopComment
 import io.stamethyst.backend.workshop.WorkshopItemDetails
 import io.stamethyst.backend.workshop.WorkshopItemSummary
+import io.stamethyst.ui.Icons
+import io.stamethyst.ui.icon.ArrowBack
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -72,7 +73,6 @@ internal fun WorkshopDetailScreen(
     viewModel: WorkshopViewModel,
     modifier: Modifier = Modifier,
     onBack: () -> Unit,
-    onOpenDownloadCenter: () -> Unit,
     onOpenDetails: (WorkshopItemSummary) -> Unit,
 ) {
     val context = LocalContext.current
@@ -100,6 +100,10 @@ internal fun WorkshopDetailScreen(
     }
 
     val selectedDetails = state.selected?.takeIf { it.summary.publishedFileId == publishedFileId }
+    val isTranslatingDetails = state.detailTranslationLoadingId == publishedFileId
+    val canTranslateDetails = selectedDetails?.summary?.let { summary ->
+        summary.title.isNotBlank() || summary.description.isNotBlank()
+    } == true
     val primaryContentState = when {
         state.detailLoadingId == publishedFileId && selectedDetails == null -> DetailPrimaryContentState.Loading
         state.errorMessage != null && selectedDetails == null -> DetailPrimaryContentState.Error
@@ -132,8 +136,29 @@ internal fun WorkshopDetailScreen(
                         )
                     }
                 },
-                navigationIcon = { TextButton(onClick = onBack) { Text(stringResource(R.string.settings_first_run_action_back)) } },
-                actions = { TextButton(onClick = onOpenDownloadCenter) { Text(stringResource(R.string.workshop_download_center_title)) } },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.ArrowBack,
+                            contentDescription = stringResource(R.string.common_content_desc_back),
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = { viewModel.translateSelectedDetails(context.applicationContext) },
+                        enabled = canTranslateDetails && !isTranslatingDetails,
+                    ) {
+                        if (isTranslatingDetails) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_translate),
+                                contentDescription = stringResource(R.string.workshop_translate_action),
+                            )
+                        }
+                    }
+                },
             )
         },
     ) { padding ->
@@ -198,6 +223,8 @@ internal fun WorkshopDetailScreen(
                         modifier = Modifier.animateItem(),
                         publishedFileId = details.summary.publishedFileId,
                         text = details.summary.description,
+                        isTranslating = isTranslatingDetails,
+                        translationErrorMessage = state.detailTranslationErrorMessage,
                     )
                 }
                 item(key = "workshop-detail-comments") {
@@ -434,6 +461,8 @@ private fun DetailDescriptionCard(
     modifier: Modifier = Modifier,
     publishedFileId: ULong,
     text: String,
+    isTranslating: Boolean,
+    translationErrorMessage: String?,
 ) {
     var expanded by rememberSaveable(publishedFileId.toString()) { mutableStateOf(false) }
     val description = text.ifBlank { stringResource(R.string.workshop_description_empty) }
@@ -465,6 +494,32 @@ private fun DetailDescriptionCard(
                 maxLines = if (expanded) Int.MAX_VALUE else 4,
                 overflow = TextOverflow.Ellipsis,
             )
+            if (isTranslating) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Text(
+                        text = stringResource(R.string.workshop_translate_loading),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            translationErrorMessage?.let { message ->
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    shape = RoundedCornerShape(16.dp),
+                ) {
+                    Text(
+                        text = message,
+                        modifier = Modifier.padding(12.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
         }
     }
 }

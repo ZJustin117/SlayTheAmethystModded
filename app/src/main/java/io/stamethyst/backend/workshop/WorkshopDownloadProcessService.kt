@@ -308,6 +308,16 @@ class WorkshopDownloadProcessService : Service() {
                             if (taskStore.isMarkedDeleted(details.summary.publishedFileId)) return@collect
                             val message = event.state.displayText()
                             updateNotification(message)
+                            if (event.state == WorkshopDownloadState.Success) {
+                                rememberCompletedJarBeforeFinalization(
+                                    metadataStore = metadataStore,
+                                    taskStore = taskStore,
+                                    service = service,
+                                    details = details,
+                                )
+                                taskStore.appendLog(details.summary.publishedFileId, "状态变更：$message")
+                                return@collect
+                            }
                             if (event.state != WorkshopDownloadState.Success) {
                                 metadataStore.updateState(
                                     appId = details.summary.appId,
@@ -333,7 +343,6 @@ class WorkshopDownloadProcessService : Service() {
                             }
                             val outputDir = File(applicationContext.filesDir, "workshop/${details.summary.appId}/${details.summary.publishedFileId}")
                             val jarArtifact = findDownloadedJar(outputDir)
-                            val previewImagePath = downloadPreviewImageIfNeeded(service, metadataStore, details)
                             val message: String
                             val record = if (jarArtifact != null) {
                                 val downloadedMessage = if (countDownloadedJars(outputDir) > 1) {
@@ -341,12 +350,32 @@ class WorkshopDownloadProcessService : Service() {
                                 } else {
                                     "下载完成"
                                 }
-                                val downloadedRecord = service.createInstalledRecord(details, jarArtifact)
-                                if (LauncherPreferences.isWorkshopAutoImportEnabled(applicationContext)) {
+                                val autoImportEnabled = LauncherPreferences.isWorkshopAutoImportEnabled(applicationContext)
+                                val preserveExistingUntilAutoImportFinishes = autoImportEnabled && existingRecord.hasInstalledJar()
+                                var downloadedRecord = service.createInstalledRecord(details, jarArtifact)
+                                if (!preserveExistingUntilAutoImportFinishes) {
+                                    metadataStore.upsert(downloadedRecord)
+                                }
+                                taskStore.update(details.summary.publishedFileId) {
+                                    it.copy(
+                                        status = WorkshopDownloadTaskStatus.Completed,
+                                        message = "下载完成，正在处理导入修补",
+                                        progressPercent = 100,
+                                        downloadedBytes = (it.totalBytes ?: it.downloadedBytes).coerceAtLeast(it.downloadedBytes),
+                                        completedFiles = it.totalFiles ?: it.completedFiles,
+                                        updatedAtMillis = System.currentTimeMillis(),
+                                    )
+                                }
+                                taskStore.appendLog(details.summary.publishedFileId, "下载文件已落盘，进入导入修补阶段")
+                                val previewImagePath = downloadPreviewImageIfNeeded(service, metadataStore, details)
+                                downloadedRecord = downloadedRecord.copy(localPreviewImagePath = previewImagePath)
+                                if (!preserveExistingUntilAutoImportFinishes) {
+                                    metadataStore.upsert(downloadedRecord)
+                                }
+                                if (autoImportEnabled) {
                                     val jarFile = File(outputDir, jarArtifact.relativePath)
                                     when (val importResult = WorkshopAutoImporter.importDownloadedJar(applicationContext, details, jarFile)) {
                                         is WorkshopAutoImportResult.Imported -> {
-                                            cleanDownloadedContent(outputDir)
                                             message = "下载完成，已自动导入 ${importResult.modName}"
                                             downloadedRecord.copy(
                                                 localJarPath = importResult.storagePath,
@@ -356,7 +385,11 @@ class WorkshopDownloadProcessService : Service() {
                                         }
                                         is WorkshopAutoImportResult.Failed -> {
                                             message = "$downloadedMessage，自动导入失败：${importResult.message}"
-                                            downloadedRecord.copy(statusText = "自动导入失败，请手动导入")
+                                            if (preserveExistingUntilAutoImportFinishes) {
+                                                existingRecord!!.copy(statusText = message)
+                                            } else {
+                                                downloadedRecord.copy(statusText = "自动导入失败，请手动导入")
+                                            }
                                         }
                                     }
                                 } else {
@@ -364,14 +397,19 @@ class WorkshopDownloadProcessService : Service() {
                                     downloadedRecord
                                 }
                             } else {
+                                val previewImagePath = downloadPreviewImageIfNeeded(service, metadataStore, details)
                                 val texturePackDir = TextureReplacerWorkshopInstaller.install(applicationContext, details, outputDir)
                                 message = "下载完成，已作为 Texture Replacer 资源包安装并启用"
                                 service.createTexturePackRecord(details, texturePackDir)
-                            }.copy(localPreviewImagePath = previewImagePath)
+                                    .copy(localPreviewImagePath = previewImagePath)
+                            }
                             if (existingRecord == null) {
                                 NewlyImportedModHighlightStore.mark(applicationContext, record.newlyImportedHighlightKeys())
                             }
                             metadataStore.upsert(record)
+                            if (jarArtifact != null && record.cardState == WorkshopModCardState.ImportedPatched) {
+                                cleanDownloadedContent(outputDir)
+                            }
                             taskStore.update(details.summary.publishedFileId) {
                                 it.copy(
                                     status = WorkshopDownloadTaskStatus.Completed,
@@ -599,6 +637,42 @@ class WorkshopDownloadProcessService : Service() {
             state = fallbackState,
             statusText = fallbackStatusText,
         )
+    }
+
+    private fun rememberCompletedJarBeforeFinalization(
+        metadataStore: WorkshopMetadataStore,
+        taskStore: WorkshopDownloadTaskStore,
+        service: WorkshopService,
+        details: WorkshopItemDetails,
+    ) {
+        val task = taskStore.find(details.summary.publishedFileId)
+        if (task?.status == WorkshopDownloadTaskStatus.Completed) return
+        val outputDir = File(applicationContext.filesDir, "workshop/${details.summary.appId}/${details.summary.publishedFileId}")
+        val jarArtifact = findDownloadedJar(outputDir) ?: return
+        val existingRecord = metadataStore.findByPublishedFileId(
+            appId = details.summary.appId,
+            publishedFileId = details.summary.publishedFileId,
+        )
+        if (existingRecord?.localJarPath?.trim()?.let { path -> File(path).isAbsolute && File(path).isFile } == true) {
+            return
+        }
+        metadataStore.upsert(service.createInstalledRecord(details, jarArtifact))
+        taskStore.update(details.summary.publishedFileId) {
+            it.copy(
+                status = WorkshopDownloadTaskStatus.Completed,
+                message = "下载完成，正在处理导入修补",
+                progressPercent = 100,
+                downloadedBytes = (it.totalBytes ?: it.downloadedBytes).coerceAtLeast(it.downloadedBytes),
+                completedFiles = it.totalFiles ?: it.completedFiles,
+                updatedAtMillis = System.currentTimeMillis(),
+            )
+        }
+        taskStore.appendLog(details.summary.publishedFileId, "下载文件已落盘，进入导入修补阶段")
+    }
+
+    private fun WorkshopInstalledModRecord?.hasInstalledJar(): Boolean {
+        val path = this?.localJarPath?.trim().orEmpty()
+        return path.isNotEmpty() && File(path).isAbsolute && File(path).isFile
     }
 
     private fun WorkshopInstalledModRecord.restoreCandidateForInterruptedUpdate(): WorkshopInstalledModRecord? {

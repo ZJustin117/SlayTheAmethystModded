@@ -16,6 +16,7 @@ import io.stamethyst.backend.render.VirtualResolutionMode
 import io.stamethyst.backend.update.UpdateMirrorManager
 import io.stamethyst.backend.update.LauncherUpdateVersioning
 import io.stamethyst.backend.update.UpdateSource
+import io.stamethyst.backend.workshop.BaiduTranslationCredentialsRepository
 import io.stamethyst.backend.workshop.SteamLanguagePreference
 import io.stamethyst.config.BackBehavior
 import io.stamethyst.config.GpuResourceGuardianMode
@@ -100,6 +101,7 @@ internal object SettingsRepository {
         val workshopWattAccelerationEnabled: Boolean,
         val workshopSteamLanguage: SteamLanguagePreference,
         val workshopAutoImportEnabled: Boolean,
+        val baiduTranslationCredentialsConfigured: Boolean,
     )
 
     data class CompatibilitySnapshot(
@@ -205,6 +207,7 @@ internal object SettingsRepository {
                 workshopWattAccelerationEnabled = LauncherPreferences.isWorkshopWattAccelerationEnabled(context),
                 workshopSteamLanguage = LauncherPreferences.readWorkshopSteamLanguage(context),
                 workshopAutoImportEnabled = LauncherPreferences.isWorkshopAutoImportEnabled(context),
+                baiduTranslationCredentialsConfigured = BaiduTranslationCredentialsRepository(context).hasConfiguredCredentials(),
             ),
             compatibility = CompatibilitySnapshot(
                 globalAtlasFilterCompatEnabled =
