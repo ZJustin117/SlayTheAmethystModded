@@ -3917,6 +3917,8 @@ class SettingsScreenViewModel : ViewModel() {
                 host.getString(R.string.settings_virtual_resolution_mode_fullscreen_fill)
             VirtualResolutionMode.RESOLUTION_1080P ->
                 host.getString(R.string.settings_virtual_resolution_mode_1080p)
+            VirtualResolutionMode.RESOLUTION_720P ->
+                host.getString(R.string.settings_virtual_resolution_mode_720p)
             VirtualResolutionMode.RATIO_4_3 ->
                 host.getString(R.string.settings_virtual_resolution_mode_4_3)
             VirtualResolutionMode.RATIO_16_9 ->

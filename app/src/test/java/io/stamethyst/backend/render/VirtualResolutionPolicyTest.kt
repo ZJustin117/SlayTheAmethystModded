@@ -57,4 +57,18 @@ class VirtualResolutionPolicyTest {
         assertEquals(1080, resolution.height)
         assertEquals(1.0f, resolution.effectiveScale)
     }
+
+    @Test
+    fun resolve_720p_usesFixedBaseResolution() {
+        val resolution = VirtualResolutionPolicy.resolve(
+            physicalWidth = 1440,
+            physicalHeight = 1080,
+            renderScale = 1.0f,
+            mode = VirtualResolutionMode.RESOLUTION_720P
+        )
+
+        assertEquals(1280, resolution.width)
+        assertEquals(720, resolution.height)
+        assertEquals(1.0f, resolution.effectiveScale)
+    }
 }

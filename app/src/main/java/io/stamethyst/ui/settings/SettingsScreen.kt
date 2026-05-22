@@ -1,5 +1,7 @@
 package io.stamethyst.ui.settings
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -3296,6 +3298,7 @@ private fun SettingsAuthorInfoSection() {
             text = stringResource(R.string.settings_author_follow_notice),
             style = MaterialTheme.typography.bodySmall
         )
+        SettingsQqGroupLinkRow()
     }
 }
 
@@ -3329,9 +3332,32 @@ private fun SettingsInlineLinkRow(
 }
 
 @Composable
+private fun SettingsQqGroupLinkRow() {
+    val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
+    val groupNumber = stringResource(R.string.settings_author_qq_group_number)
+    val groupUrl = stringResource(R.string.settings_author_qq_group_url)
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(0.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(R.string.settings_author_qq_group_prefix),
+            style = MaterialTheme.typography.bodySmall
+        )
+        SettingsExternalLinkText(text = groupNumber, url = groupUrl) {
+            val clipboard = context.getSystemService(ClipboardManager::class.java)
+            clipboard?.setPrimaryClip(ClipData.newPlainText("qq-group", groupNumber))
+            uriHandler.openUri(groupUrl)
+        }
+    }
+}
+
+@Composable
 private fun SettingsExternalLinkText(
     text: String,
     url: String,
+    onClick: (() -> Unit)? = null,
 ) {
     val uriHandler = LocalUriHandler.current
     Text(
@@ -3341,7 +3367,11 @@ private fun SettingsExternalLinkText(
             textDecoration = TextDecoration.Underline,
         ),
         modifier = Modifier.hapticClickable(enabled = true) {
-            uriHandler.openUri(url)
+            if (onClick != null) {
+                onClick()
+            } else {
+                uriHandler.openUri(url)
+            }
         }
     )
 }
@@ -3436,6 +3466,8 @@ private fun virtualResolutionModeDisplayName(mode: VirtualResolutionMode): Strin
             stringResource(R.string.settings_virtual_resolution_mode_fullscreen_fill)
         VirtualResolutionMode.RESOLUTION_1080P ->
             stringResource(R.string.settings_virtual_resolution_mode_1080p)
+        VirtualResolutionMode.RESOLUTION_720P ->
+            stringResource(R.string.settings_virtual_resolution_mode_720p)
         VirtualResolutionMode.RATIO_4_3 ->
             stringResource(R.string.settings_virtual_resolution_mode_4_3)
         VirtualResolutionMode.RATIO_16_9 ->
@@ -3450,6 +3482,8 @@ private fun virtualResolutionModeDescription(mode: VirtualResolutionMode): Strin
             stringResource(R.string.settings_virtual_resolution_mode_desc_fullscreen_fill)
         VirtualResolutionMode.RESOLUTION_1080P ->
             stringResource(R.string.settings_virtual_resolution_mode_desc_1080p)
+        VirtualResolutionMode.RESOLUTION_720P ->
+            stringResource(R.string.settings_virtual_resolution_mode_desc_720p)
         VirtualResolutionMode.RATIO_4_3 ->
             stringResource(R.string.settings_virtual_resolution_mode_desc_4_3)
         VirtualResolutionMode.RATIO_16_9 ->

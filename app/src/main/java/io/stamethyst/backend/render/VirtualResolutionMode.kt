@@ -8,6 +8,7 @@ enum class VirtualResolutionMode(
 ) {
     FULLSCREEN_FILL("fullscreen_fill", null),
     RESOLUTION_1080P("1080p", 16f / 9f, 1920, 1080),
+    RESOLUTION_720P("720p", 16f / 9f, 1280, 720),
     RATIO_4_3("4_3", 4f / 3f),
     RATIO_16_9("16_9", 16f / 9f);
 
