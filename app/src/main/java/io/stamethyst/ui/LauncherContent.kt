@@ -419,8 +419,8 @@ fun LauncherContent(
                                 modifier = Modifier.fillMaxSize(),
                                 showBackButton = true,
                                 initialListMode = WorkshopListMode.Subscriptions,
-                                title = "已订阅模组",
-                                subtitle = "查看当前 Steam 账号订阅的创意工坊模组",
+                                title = stringResource(R.string.workshop_subscriptions_title),
+                                subtitle = stringResource(R.string.workshop_subscriptions_subtitle),
                                 onBack = { navigator.goBack() },
                                 onOpenSteamLogin = { navigator.push(Route.SteamCloudLogin) },
                                 onOpenDownloadCenter = { navigator.push(Route.WorkshopDownloadCenter) },
@@ -935,28 +935,28 @@ private fun LauncherDockBar(
                 selected = selectedRoute == Route.Main,
                 route = Route.Main,
                 iconResId = R.drawable.ic_dock_game,
-                label = "游戏",
+                label = stringResource(R.string.main_dock_game),
                 onSelectRoute = onSelectRoute,
             )
             LauncherDockItem(
                 selected = selectedRoute == Route.Mods,
                 route = Route.Mods,
                 iconResId = R.drawable.ic_dock_mods,
-                label = "模组",
+                label = stringResource(R.string.main_dock_mods),
                 onSelectRoute = onSelectRoute,
             )
             LauncherDockItem(
                 selected = selectedRoute == Route.Workshop,
                 route = Route.Workshop,
                 iconResId = R.drawable.ic_dock_market,
-                label = "市场",
+                label = stringResource(R.string.main_dock_market),
                 onSelectRoute = onSelectRoute,
             )
             LauncherDockItem(
                 selected = selectedRoute == Route.Settings,
                 route = Route.Settings,
                 iconResId = R.drawable.ic_dock_settings,
-                label = "设置",
+                label = stringResource(R.string.main_dock_settings),
                 onSelectRoute = onSelectRoute,
             )
         }

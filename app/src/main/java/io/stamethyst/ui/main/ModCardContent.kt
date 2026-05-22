@@ -162,7 +162,7 @@ internal fun ModCardBodyContent(
     if (showWorkshopBadgeDialog) {
         AlertDialog(
             onDismissRequest = { showWorkshopBadgeDialog = false },
-            text = { Text("该模组从市场中下载，将会自动检查更新。") },
+            text = { Text(stringResource(R.string.main_mod_workshop_origin_message)) },
             confirmButton = {
                 TextButton(onClick = { showWorkshopBadgeDialog = false }) {
                     Text(text = stringResource(R.string.common_action_confirm))
@@ -324,8 +324,8 @@ private fun WorkshopUpdateBadge(
 ) {
     ModCardLabelBadge(
         iconResId = R.drawable.ic_workshop_update,
-        text = "更新",
-        contentDescription = "更新可用",
+        text = stringResource(R.string.workshop_action_update),
+        contentDescription = stringResource(R.string.main_mod_update_available),
         enabled = enabled,
         onClick = onClick
     )
@@ -369,15 +369,15 @@ private fun NewImportBadge() {
 @Composable
 private fun WorkshopStateBadge(state: WorkshopModState) {
     val text = when (state) {
-        WorkshopModState.ImportedUnpatched -> "待修补"
-        WorkshopModState.ImportedPatched -> "工坊"
-        WorkshopModState.Downloading -> "下载中"
-        WorkshopModState.DownloadPaused -> "已暂停"
-        WorkshopModState.DownloadFailed -> "下载失败"
-        WorkshopModState.NonStandardDownloaded -> "需手动处理"
-        WorkshopModState.TexturePackInstalled -> "资源包"
-        WorkshopModState.UpdateAvailable -> "可更新"
-        WorkshopModState.FileMissing -> "文件缺失"
+        WorkshopModState.ImportedUnpatched -> stringResource(R.string.main_mod_workshop_state_needs_patch)
+        WorkshopModState.ImportedPatched -> stringResource(R.string.main_mod_workshop_state_workshop)
+        WorkshopModState.Downloading -> stringResource(R.string.main_mod_workshop_state_downloading)
+        WorkshopModState.DownloadPaused -> stringResource(R.string.main_mod_workshop_state_paused)
+        WorkshopModState.DownloadFailed -> stringResource(R.string.main_mod_workshop_state_failed)
+        WorkshopModState.NonStandardDownloaded -> stringResource(R.string.main_mod_workshop_state_manual_required)
+        WorkshopModState.TexturePackInstalled -> stringResource(R.string.main_mod_workshop_state_texture_pack)
+        WorkshopModState.UpdateAvailable -> stringResource(R.string.main_mod_workshop_state_update_available)
+        WorkshopModState.FileMissing -> stringResource(R.string.main_mod_workshop_state_file_missing)
     }
     ModCardTextBadge(text = text)
 }

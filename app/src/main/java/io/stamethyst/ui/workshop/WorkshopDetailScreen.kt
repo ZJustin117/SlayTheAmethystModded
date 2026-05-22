@@ -50,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -118,12 +119,12 @@ internal fun WorkshopDetailScreen(
                         ?.ifBlank { null }
                     Column {
                         Text(
-                            text = title ?: "模组详情",
+                            text = title ?: stringResource(R.string.workshop_detail_title),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            text = "创意工坊详情 · ID $publishedFileId",
+                            text = stringResource(R.string.workshop_detail_subtitle_format, publishedFileId.toString()),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
@@ -131,8 +132,8 @@ internal fun WorkshopDetailScreen(
                         )
                     }
                 },
-                navigationIcon = { TextButton(onClick = onBack) { Text("返回") } },
-                actions = { TextButton(onClick = onOpenDownloadCenter) { Text("下载中心") } },
+                navigationIcon = { TextButton(onClick = onBack) { Text(stringResource(R.string.settings_first_run_action_back)) } },
+                actions = { TextButton(onClick = onOpenDownloadCenter) { Text(stringResource(R.string.workshop_download_center_title)) } },
             )
         },
     ) { padding ->
@@ -242,19 +243,19 @@ private fun DetailModCard(
                 WorkshopPreviewImage(
                     publishedFileId = details.summary.publishedFileId,
                     url = details.summary.previewUrl,
-                    contentDescription = "${details.summary.title} 预览图",
+                    contentDescription = stringResource(R.string.workshop_preview_content_description, details.summary.title),
                     modifier = Modifier.size(112.dp),
                 )
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = details.summary.title.ifBlank { "未命名模组" },
+                        text = details.summary.title.ifBlank { stringResource(R.string.workshop_unnamed_mod) },
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = details.summary.authorName.ifBlank { "未知作者" },
+                        text = details.summary.authorName.ifBlank { stringResource(R.string.workshop_unknown_author) },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -279,12 +280,12 @@ private fun DetailMetaGrid(details: WorkshopItemDetails) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             DetailMetric(
-                label = "大小",
+                label = stringResource(R.string.workshop_detail_size),
                 value = formatBytes(details.summary.fileSizeBytes),
                 modifier = Modifier.weight(1f),
             )
             DetailMetric(
-                label = "上次更新",
+                label = stringResource(R.string.workshop_detail_updated_at),
                 value = formatDate(details.summary.updatedAtMillis),
                 modifier = Modifier.weight(1f),
             )
@@ -296,7 +297,7 @@ private fun DetailMetaGrid(details: WorkshopItemDetails) {
                 modifier = Modifier.weight(1f),
             )
             DetailMetric(
-                label = "下载次数",
+                label = stringResource(R.string.workshop_detail_download_count),
                 value = formatCount(details.summary.downloadCount),
                 modifier = Modifier.weight(1f),
             )
@@ -345,9 +346,9 @@ private fun DependencyCard(
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("前置模组", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.workshop_dependencies_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text(
-                        text = if (dependencies.isEmpty()) "该模组没有声明前置模组。" else "",
+                        text = if (dependencies.isEmpty()) stringResource(R.string.workshop_dependencies_empty) else "",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -394,25 +395,25 @@ private fun DependencyItemCard(
             WorkshopPreviewImage(
                 publishedFileId = dependency.item.publishedFileId,
                 url = dependency.item.previewUrl,
-                contentDescription = "${dependency.item.title} 预览图",
+                contentDescription = stringResource(R.string.workshop_preview_content_description, dependency.item.title),
             )
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
-                    text = dependency.item.title.ifBlank { "Workshop ID ${dependency.item.publishedFileId}" },
+                    text = dependency.item.title.ifBlank { stringResource(R.string.workshop_dependency_fallback_title, dependency.item.publishedFileId.toString()) },
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = dependency.item.authorName.ifBlank { dependency.item.description.ifBlank { dependency.statusLabel } },
+                    text = dependency.item.authorName.ifBlank { dependency.item.description.ifBlank { stringResource(dependency.statusLabelResId) } },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = "Workshop ID ${dependency.item.publishedFileId} · ${dependency.statusLabel}",
+                    text = stringResource(R.string.workshop_dependency_id_status_format, dependency.item.publishedFileId.toString(), stringResource(dependency.statusLabelResId)),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -435,7 +436,7 @@ private fun DetailDescriptionCard(
     text: String,
 ) {
     var expanded by rememberSaveable(publishedFileId.toString()) { mutableStateOf(false) }
-    val description = text.ifBlank { "该模组暂未提供简介。" }
+    val description = text.ifBlank { stringResource(R.string.workshop_description_empty) }
     Card(
         modifier = modifier.fillMaxWidth(),
         colors = workshopDetailCardColors(),
@@ -448,12 +449,12 @@ private fun DetailDescriptionCard(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("简介", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.workshop_description_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 }
                 IconButton(onClick = { expanded = !expanded }) {
                     Icon(
                         painter = painterResource(if (expanded) R.drawable.ic_expand_more else R.drawable.ic_chevron_right),
-                        contentDescription = if (expanded) "收起简介" else "展开简介",
+                        contentDescription = if (expanded) stringResource(R.string.workshop_description_collapse) else stringResource(R.string.workshop_description_expand),
                     )
                 }
             }
@@ -500,7 +501,7 @@ private fun DetailCommentsCard(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text("评论", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.workshop_comments_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text(
                     text = commentsSummary(details, showInlineLoading),
                     style = MaterialTheme.typography.bodyMedium,
@@ -518,7 +519,7 @@ private fun DetailCommentsCard(
                                 onClick = onRetry,
                                 enabled = !isLoading,
                                 modifier = Modifier.fillMaxWidth(),
-                            ) { Text("重试加载评论") }
+                            ) { Text(stringResource(R.string.workshop_action_retry_comments)) }
                         }
                     }
                 }
@@ -542,12 +543,12 @@ private fun DetailCommentsCard(
                             onClick = onPreviousPage,
                             enabled = !isLoading && details.hasPreviousCommentPage,
                             modifier = Modifier.weight(1f),
-                        ) { Text("上一页") }
+                        ) { Text(stringResource(R.string.workshop_action_previous_page)) }
                         OutlinedButton(
                             onClick = onNextPage,
                             enabled = !isLoading && details.hasNextCommentPage,
                             modifier = Modifier.weight(1f),
-                        ) { Text("下一页") }
+                        ) { Text(stringResource(R.string.workshop_action_next_page)) }
                     }
                 }
                 details.comments.forEach { comment -> CommentItemCard(comment = comment) }
@@ -581,7 +582,7 @@ private fun CommentsLoadingIndicator(modifier: Modifier = Modifier) {
     ) {
         CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
         Text(
-            text = " 正在加载评论",
+            text = " ${stringResource(R.string.workshop_comments_loading)}",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -633,7 +634,7 @@ private fun CommentItemCard(comment: WorkshopComment) {
 private fun DetailErrorCard(message: String, onRetry: () -> Unit) {
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("详情加载失败", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.workshop_detail_load_failed), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(
                 text = message,
                 style = MaterialTheme.typography.bodyMedium,
@@ -644,7 +645,7 @@ private fun DetailErrorCard(message: String, onRetry: () -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 48.dp),
-            ) { Text("重试加载") }
+            ) { Text(stringResource(R.string.workshop_action_retry_detail)) }
         }
     }
 }
@@ -655,7 +656,7 @@ private fun LoadingDetailCard() {
         Box(Modifier.fillMaxWidth().height(220.dp), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 CircularProgressIndicator()
-                Text("正在加载模组详情", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.workshop_detail_loading), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -672,33 +673,37 @@ private enum class DetailPrimaryContentState {
     Content,
 }
 
+@Composable
 private fun commentsSummary(details: WorkshopItemDetails, isLoading: Boolean): String = when {
-    isLoading && details.comments.isEmpty() -> "评论区加载中，每页显示 5 条。"
-    details.commentCount == 0L -> "这件模组目前没有公开评论。"
+    isLoading && details.comments.isEmpty() -> stringResource(R.string.workshop_comments_summary_loading)
+    details.commentCount == 0L -> stringResource(R.string.workshop_comments_summary_empty)
     details.commentCount != null && details.commentTotalPages != null ->
-        "当前第 ${details.commentPage} / ${details.commentTotalPages} 页，Steam 共 ${formatCount(details.commentCount)} 条评论。"
+        stringResource(R.string.workshop_comments_summary_pages, details.commentPage, details.commentTotalPages, formatCount(details.commentCount))
     details.commentCount != null ->
-        "当前第 ${details.commentPage} 页，Steam 共 ${formatCount(details.commentCount)} 条评论。"
+        stringResource(R.string.workshop_comments_summary_page, details.commentPage, formatCount(details.commentCount))
     details.comments.isNotEmpty() ->
-        "当前第 ${details.commentPage} 页，已加载 ${details.comments.size} 条公开评论。"
-    else -> "暂时没有读取到公开评论。"
+        stringResource(R.string.workshop_comments_summary_loaded, details.commentPage, details.comments.size)
+    else -> stringResource(R.string.workshop_comments_summary_none_loaded)
 }
 
+@Composable
 private fun formatCommentTime(comment: WorkshopComment): String =
     comment.postedEpochSeconds?.let { formatDate(it * 1000L) }
-        ?: comment.postedDisplayText.ifBlank { "时间未知" }
+        ?: comment.postedDisplayText.ifBlank { stringResource(R.string.workshop_unknown_time) }
 
+@Composable
 private fun formatCount(value: Long): String {
-    if (value <= 0L) return "未知"
+    if (value <= 0L) return stringResource(R.string.workshop_unknown_value)
     return when {
-        value >= 100_000_000L -> String.format(Locale.US, "%.1f亿", value / 100_000_000.0)
-        value >= 10_000L -> String.format(Locale.US, "%.1f万", value / 10_000.0)
+        value >= 100_000_000L -> stringResource(R.string.workshop_count_hundred_million, value / 100_000_000.0)
+        value >= 10_000L -> stringResource(R.string.workshop_count_ten_thousand, value / 10_000.0)
         else -> value.toString()
     }
 }
 
+@Composable
 private fun formatBytes(bytes: Long): String {
-    if (bytes <= 0L) return "未知"
+    if (bytes <= 0L) return stringResource(R.string.workshop_unknown_value)
     val units = arrayOf("B", "KB", "MB", "GB")
     var value = bytes.toDouble()
     var unitIndex = 0
@@ -713,7 +718,8 @@ private fun formatBytes(bytes: Long): String {
     }
 }
 
+@Composable
 private fun formatDate(timestampMillis: Long): String {
-    if (timestampMillis <= 0L) return "未知"
+    if (timestampMillis <= 0L) return stringResource(R.string.workshop_unknown_value)
     return SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(timestampMillis))
 }

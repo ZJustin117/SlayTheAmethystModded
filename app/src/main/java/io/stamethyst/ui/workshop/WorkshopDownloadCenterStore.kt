@@ -2,6 +2,7 @@ package io.stamethyst.ui.workshop
 
 import android.content.Context
 import androidx.compose.runtime.mutableStateListOf
+import io.stamethyst.R
 import io.stamethyst.backend.workshop.WorkshopDownloadTaskRecord
 import io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus
 import io.stamethyst.backend.workshop.WorkshopDownloadTaskStore
@@ -71,7 +72,7 @@ internal object WorkshopDownloadCenterStore {
                 appId = summary.appId,
                 publishedFileId = summary.publishedFileId,
                 state = WorkshopModCardState.DownloadPaused,
-                statusText = task.message.ifBlank { "下载已暂停，可继续" },
+                statusText = task.message.ifBlank { context.getString(R.string.workshop_download_task_message_paused) },
             )
         }
     }

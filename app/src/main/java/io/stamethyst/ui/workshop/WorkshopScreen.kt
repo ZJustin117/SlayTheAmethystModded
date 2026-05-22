@@ -68,6 +68,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -92,8 +93,8 @@ internal fun WorkshopScreen(
     showBackButton: Boolean = true,
     initialListMode: WorkshopListMode = WorkshopListMode.Browse,
     showSubscriptionsButton: Boolean = false,
-    title: String = "模组市场",
-    subtitle: String = "浏览并下载创意工坊模组",
+    title: String? = null,
+    subtitle: String? = null,
     onBack: () -> Unit,
     onOpenSteamLogin: () -> Unit,
     onOpenDownloadCenter: () -> Unit,
@@ -241,13 +242,13 @@ internal fun WorkshopScreen(
                 item(key = "workshop-section-title") {
                     SectionTitle(
                         title = when (state.listMode) {
-                            WorkshopListMode.Browse -> "工坊列表"
-                            WorkshopListMode.Subscriptions -> "已订阅模组"
+                            WorkshopListMode.Browse -> stringResource(R.string.workshop_section_browse)
+                            WorkshopListMode.Subscriptions -> stringResource(R.string.workshop_subscriptions_title)
                         },
                         subtitle = when {
-                            state.browseLoading -> "正在加载"
-                            state.items.isEmpty() -> "没有结果"
-                            else -> "${state.items.size} 个条目"
+                            state.browseLoading -> stringResource(R.string.workshop_section_loading)
+                            state.items.isEmpty() -> stringResource(R.string.workshop_section_no_results)
+                            else -> stringResource(R.string.workshop_section_item_count, state.items.size)
                         },
                     )
                 }
@@ -258,8 +259,8 @@ internal fun WorkshopScreen(
                             LoadingPanel(
                                 modifier = Modifier.animateItem(),
                                 text = when (state.listMode) {
-                                    WorkshopListMode.Browse -> "正在连接 Steam 创意工坊"
-                                    WorkshopListMode.Subscriptions -> "正在读取已订阅模组"
+                                    WorkshopListMode.Browse -> stringResource(R.string.workshop_loading_browse)
+                                    WorkshopListMode.Subscriptions -> stringResource(R.string.workshop_loading_subscriptions)
                                 },
                             )
                         }
@@ -269,16 +270,16 @@ internal fun WorkshopScreen(
                             EmptyPanel(
                                 modifier = Modifier.animateItem(),
                                 title = when (state.listMode) {
-                                    WorkshopListMode.Browse -> "没有找到条目"
-                                    WorkshopListMode.Subscriptions -> "没有已订阅模组"
+                                    WorkshopListMode.Browse -> stringResource(R.string.workshop_empty_title)
+                                    WorkshopListMode.Subscriptions -> stringResource(R.string.workshop_empty_subscriptions_title)
                                 },
                                 description = when (state.listMode) {
-                                    WorkshopListMode.Browse -> "换个关键词试试，或稍后刷新 Steam 创意工坊。"
-                                    WorkshopListMode.Subscriptions -> "该 Steam 账号暂时没有订阅杀戮尖塔创意工坊模组。"
+                                    WorkshopListMode.Browse -> stringResource(R.string.workshop_empty_description)
+                                    WorkshopListMode.Subscriptions -> stringResource(R.string.workshop_empty_subscriptions_description)
                                 },
                                 actionLabel = when (state.listMode) {
-                                    WorkshopListMode.Browse -> "刷新"
-                                    WorkshopListMode.Subscriptions -> "刷新订阅"
+                                    WorkshopListMode.Browse -> stringResource(R.string.common_action_refresh)
+                                    WorkshopListMode.Subscriptions -> stringResource(R.string.workshop_action_refresh_subscriptions)
                                 },
                                 onRetry = {
                                     when (state.listMode) {
@@ -335,8 +336,8 @@ internal fun WorkshopScreen(
                     showBackButton = showBackButton,
                     activeDownloadTaskCount = activeDownloadTaskCount,
                     showSubscriptionsButton = showSubscriptionsButton && state.steamLoggedIn,
-                    title = title,
-                    subtitle = subtitle,
+                    title = title ?: stringResource(R.string.workshop_market_title),
+                    subtitle = subtitle ?: stringResource(R.string.workshop_market_subtitle),
                     onBack = onBack,
                     onOpenSubscriptions = onOpenSubscriptions,
                     onOpenDownloadCenter = onOpenDownloadCenter,
@@ -370,9 +371,9 @@ private fun WorkshopHeaderPinnedContent(
     onOpenDownloadCenter: () -> Unit,
 ) {
     val downloadCenterDescription = if (activeDownloadTaskCount > 0) {
-        "下载中心，正在进行 $activeDownloadTaskCount 个下载任务"
+        stringResource(R.string.workshop_download_center_with_active_tasks, activeDownloadTaskCount)
     } else {
-        "下载中心"
+        stringResource(R.string.workshop_download_center_title)
     }
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -405,7 +406,7 @@ private fun WorkshopHeaderPinnedContent(
             ) {
                 Icon(
                     painter = painterResource(R.drawable.ic_workshop_subscriptions),
-                    contentDescription = "已订阅模组",
+                    contentDescription = stringResource(R.string.workshop_subscriptions_title),
                 )
             }
         }
@@ -427,7 +428,7 @@ private fun WorkshopHeaderPinnedContent(
             }
         }
         if (showBackButton) {
-            TextButton(onClick = onBack) { Text("返回") }
+            TextButton(onClick = onBack) { Text(stringResource(R.string.settings_first_run_action_back)) }
         }
     }
 }
@@ -454,9 +455,9 @@ private fun BrowsePaginationFooter(
             when {
                 loading -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator()
-                    Text("正在加载更多模组", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.workshop_loading_more), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                else -> Text("已经到底了", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else -> Text(stringResource(R.string.workshop_no_more_items), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -474,13 +475,13 @@ private fun WorkshopStatusHeader(
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
                 text = when (listMode) {
-                    WorkshopListMode.Browse -> "Steam 尚未登录，部分模组不会显示。"
-                    WorkshopListMode.Subscriptions -> "登录 Steam 后才能查看当前账号已订阅的创意工坊模组。"
+                    WorkshopListMode.Browse -> stringResource(R.string.workshop_not_logged_in_browse)
+                    WorkshopListMode.Subscriptions -> stringResource(R.string.workshop_not_logged_in_subscriptions)
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            OutlinedButton(onClick = onOpenSteamLogin) { Text("登录 Steam") }
+            OutlinedButton(onClick = onOpenSteamLogin) { Text(stringResource(R.string.workshop_action_login_steam)) }
         }
     }
 }
@@ -523,12 +524,12 @@ private fun SearchPanel(
                         expanded = false,
                         onExpandedChange = {},
                         enabled = !loading,
-                        placeholder = { Text("搜索模组") },
+                        placeholder = { Text(stringResource(R.string.workshop_search_placeholder)) },
                         trailingIcon = {
                             TextButton(
                                 enabled = !loading,
                                 onClick = { submitSearch() },
-                            ) { Text("搜索") }
+                            ) { Text(stringResource(R.string.workshop_search_action)) }
                         },
                     )
                 },
@@ -540,11 +541,6 @@ private fun SearchPanel(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = "留空浏览推荐/默认排序条目",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (sort.usesTimeFilter) {
                         Box {
@@ -552,7 +548,7 @@ private fun SearchPanel(
                                 enabled = !loading,
                                 onClick = { timeMenuExpanded = true }
                             ) {
-                                Text(timeFilter.displayName)
+                                Text(timeFilter.displayName())
                             }
                             DropdownMenu(
                                 expanded = timeMenuExpanded,
@@ -560,7 +556,7 @@ private fun SearchPanel(
                             ) {
                                 WorkshopBrowseTimeFilter.entries.forEach { option ->
                                     DropdownMenuItem(
-                                        text = { Text(option.displayName) },
+                                        text = { Text(option.displayName()) },
                                         onClick = {
                                             timeMenuExpanded = false
                                             if (option != timeFilter) {
@@ -574,7 +570,7 @@ private fun SearchPanel(
                     }
                     Box {
                         OutlinedButton(enabled = !loading, onClick = { sortMenuExpanded = true }) {
-                            Text(sort.displayName)
+                            Text(sort.displayName())
                         }
                         DropdownMenu(
                             expanded = sortMenuExpanded,
@@ -582,7 +578,7 @@ private fun SearchPanel(
                         ) {
                             WorkshopBrowseSort.entries.forEach { option ->
                                 DropdownMenuItem(
-                                    text = { Text(option.displayName) },
+                                    text = { Text(option.displayName()) },
                                     onClick = {
                                         sortMenuExpanded = false
                                         if (option != sort) {
@@ -627,12 +623,12 @@ private fun WorkshopItemCard(
             WorkshopPreviewImage(
                 publishedFileId = item.publishedFileId,
                 url = item.previewUrl,
-                contentDescription = "${item.title} 预览图",
+                contentDescription = stringResource(R.string.workshop_preview_content_description, item.title),
             )
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(item.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text(
-                    text = item.authorName.ifBlank { item.description.ifBlank { "点击查看详情" } },
+                    text = item.authorName.ifBlank { item.description.ifBlank { stringResource(R.string.workshop_open_detail_hint) } },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
@@ -664,7 +660,7 @@ internal fun WorkshopDownloadActionButton(
         ) {
             Icon(
                 painter = painterResource(state.actionIconRes),
-                contentDescription = state.actionLabel,
+                contentDescription = stringResource(state.actionLabelResId),
             )
         }
         return
@@ -674,34 +670,34 @@ internal fun WorkshopDownloadActionButton(
             modifier = modifier,
             enabled = false,
             onClick = onClick,
-        ) { Text(state.actionLabel) }
+        ) { Text(stringResource(state.actionLabelResId)) }
         WorkshopModDownloadState.NotDownloaded -> Button(
             modifier = modifier,
             enabled = enabled,
             onClick = onClick,
-        ) { Text(state.actionLabel) }
+        ) { Text(stringResource(state.actionLabelResId)) }
         WorkshopModDownloadState.UpdateAvailable -> Button(
             modifier = modifier,
             enabled = enabled,
             onClick = onClick,
-        ) { Text(state.actionLabel) }
+        ) { Text(stringResource(state.actionLabelResId)) }
         WorkshopModDownloadState.Paused -> Button(
             modifier = modifier,
             enabled = enabled,
             onClick = onClick,
-        ) { Text(state.actionLabel) }
+        ) { Text(stringResource(state.actionLabelResId)) }
         WorkshopModDownloadState.DownloadFailed -> Button(
             modifier = modifier,
             enabled = enabled,
             onClick = onClick,
-        ) { Text(state.actionLabel) }
+        ) { Text(stringResource(state.actionLabelResId)) }
         WorkshopModDownloadState.Queued,
         WorkshopModDownloadState.Cancelling,
         WorkshopModDownloadState.Downloading -> OutlinedButton(
             modifier = modifier,
             enabled = false,
             onClick = onClick,
-        ) { Text(state.actionLabel) }
+        ) { Text(stringResource(state.actionLabelResId)) }
     }
 }
 
@@ -714,20 +710,20 @@ internal fun MissingWorkshopDependenciesDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("安装前置模组？") },
+        title = { Text(stringResource(R.string.workshop_missing_dependencies_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("$modTitle 需要以下未安装前置，是否一并加入下载队列？")
+                Text(stringResource(R.string.workshop_missing_dependencies_message, modTitle))
                 missingDependencies.forEach { dependency ->
                     Text(
-                        text = "${dependency.title.ifBlank { "Workshop ID ${dependency.publishedFileId}" }} (${dependency.publishedFileId})",
+                        text = "${dependency.title.ifBlank { stringResource(R.string.workshop_dependency_fallback_title, dependency.publishedFileId.toString()) }} (${dependency.publishedFileId})",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
             }
         },
-        confirmButton = { Button(onClick = onConfirm) { Text("安装并下载") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        confirmButton = { Button(onClick = onConfirm) { Text(stringResource(R.string.workshop_action_install_and_download)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.main_folder_dialog_cancel)) } },
     )
 }
 
@@ -822,9 +818,9 @@ private fun ErrorPanel(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("加载失败", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onErrorContainer)
+            Text(stringResource(R.string.workshop_error_loading_title), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onErrorContainer)
             Text(message, color = MaterialTheme.colorScheme.onErrorContainer)
-            OutlinedButton(onClick = onRetry) { Text("重试") }
+            OutlinedButton(onClick = onRetry) { Text(stringResource(R.string.workshop_action_retry)) }
         }
     }
 }
@@ -832,18 +828,40 @@ private fun ErrorPanel(
 @Composable
 private fun EmptyPanel(
     modifier: Modifier = Modifier,
-    title: String = "没有找到条目",
-    description: String = "换个关键词试试，或稍后刷新 Steam 创意工坊。",
-    actionLabel: String = "刷新",
+    title: String? = null,
+    description: String? = null,
+    actionLabel: String? = null,
     onRetry: () -> Unit,
 ) {
+    val resolvedTitle = title ?: stringResource(R.string.workshop_empty_title)
+    val resolvedDescription = description ?: stringResource(R.string.workshop_empty_description)
+    val resolvedActionLabel = actionLabel ?: stringResource(R.string.common_action_refresh)
     Card(modifier = modifier.fillMaxWidth()) {
         Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
-            Text(description, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedButton(onClick = onRetry) { Text(actionLabel) }
+            Text(resolvedTitle, style = MaterialTheme.typography.titleMedium)
+            Text(resolvedDescription, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedButton(onClick = onRetry) { Text(resolvedActionLabel) }
         }
     }
+}
+
+@Composable
+private fun WorkshopBrowseSort.displayName(): String = when (this) {
+    WorkshopBrowseSort.MostPopular -> stringResource(R.string.workshop_sort_most_popular)
+    WorkshopBrowseSort.MostRecent -> stringResource(R.string.workshop_sort_most_recent)
+    WorkshopBrowseSort.LastUpdated -> stringResource(R.string.workshop_sort_last_updated)
+    WorkshopBrowseSort.MostSubscribed -> stringResource(R.string.workshop_sort_most_subscribed)
+}
+
+@Composable
+private fun WorkshopBrowseTimeFilter.displayName(): String = when (this) {
+    WorkshopBrowseTimeFilter.Today -> stringResource(R.string.workshop_time_today)
+    WorkshopBrowseTimeFilter.OneWeek -> stringResource(R.string.workshop_time_one_week)
+    WorkshopBrowseTimeFilter.ThirtyDays -> stringResource(R.string.workshop_time_thirty_days)
+    WorkshopBrowseTimeFilter.ThreeMonths -> stringResource(R.string.workshop_time_three_months)
+    WorkshopBrowseTimeFilter.SixMonths -> stringResource(R.string.workshop_time_six_months)
+    WorkshopBrowseTimeFilter.OneYear -> stringResource(R.string.workshop_time_one_year)
+    WorkshopBrowseTimeFilter.AllTime -> stringResource(R.string.workshop_time_all_time)
 }
 
 @Composable

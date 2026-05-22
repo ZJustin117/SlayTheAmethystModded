@@ -156,7 +156,7 @@ private fun LauncherCompatibilityScreenContent(
                     IconButton(onClick = onGoBack) {
                         Icon(
                             imageVector = Icons.ArrowBack,
-                            contentDescription = "返回"
+                            contentDescription = stringResource(R.string.common_content_desc_back)
                         )
                     }
                 }

@@ -463,7 +463,7 @@ private fun ModsHeaderPinnedContent(
         iconContentDescription = null,
         iconContainerColor = MaterialTheme.colorScheme.secondaryContainer,
         iconContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-        title = "模组",
+        title = stringResource(R.string.main_mods_title),
         subtitle = "",
         iconSize = 28.dp,
     ) {
@@ -525,7 +525,7 @@ private fun WorkshopUpdateCheckButton(
         Box(contentAlignment = Alignment.Center) {
             Icon(
                 painter = painterResource(R.drawable.ic_check_circle),
-                contentDescription = if (checking) "检查中" else "已为最新",
+                contentDescription = if (checking) stringResource(R.string.main_workshop_checking) else stringResource(R.string.main_workshop_up_to_date),
             )
             if (checking) {
                 CircularProgressIndicator(
@@ -561,7 +561,7 @@ private fun ModsHeaderExpandedContent(
 
     if (!canEditFolders) {
         Text(
-            text = "当前无法修改文件夹，等主进程准备好后再操作。",
+            text = stringResource(R.string.main_mod_folder_controls_unavailable),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -628,7 +628,7 @@ private fun GameStatusHeroCard(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(
-                text = "游戏概览",
+                text = stringResource(R.string.main_game_overview_title),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -639,12 +639,12 @@ private fun GameStatusHeroCard(
             ) {
                 GameMetricCard(
                     modifier = Modifier.weight(1f),
-                    label = "已加载模组",
+                    label = stringResource(R.string.main_game_loaded_mods),
                     value = "$enabledModCount / $totalModCount",
                 )
                 GameMetricCard(
                     modifier = Modifier.weight(1f),
-                    label = "模组大小",
+                    label = stringResource(R.string.main_game_mod_size),
                     value = formatLauncherByteSize(enabledModBytes),
                 )
             }
@@ -738,7 +738,7 @@ private fun SteamCloudOverviewCard(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(
-                    text = "云存档状态",
+                    text = stringResource(R.string.main_steam_cloud_status_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -746,7 +746,7 @@ private fun SteamCloudOverviewCard(
                     text = if (visibleIndicator) {
                         steamCloudActionBarTitle(indicator.state)
                     } else {
-                        "未启用或未登录"
+                        stringResource(R.string.main_steam_cloud_not_enabled_or_signed_in)
                     },
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -754,7 +754,7 @@ private fun SteamCloudOverviewCard(
                     text = if (visibleIndicator) {
                         steamCloudActionBarSummary(indicator)
                     } else {
-                        "在设置中登录 Steam 并启用云存档后，这里会显示同步状态。"
+                        stringResource(R.string.main_steam_cloud_disabled_summary)
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -860,7 +860,7 @@ fun LauncherModsScreen(
                     force = true,
                     notifyResult = true,
                 )
-                LauncherTransientNoticeBus.show(UiText.DynamicString("正在检查模组更新"))
+                LauncherTransientNoticeBus.show(UiText.StringResource(R.string.main_workshop_checking_notice))
             },
         )
     }
@@ -2047,7 +2047,7 @@ private fun MainTopBar(
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.ic_cloud),
-                        contentDescription = "打开创意工坊"
+                        contentDescription = stringResource(R.string.main_open_workshop)
                     )
                 }
                 CompactTopBarIconButton(

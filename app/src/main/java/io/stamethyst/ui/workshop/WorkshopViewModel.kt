@@ -11,6 +11,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.stamethyst.R
 import io.stamethyst.backend.workshop.WorkshopBrowseQuery
 import io.stamethyst.backend.workshop.WorkshopBrowseSort
 import io.stamethyst.backend.workshop.WorkshopBrowseTimeFilter
@@ -199,7 +200,7 @@ internal class WorkshopViewModel : ViewModel() {
                     items = merged,
                     nextPage = page + 1,
                     hasMorePages = result.hasNextPage,
-                    errorMessage = if (merged.isEmpty()) "未找到创意工坊条目" else null,
+                    errorMessage = if (merged.isEmpty()) context.getString(R.string.workshop_error_no_entries_found) else null,
                 )
             }.onFailure { error ->
                 if (activeListMode != WorkshopListMode.Browse) return@onFailure
@@ -299,7 +300,7 @@ internal class WorkshopViewModel : ViewModel() {
                     detailLoadingId = null,
                     errorMessage = null,
                     commentLoadingId = if (shouldLoadComments) publishedFileId else null,
-                    commentErrorMessage = details.commentUnavailableMessage(),
+                    commentErrorMessage = details.commentUnavailableMessage(context),
                 )
                 if (shouldLoadComments) {
                     loadWorkshopCommentsPage(context, appId, publishedFileId, page = 1)
@@ -354,7 +355,7 @@ internal class WorkshopViewModel : ViewModel() {
         val detailSnapshot = uiState.selected?.takeIf { details ->
             details.summary.appId == appId && details.summary.publishedFileId == publishedFileId
         } ?: return
-        val commentUnavailableMessage = detailSnapshot.commentUnavailableMessage()
+        val commentUnavailableMessage = detailSnapshot.commentUnavailableMessage(context)
         if (!detailSnapshot.shouldLoadWorkshopComments()) {
             uiState = uiState.copy(
                 commentLoadingId = null,
@@ -386,7 +387,7 @@ internal class WorkshopViewModel : ViewModel() {
             }.onFailure { error ->
                 uiState = uiState.copy(
                     commentLoadingId = null,
-                    commentErrorMessage = error.message ?: "加载评论失败。",
+                    commentErrorMessage = error.message ?: context.getString(R.string.workshop_error_load_comments_failed),
                 )
             }
         }
@@ -401,40 +402,40 @@ internal class WorkshopViewModel : ViewModel() {
         val details = task.details
         if (task.status.isRunningDownload()) {
             WorkshopDownloadCenterStore.update(task.publishedFileId) {
-                it.copy(status = WorkshopDownloadTaskStatus.Pausing, message = "正在暂停", updatedAtMillis = System.currentTimeMillis())
+                it.copy(status = WorkshopDownloadTaskStatus.Pausing, message = context.getString(R.string.workshop_status_pausing), updatedAtMillis = System.currentTimeMillis())
             }
             WorkshopDownloadProcessService.pause(context, details.summary.appId, details.summary.publishedFileId, createDownloadResultReceiver(context.applicationContext, details.summary))
         } else {
             WorkshopDownloadCenterStore.update(task.publishedFileId) {
-                it.copy(status = WorkshopDownloadTaskStatus.Paused, message = "下载已暂停", updatedAtMillis = System.currentTimeMillis())
+                it.copy(status = WorkshopDownloadTaskStatus.Paused, message = context.getString(R.string.workshop_status_paused), updatedAtMillis = System.currentTimeMillis())
             }
-            metadataStore?.updateState(details.summary.appId, details.summary.publishedFileId, WorkshopModCardState.DownloadPaused, "下载已暂停")
+            metadataStore?.updateState(details.summary.appId, details.summary.publishedFileId, WorkshopModCardState.DownloadPaused, context.getString(R.string.workshop_status_paused))
         }
-        uiState = uiState.copy(downloadStatus = "正在暂停", downloadInProgress = true, installedMods = metadataStore?.list().orEmpty())
+        uiState = uiState.copy(downloadStatus = context.getString(R.string.workshop_status_pausing), downloadInProgress = true, installedMods = metadataStore?.list().orEmpty())
     }
 
     fun resumeDownload(context: Context, task: WorkshopDownloadTaskUi) {
-        restartDownload(context, task, "继续下载")
+        restartDownload(context, task, context.getString(R.string.main_mod_workshop_action_continue_download))
     }
 
     fun retryDownload(context: Context, task: WorkshopDownloadTaskUi) {
-        restartDownload(context, task, "重新下载")
+        restartDownload(context, task, context.getString(R.string.main_mod_workshop_action_redownload))
     }
 
     fun cancelDownload(context: Context, task: WorkshopDownloadTaskUi) {
         val details = task.details
         if (task.status.isRunningDownload()) {
             WorkshopDownloadCenterStore.update(task.publishedFileId) {
-                it.copy(status = WorkshopDownloadTaskStatus.Cancelling, message = "正在取消", updatedAtMillis = System.currentTimeMillis())
+                it.copy(status = WorkshopDownloadTaskStatus.Cancelling, message = context.getString(R.string.workshop_status_canceling), updatedAtMillis = System.currentTimeMillis())
             }
             WorkshopDownloadProcessService.cancel(context, details.summary.appId, details.summary.publishedFileId, createDownloadResultReceiver(context.applicationContext, details.summary))
-            uiState = uiState.copy(downloadStatus = "正在取消", downloadInProgress = true, installedMods = metadataStore?.list().orEmpty())
+            uiState = uiState.copy(downloadStatus = context.getString(R.string.workshop_status_canceling), downloadInProgress = true, installedMods = metadataStore?.list().orEmpty())
             return
         }
         WorkshopDownloadCenterStore.remove(task.publishedFileId)
         metadataStore?.remove(details.summary.appId, details.summary.publishedFileId)
         File(context.filesDir, "workshop/${details.summary.appId}/${details.summary.publishedFileId}").deleteRecursively()
-        uiState = uiState.copy(downloadStatus = "下载已取消", downloadInProgress = false, installedMods = metadataStore?.list().orEmpty())
+        uiState = uiState.copy(downloadStatus = context.getString(R.string.workshop_status_cancelled), downloadInProgress = false, installedMods = metadataStore?.list().orEmpty())
         if (!task.status.isRunningDownload()) WorkshopDownloadProcessService.startNextQueued(context)
     }
 
@@ -461,7 +462,7 @@ internal class WorkshopViewModel : ViewModel() {
         }
         val currentService = service ?: return
         viewModelScope.launch {
-            uiState = uiState.copy(downloadStatus = "正在检查前置模组")
+            uiState = uiState.copy(downloadStatus = context.getString(R.string.workshop_status_checking_dependencies))
             runCatching {
                 withContext(Dispatchers.IO) { currentService.getDetails(item.appId, item.publishedFileId) }
             }.onSuccess { details ->
@@ -469,7 +470,7 @@ internal class WorkshopViewModel : ViewModel() {
                 uiState = uiState.copy(selected = details)
                 startDownloadAfterDependencyCheck(context, item, details)
             }.onFailure { error ->
-                uiState = uiState.copy(downloadStatus = "前置检查失败：${error.message ?: error.javaClass.simpleName}")
+                uiState = uiState.copy(downloadStatus = context.getString(R.string.workshop_status_dependency_check_failed, error.message ?: error.javaClass.simpleName))
             }
         }
     }
@@ -518,7 +519,7 @@ internal class WorkshopViewModel : ViewModel() {
             publishedFileId = summary.publishedFileId,
             title = summary.title,
             status = WorkshopDownloadTaskStatus.Queued,
-            message = if (alreadyRunning) "已加入下载队列" else "等待下载",
+            message = if (alreadyRunning) context.getString(R.string.workshop_status_added_to_queue) else context.getString(R.string.workshop_download_task_message_waiting),
             details = queuedDetails,
             previewUrl = summary.previewUrl,
             description = summary.description,
@@ -541,12 +542,16 @@ internal class WorkshopViewModel : ViewModel() {
                 installedAtMillis = System.currentTimeMillis(),
             localJarPath = "",
             cardState = WorkshopModCardState.Downloading,
-            statusText = "等待下载",
+            statusText = context.getString(R.string.workshop_download_task_message_waiting),
             dependencies = queuedDetails.dependencies,
         )
         WorkshopDownloadCenterStore.upsertInMemory(queuedTask)
         uiState = uiState.copy(
-            downloadStatus = if (alreadyRunning) "已加入下载队列：${summary.title}" else "正在下载 ${summary.title}",
+            downloadStatus = if (alreadyRunning) {
+                context.getString(R.string.workshop_status_added_to_queue_format, summary.title)
+            } else {
+                context.getString(R.string.workshop_status_starting_download_format, summary.title)
+            },
             downloadInProgress = true,
             installedMods = listOf(queuedRecord) + uiState.installedMods.filterNot {
                 it.appId == queuedRecord.appId && it.publishedFileId == queuedRecord.publishedFileId
@@ -564,7 +569,7 @@ internal class WorkshopViewModel : ViewModel() {
         WorkshopDownloadCenterStore.upsert(
             task.copy(
                 status = WorkshopDownloadTaskStatus.Queued,
-                message = if (WorkshopDownloadCenterStore.hasRunningTask()) "已加入下载队列" else message,
+                message = if (WorkshopDownloadCenterStore.hasRunningTask()) context.getString(R.string.workshop_status_added_to_queue) else message,
                 updatedAtMillis = System.currentTimeMillis(),
                 progressPercent = null,
                 downloadedBytes = 0L,
@@ -576,7 +581,7 @@ internal class WorkshopViewModel : ViewModel() {
                 downloadLog = "",
             )
         )
-        metadataStore?.updateState(details.summary.appId, details.summary.publishedFileId, WorkshopModCardState.Downloading, "等待下载")
+        metadataStore?.updateState(details.summary.appId, details.summary.publishedFileId, WorkshopModCardState.Downloading, context.getString(R.string.workshop_download_task_message_waiting))
         WorkshopDownloadProcessService.startNextQueued(context)
     }
 
@@ -612,7 +617,7 @@ internal class WorkshopViewModel : ViewModel() {
                     WorkshopDownloadCenterStore.update(summary.publishedFileId) {
                         it.copy(
                             status = WorkshopDownloadTaskStatus.Completed,
-                            message = message.ifBlank { "下载完成" },
+                            message = message.ifBlank { context.getString(R.string.workshop_status_download_completed) },
                             progressPercent = 100,
                             downloadedBytes = (it.totalBytes ?: it.downloadedBytes).coerceAtLeast(it.downloadedBytes),
                             completedFiles = it.totalFiles ?: it.completedFiles,
@@ -620,7 +625,7 @@ internal class WorkshopViewModel : ViewModel() {
                         )
                     }
                     uiState = uiState.copy(
-                        downloadStatus = message.ifBlank { "下载完成" },
+                        downloadStatus = message.ifBlank { context.getString(R.string.workshop_status_download_completed) },
                         downloadInProgress = false,
                         installedMods = metadataStore?.list().orEmpty(),
                     )
@@ -628,7 +633,7 @@ internal class WorkshopViewModel : ViewModel() {
                 }
                 WorkshopDownloadProcessService.RESULT_FAILURE -> {
                     uiState = uiState.copy(
-                        downloadStatus = message.ifBlank { "下载失败" },
+                        downloadStatus = message.ifBlank { context.getString(R.string.workshop_status_download_failed) },
                         downloadInProgress = false,
                         installedMods = metadataStore?.list().orEmpty(),
                     )
@@ -636,7 +641,7 @@ internal class WorkshopViewModel : ViewModel() {
                 }
                 WorkshopDownloadProcessService.RESULT_PAUSED -> {
                     uiState = uiState.copy(
-                        downloadStatus = message.ifBlank { "下载已暂停" },
+                        downloadStatus = message.ifBlank { context.getString(R.string.workshop_status_paused) },
                         downloadInProgress = false,
                         installedMods = metadataStore?.list().orEmpty(),
                     )
@@ -644,7 +649,7 @@ internal class WorkshopViewModel : ViewModel() {
                 }
                 WorkshopDownloadProcessService.RESULT_CANCELLED -> {
                     uiState = uiState.copy(
-                        downloadStatus = message.ifBlank { "下载已取消" },
+                        downloadStatus = message.ifBlank { context.getString(R.string.workshop_status_cancelled) },
                         downloadInProgress = false,
                         installedMods = metadataStore?.list().orEmpty(),
                     )
@@ -656,7 +661,7 @@ internal class WorkshopViewModel : ViewModel() {
 
     fun checkUpdates(context: Context) {
         viewModelScope.launch {
-            uiState = uiState.copy(downloadStatus = "正在检查创意工坊更新", updateChecking = true)
+            uiState = uiState.copy(downloadStatus = context.getString(R.string.workshop_status_checking_updates), updateChecking = true)
             runCatching { withContext(Dispatchers.IO) { WorkshopUpdateChecker(context).checkInstalledMods() } }
                 .onSuccess { report ->
                     val results = report.results
@@ -667,20 +672,20 @@ internal class WorkshopViewModel : ViewModel() {
                         updateChecking = false,
                         downloadStatus = if (updateCount > 0) {
                             buildString {
-                                append("发现 ").append(updateCount).append(" 个创意工坊更新")
-                                if (report.failedCount > 0) append("，").append(report.failedCount).append(" 个检查失败")
+                                append(context.getString(R.string.workshop_status_updates_found, updateCount))
+                                if (report.failedCount > 0) append(context.getString(R.string.workshop_status_update_failed_suffix, report.failedCount))
                             }
                         } else if (report.failedCount > 0) {
-                            "创意工坊更新检查完成，${report.failedCount} 个检查失败"
+                            context.getString(R.string.workshop_status_update_check_completed_failed, report.failedCount)
                         } else {
-                            "创意工坊模组均为最新"
+                            context.getString(R.string.workshop_status_all_up_to_date)
                         },
                     )
                 }
                 .onFailure { error ->
                     uiState = uiState.copy(
                         updateChecking = false,
-                        downloadStatus = "更新检查失败：${error.message ?: error.javaClass.simpleName}",
+                        downloadStatus = context.getString(R.string.workshop_status_update_check_failed, error.message ?: error.javaClass.simpleName),
                     )
                 }
         }
@@ -729,8 +734,8 @@ private fun WorkshopItemDetails.cacheKey(): String = detailsCacheKey(summary.app
 
 private fun detailsCacheKey(appId: UInt, publishedFileId: ULong): String = "$appId:$publishedFileId"
 
-private fun WorkshopItemDetails.commentUnavailableMessage(): String? = when {
-    commentThreadContext == null -> "暂时无法读取 Steam 评论区。"
+private fun WorkshopItemDetails.commentUnavailableMessage(context: Context): String? = when {
+    commentThreadContext == null -> context.getString(R.string.workshop_comments_unavailable)
     commentCount == 0L -> null
     else -> null
 }

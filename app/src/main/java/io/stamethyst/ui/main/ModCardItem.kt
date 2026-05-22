@@ -397,7 +397,7 @@ internal fun ModCard(
                     .padding(top = 10.dp)
                     .graphicsLayer { alpha = normalControlProgress }
             ) {
-                Text("安装")
+                Text(stringResource(R.string.main_mod_workshop_action_install))
             }
             WorkshopModState.DownloadFailed -> Button(
                 onClick = { callbacks.onRetryWorkshopDownload(mod) },
@@ -407,7 +407,7 @@ internal fun ModCard(
                     .padding(top = 10.dp)
                     .graphicsLayer { alpha = normalControlProgress }
             ) {
-                Text("重试")
+                Text(stringResource(R.string.workshop_action_retry))
             }
             WorkshopModState.DownloadPaused -> Button(
                 onClick = { callbacks.onRetryWorkshopDownload(mod) },
@@ -417,7 +417,7 @@ internal fun ModCard(
                     .padding(top = 10.dp)
                     .graphicsLayer { alpha = normalControlProgress }
             ) {
-                Text("继续下载")
+                Text(stringResource(R.string.main_mod_workshop_action_continue_download))
             }
             WorkshopModState.FileMissing -> Button(
                 onClick = { callbacks.onRetryWorkshopDownload(mod) },
@@ -427,7 +427,7 @@ internal fun ModCard(
                     .padding(top = 10.dp)
                     .graphicsLayer { alpha = normalControlProgress }
             ) {
-                Text("重新下载")
+                Text(stringResource(R.string.main_mod_workshop_action_redownload))
             }
             WorkshopModState.NonStandardDownloaded -> OutlinedButton(
                 onClick = { showActionsDialog = true },
@@ -437,7 +437,7 @@ internal fun ModCard(
                     .padding(top = 10.dp)
                     .graphicsLayer { alpha = normalControlProgress }
             ) {
-                Text("手动处理")
+                Text(stringResource(R.string.main_mod_workshop_action_manual_handle))
             }
             WorkshopModState.TexturePackInstalled -> OutlinedButton(
                 onClick = { showActionsDialog = true },
@@ -447,7 +447,7 @@ internal fun ModCard(
                     .padding(top = 10.dp)
                     .graphicsLayer { alpha = normalControlProgress }
             ) {
-                Text("查看文件")
+                Text(stringResource(R.string.main_mod_workshop_action_view_file))
             }
             WorkshopModState.Downloading -> {
                 val progress = mod.workshop.downloadProgressPercent
@@ -517,10 +517,13 @@ internal fun ModCard(
     if (showWorkshopUpdateConfirmDialog && mod.workshop?.state == WorkshopModState.UpdateAvailable) {
         AlertDialog(
             onDismissRequest = { showWorkshopUpdateConfirmDialog = false },
-            title = { Text("更新创意工坊模组") },
+            title = { Text(stringResource(R.string.main_mod_workshop_update_dialog_title)) },
             text = {
                 Text(
-                    text = "将重新下载并覆盖当前安装的 ${resolveModDisplayName(mod, showModFileName = false)}。更新过程中请不要启动游戏。"
+                    text = stringResource(
+                        R.string.main_mod_workshop_update_dialog_message,
+                        resolveModDisplayName(mod, showModFileName = false)
+                    )
                 )
             },
             confirmButton = {
@@ -530,7 +533,7 @@ internal fun ModCard(
                         callbacks.onUpdateWorkshopMod(mod)
                     }
                 ) {
-                    Text("更新")
+                    Text(stringResource(R.string.workshop_action_update))
                 }
             },
             dismissButton = {

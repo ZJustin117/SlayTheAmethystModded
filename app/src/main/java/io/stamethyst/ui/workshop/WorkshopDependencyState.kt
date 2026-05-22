@@ -5,6 +5,7 @@ import io.stamethyst.backend.workshop.WorkshopInstalledModRecord
 import io.stamethyst.backend.workshop.WorkshopItemSummary
 import io.stamethyst.backend.workshop.WorkshopModCardState
 import io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus
+import io.stamethyst.R
 import java.util.Locale
 
 internal data class WorkshopDependencyUiState(
@@ -12,7 +13,7 @@ internal data class WorkshopDependencyUiState(
     val installed: Boolean,
     val defaultInstalled: Boolean,
     val downloadState: WorkshopModDownloadState,
-    val statusLabel: String,
+    val statusLabelResId: Int,
 )
 
 internal fun resolveWorkshopDependencyUiStates(
@@ -32,10 +33,10 @@ internal fun resolveWorkshopDependencyUiStates(
         installed = installed,
         defaultInstalled = defaultInstalled,
         downloadState = downloadState,
-        statusLabel = when {
-            defaultInstalled -> "默认已安装"
-            installed -> "已安装"
-            else -> "未安装"
+        statusLabelResId = when {
+            defaultInstalled -> R.string.workshop_dependency_status_default_installed
+            installed -> R.string.workshop_dependency_status_installed
+            else -> R.string.workshop_dependency_status_missing
         },
     )
 }

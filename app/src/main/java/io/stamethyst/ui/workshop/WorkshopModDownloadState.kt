@@ -5,20 +5,21 @@ import io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus
 import io.stamethyst.backend.workshop.WorkshopItemSummary
 import io.stamethyst.backend.workshop.WorkshopModStateResolver
 import io.stamethyst.backend.workshop.WorkshopResolvedModStateKind
+import io.stamethyst.R
 
 internal enum class WorkshopModDownloadState(
-    val statusLabel: String,
-    val actionLabel: String,
+    val statusLabelResId: Int,
+    val actionLabelResId: Int,
     val canStartDownload: Boolean,
 ) {
-    Downloaded("已下载", "已下载", false),
-    NotDownloaded("未下载", "下载", true),
-    UpdateAvailable("有更新", "更新", true),
-    Queued("排队中", "排队中", false),
-    Downloading("下载中", "下载中", false),
-    Paused("已暂停", "继续", true),
-    Cancelling("正在取消", "正在取消", false),
-    DownloadFailed("下载失败", "重试", true),
+    Downloaded(R.string.workshop_download_state_downloaded, R.string.workshop_download_state_downloaded, false),
+    NotDownloaded(R.string.workshop_download_state_not_downloaded, R.string.workshop_action_download, true),
+    UpdateAvailable(R.string.workshop_download_state_update_available, R.string.workshop_action_update, true),
+    Queued(R.string.workshop_download_state_queued, R.string.workshop_download_state_queued, false),
+    Downloading(R.string.workshop_download_state_downloading, R.string.workshop_download_state_downloading, false),
+    Paused(R.string.workshop_download_state_paused, R.string.workshop_action_continue, true),
+    Cancelling(R.string.workshop_download_state_cancelling, R.string.workshop_download_state_cancelling, false),
+    DownloadFailed(R.string.workshop_download_state_failed, R.string.workshop_action_retry, true),
 }
 
 internal fun resolveWorkshopModDownloadState(

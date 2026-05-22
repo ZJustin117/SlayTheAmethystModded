@@ -1,6 +1,7 @@
 package io.stamethyst.ui.workshop
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -55,6 +56,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -88,8 +90,8 @@ internal fun WorkshopDownloadCenterScreen(
         val task = taskId?.let(WorkshopDownloadCenterStore::find) ?: return@rememberLauncherForActivityResult
         if (uri != null) {
             runCatching { WorkshopDownloadLogService.exportLog(requireNotNull(activity), task.toRecord(), uri) }
-                .onSuccess { Toast.makeText(activity, "下载日志已导出", Toast.LENGTH_SHORT).show() }
-                .onFailure { Toast.makeText(activity, "导出下载日志失败：${it.message ?: it.javaClass.simpleName}", Toast.LENGTH_LONG).show() }
+                .onSuccess { Toast.makeText(activity, activity?.getString(R.string.workshop_download_log_exported), Toast.LENGTH_SHORT).show() }
+                .onFailure { Toast.makeText(activity, activity?.getString(R.string.workshop_download_log_export_failed, it.message ?: it.javaClass.simpleName), Toast.LENGTH_LONG).show() }
         }
     }
 
@@ -106,9 +108,9 @@ internal fun WorkshopDownloadCenterScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text("下载中心")
+                        Text(stringResource(R.string.workshop_download_center_title))
                         Text(
-                            text = "查看创意工坊下载进度和任务详情",
+                            text = stringResource(R.string.workshop_download_center_subtitle),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
@@ -116,7 +118,7 @@ internal fun WorkshopDownloadCenterScreen(
                         )
                     }
                 },
-                navigationIcon = { TextButton(onClick = onBack) { Text("返回") } },
+                navigationIcon = { TextButton(onClick = onBack) { Text(stringResource(R.string.settings_first_run_action_back)) } },
             )
         },
     ) { padding ->
@@ -196,7 +198,7 @@ private fun DownloadTaskCard(
             ) {
                 WorkshopDownloadPreviewImage(
                     url = task.previewUrl,
-                    contentDescription = "${task.title} 预览图",
+                    contentDescription = stringResource(R.string.workshop_preview_content_description, task.title),
                 )
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(
@@ -257,18 +259,18 @@ private fun DownloadTaskActions(
             when (task.status) {
                 WorkshopDownloadTaskStatus.Queued,
                 WorkshopDownloadTaskStatus.Resolving,
-                WorkshopDownloadTaskStatus.Downloading -> OutlinedButton(onClick = onPause) { Text("暂停") }
-                WorkshopDownloadTaskStatus.Pausing -> OutlinedButton(enabled = false, onClick = {}) { Text("暂停中") }
-                WorkshopDownloadTaskStatus.Cancelling -> OutlinedButton(enabled = false, onClick = {}) { Text("取消中") }
-                WorkshopDownloadTaskStatus.Paused -> OutlinedButton(onClick = onResume) { Text("继续") }
+                WorkshopDownloadTaskStatus.Downloading -> OutlinedButton(onClick = onPause) { Text(stringResource(R.string.workshop_action_pause)) }
+                WorkshopDownloadTaskStatus.Pausing -> OutlinedButton(enabled = false, onClick = {}) { Text(stringResource(R.string.workshop_action_pausing)) }
+                WorkshopDownloadTaskStatus.Cancelling -> OutlinedButton(enabled = false, onClick = {}) { Text(stringResource(R.string.workshop_action_cancelling)) }
+                WorkshopDownloadTaskStatus.Paused -> OutlinedButton(onClick = onResume) { Text(stringResource(R.string.workshop_action_continue)) }
                 WorkshopDownloadTaskStatus.Failed,
-                WorkshopDownloadTaskStatus.Cancelled -> OutlinedButton(onClick = onRetry) { Text("重试") }
+                WorkshopDownloadTaskStatus.Cancelled -> OutlinedButton(onClick = onRetry) { Text(stringResource(R.string.workshop_action_retry)) }
                 WorkshopDownloadTaskStatus.Completed -> Unit
             }
             TextButton(
                 enabled = task.status != WorkshopDownloadTaskStatus.Cancelling,
                 onClick = onCancel,
-            ) { Text("取消") }
+            ) { Text(stringResource(R.string.main_folder_dialog_cancel)) }
             return@Row
         }
 
@@ -277,37 +279,37 @@ private fun DownloadTaskActions(
             WorkshopDownloadTaskStatus.Resolving,
             WorkshopDownloadTaskStatus.Downloading -> DownloadDetailIconButton(
                 iconResId = R.drawable.ic_pause,
-                contentDescription = "暂停",
+                contentDescription = stringResource(R.string.workshop_action_pause),
                 onClick = onPause,
             )
             WorkshopDownloadTaskStatus.Pausing -> DownloadDetailIconButton(
                 iconResId = R.drawable.ic_pause,
-                contentDescription = "暂停中",
+                contentDescription = stringResource(R.string.workshop_action_pausing),
                 enabled = false,
                 onClick = {},
             )
             WorkshopDownloadTaskStatus.Cancelling -> DownloadDetailIconButton(
                 iconResId = R.drawable.ic_delete,
-                contentDescription = "取消中",
+                contentDescription = stringResource(R.string.workshop_action_cancelling),
                 enabled = false,
                 onClick = {},
             )
             WorkshopDownloadTaskStatus.Paused -> DownloadDetailIconButton(
                 iconResId = R.drawable.ic_play_arrow,
-                contentDescription = "继续",
+                contentDescription = stringResource(R.string.workshop_action_continue),
                 onClick = onResume,
             )
             WorkshopDownloadTaskStatus.Failed,
             WorkshopDownloadTaskStatus.Cancelled -> DownloadDetailIconButton(
                 iconResId = R.drawable.ic_workshop_retry,
-                contentDescription = "重试",
+                contentDescription = stringResource(R.string.workshop_action_retry),
                 onClick = onRetry,
             )
             WorkshopDownloadTaskStatus.Completed -> Unit
         }
         DownloadDetailIconButton(
             iconResId = R.drawable.ic_delete,
-            contentDescription = "取消任务",
+            contentDescription = stringResource(R.string.workshop_action_cancel_task),
             enabled = task.status != WorkshopDownloadTaskStatus.Cancelling,
             onClick = onCancel,
         )
@@ -376,7 +378,7 @@ private fun DownloadTaskDetailDialog(
                 IconButton(onClick = { showLogActionDialog = true }) {
                     Icon(
                         painter = painterResource(R.drawable.ic_log),
-                        contentDescription = "下载日志",
+                        contentDescription = stringResource(R.string.workshop_download_log_content_description),
                     )
                 }
             }
@@ -386,7 +388,7 @@ private fun DownloadTaskDetailDialog(
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     WorkshopDownloadPreviewImage(
                         url = task.previewUrl,
-                        contentDescription = "${task.title} 预览图",
+                        contentDescription = stringResource(R.string.workshop_preview_content_description, task.title),
                     )
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         AssistChip(onClick = {}, label = { Text(task.status.downloadLabel()) })
@@ -394,23 +396,23 @@ private fun DownloadTaskDetailDialog(
                     }
                 }
                 DownloadProgressIndicator(task = task)
-                DetailRow(label = "状态", value = task.message.ifBlank { task.status.defaultMessage() })
+                DetailRow(label = stringResource(R.string.workshop_detail_status), value = task.message.ifBlank { task.status.defaultMessage() })
                 if (task.status == WorkshopDownloadTaskStatus.Paused) {
                     Text(
-                        text = "继续下载会重新启动该任务。当前底层暂不支持断点续传。",
+                        text = stringResource(R.string.workshop_resume_restart_warning),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 if (task.status == WorkshopDownloadTaskStatus.Failed && task.errorMessage.isNotBlank()) {
-                    DetailRow(label = "错误", value = task.errorMessage)
-                    task.errorClass.takeIf(String::isNotBlank)?.let { DetailRow(label = "类型", value = it) }
+                    DetailRow(label = stringResource(R.string.workshop_detail_error), value = task.errorMessage)
+                    task.errorClass.takeIf(String::isNotBlank)?.let { DetailRow(label = stringResource(R.string.workshop_detail_type), value = it) }
                 }
                 DetailRow(label = "Workshop ID", value = task.publishedFileId.toString())
-                task.authorName.takeIf(String::isNotBlank)?.let { DetailRow(label = "作者", value = it) }
-                DetailRow(label = "大小", value = task.totalBytes?.let(::formatBytes) ?: formatBytes(task.fileSizeBytes))
-                task.fileProgressText()?.let { DetailRow(label = "文件", value = it) }
-                task.chunkProgressText()?.let { DetailRow(label = "分块", value = it) }
+                task.authorName.takeIf(String::isNotBlank)?.let { DetailRow(label = stringResource(R.string.workshop_detail_author), value = it) }
+                DetailRow(label = stringResource(R.string.workshop_detail_size), value = task.totalBytes?.let { formatBytes(it) } ?: formatBytes(task.fileSizeBytes))
+                task.fileProgressText()?.let { DetailRow(label = stringResource(R.string.workshop_detail_file), value = it) }
+                task.chunkProgressText()?.let { DetailRow(label = stringResource(R.string.workshop_detail_chunks), value = it) }
                 task.description.takeIf(String::isNotBlank)?.let {
                     Text(
                         text = it,
@@ -434,7 +436,7 @@ private fun DownloadTaskDetailDialog(
                 )
                 DownloadDetailIconButton(
                     iconResId = R.drawable.ic_close,
-                    contentDescription = "关闭",
+                    contentDescription = stringResource(R.string.common_action_close),
                     onClick = onDismiss,
                 )
             }
@@ -443,21 +445,21 @@ private fun DownloadTaskDetailDialog(
     if (showLogActionDialog) {
         AlertDialog(
             onDismissRequest = { showLogActionDialog = false },
-            title = { Text("下载日志") },
-            text = { Text("选择导出到文件，或通过系统分享发送本次下载的详细日志。") },
+            title = { Text(stringResource(R.string.workshop_download_center_title)) },
+            text = { Text(stringResource(R.string.workshop_download_log_dialog_message)) },
             confirmButton = {
                 TextButton(onClick = {
                     showLogActionDialog = false
                     onExportLog()
-                }) { Text("导出日志") }
+                }) { Text(stringResource(R.string.workshop_action_export_log)) }
             },
             dismissButton = {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = {
                         showLogActionDialog = false
                         onShareLog()
-                    }) { Text("分享日志") }
-                    TextButton(onClick = { showLogActionDialog = false }) { Text("取消") }
+                    }) { Text(stringResource(R.string.workshop_action_share_log)) }
+                    TextButton(onClick = { showLogActionDialog = false }) { Text(stringResource(R.string.main_folder_dialog_cancel)) }
                 }
             },
         )
@@ -506,12 +508,12 @@ private fun WorkshopDownloadPreviewImage(url: String, contentDescription: String
 private fun EmptyDownloadCenterCard(onBack: () -> Unit) {
     Card {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("暂无下载任务", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.workshop_download_empty_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(
-                text = "从创意工坊选择模组并点击下载后，任务会显示在这里。",
+                text = stringResource(R.string.workshop_download_empty_description),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            OutlinedButton(onClick = onBack) { Text("返回创意工坊") }
+            OutlinedButton(onClick = onBack) { Text(stringResource(R.string.workshop_action_back_to_workshop)) }
         }
     }
 }
@@ -543,37 +545,40 @@ private object WorkshopDownloadPreviewImageLoader {
     private const val CACHE_SIZE_BYTES = 16 * 1024 * 1024
 }
 
+@Composable
 private fun WorkshopDownloadTaskStatus.downloadLabel(): String = when (this) {
-    WorkshopDownloadTaskStatus.Queued -> "等待"
-    WorkshopDownloadTaskStatus.Resolving -> "解析"
-    WorkshopDownloadTaskStatus.Downloading -> "下载中"
-    WorkshopDownloadTaskStatus.Pausing -> "暂停中"
-    WorkshopDownloadTaskStatus.Cancelling -> "取消中"
-    WorkshopDownloadTaskStatus.Paused -> "已暂停"
-    WorkshopDownloadTaskStatus.Completed -> "完成"
-    WorkshopDownloadTaskStatus.Failed -> "失败"
-    WorkshopDownloadTaskStatus.Cancelled -> "已取消"
+    WorkshopDownloadTaskStatus.Queued -> stringResource(R.string.workshop_download_task_status_waiting)
+    WorkshopDownloadTaskStatus.Resolving -> stringResource(R.string.workshop_download_task_status_resolving)
+    WorkshopDownloadTaskStatus.Downloading -> stringResource(R.string.workshop_download_task_status_downloading)
+    WorkshopDownloadTaskStatus.Pausing -> stringResource(R.string.workshop_download_task_status_pausing)
+    WorkshopDownloadTaskStatus.Cancelling -> stringResource(R.string.workshop_download_task_status_cancelling)
+    WorkshopDownloadTaskStatus.Paused -> stringResource(R.string.workshop_download_task_status_paused)
+    WorkshopDownloadTaskStatus.Completed -> stringResource(R.string.workshop_download_task_status_completed)
+    WorkshopDownloadTaskStatus.Failed -> stringResource(R.string.workshop_download_task_status_failed)
+    WorkshopDownloadTaskStatus.Cancelled -> stringResource(R.string.workshop_download_task_status_cancelled)
 }
 
+@Composable
 private fun WorkshopDownloadTaskStatus.defaultMessage(): String = when (this) {
-    WorkshopDownloadTaskStatus.Queued -> "等待下载"
-    WorkshopDownloadTaskStatus.Resolving -> "正在解析下载内容"
-    WorkshopDownloadTaskStatus.Downloading -> "正在下载"
-    WorkshopDownloadTaskStatus.Pausing -> "正在暂停"
-    WorkshopDownloadTaskStatus.Cancelling -> "正在取消"
-    WorkshopDownloadTaskStatus.Paused -> "下载已暂停，可继续"
-    WorkshopDownloadTaskStatus.Completed -> "下载完成，可到模组页安装"
-    WorkshopDownloadTaskStatus.Failed -> "下载失败，可重试"
-    WorkshopDownloadTaskStatus.Cancelled -> "下载已取消，可重试"
+    WorkshopDownloadTaskStatus.Queued -> stringResource(R.string.workshop_download_task_message_waiting)
+    WorkshopDownloadTaskStatus.Resolving -> stringResource(R.string.workshop_download_task_message_resolving)
+    WorkshopDownloadTaskStatus.Downloading -> stringResource(R.string.workshop_download_task_message_downloading)
+    WorkshopDownloadTaskStatus.Pausing -> stringResource(R.string.workshop_download_task_message_pausing)
+    WorkshopDownloadTaskStatus.Cancelling -> stringResource(R.string.workshop_download_task_message_cancelling)
+    WorkshopDownloadTaskStatus.Paused -> stringResource(R.string.workshop_download_task_message_paused)
+    WorkshopDownloadTaskStatus.Completed -> stringResource(R.string.workshop_download_task_message_completed)
+    WorkshopDownloadTaskStatus.Failed -> stringResource(R.string.workshop_download_task_message_failed)
+    WorkshopDownloadTaskStatus.Cancelled -> stringResource(R.string.workshop_download_task_message_cancelled)
 }
 
+@Composable
 private fun WorkshopDownloadTaskUi.progressSummary(): String {
     val percentText = progressPercent?.let { "${it.coerceIn(0, 100)}%" }
     val bytesText = when {
         totalBytes != null && totalBytes > 0L -> "${formatBytes(downloadedBytes)} / ${formatBytes(totalBytes)}"
         downloadedBytes > 0L -> formatBytes(downloadedBytes)
         fileSizeBytes > 0L -> formatBytes(fileSizeBytes)
-        else -> "等待大小信息"
+        else -> stringResource(R.string.workshop_download_waiting_size)
     }
     return listOfNotNull(percentText, bytesText).joinToString(" · ")
 }
@@ -590,8 +595,9 @@ private fun WorkshopDownloadTaskUi.chunkProgressText(): String? {
     return "$completed / $total"
 }
 
+@Composable
 private fun formatBytes(bytes: Long): String {
-    if (bytes <= 0L) return "未知"
+    if (bytes <= 0L) return stringResource(R.string.workshop_unknown_value)
     val units = arrayOf("B", "KB", "MB", "GB")
     var value = bytes.toDouble()
     var unitIndex = 0
@@ -609,8 +615,8 @@ private fun formatBytes(bytes: Long): String {
 private fun Activity.shareDownloadLog(task: WorkshopDownloadTaskUi) {
     runCatching {
         val shareIntent = WorkshopDownloadLogService.prepareShareIntent(this, task.toRecord())
-        startActivity(Intent.createChooser(shareIntent, "分享下载日志"))
+        startActivity(Intent.createChooser(shareIntent, getString(R.string.workshop_share_download_log_chooser_title)))
     }.onFailure {
-        Toast.makeText(this, "分享下载日志失败：${it.message ?: it.javaClass.simpleName}", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, getString(R.string.workshop_share_download_log_failed, it.message ?: it.javaClass.simpleName), Toast.LENGTH_LONG).show()
     }
 }
