@@ -28,31 +28,42 @@ internal object DuplicateZipEntryNormalizer {
             throw IOException("Zip file not found: ${zipFile.absolutePath}")
         }
 
-        val scanResult = scan(zipFile)
-        val platformReadable = canOpenWithPlatformZipFile(zipFile)
-        if (scanResult.duplicateEntriesRemoved <= 0 && platformReadable) {
-            return scanResult.copy(rewritten = false)
+        val platformScanResult = scanWithPlatformZipFile(zipFile)
+        if (platformScanResult != null && platformScanResult.duplicateEntriesRemoved <= 0) {
+            return platformScanResult.copy(rewritten = false)
         }
 
+        val scanResult = platformScanResult ?: scanWithArchiveInputStream(zipFile)
         rewriteKeepingFirstEntry(zipFile)
         return scanResult.copy(rewritten = true)
     }
 
-    private fun canOpenWithPlatformZipFile(zipFile: File): Boolean {
+    private fun scanWithPlatformZipFile(zipFile: File): DuplicateZipNormalizationResult? {
         return try {
+            val seenNames = LinkedHashSet<String>()
+            var totalEntries = 0
+            var duplicateEntriesRemoved = 0
             ZipFile(zipFile).use { platformZip ->
                 val entries = platformZip.entries()
                 while (entries.hasMoreElements()) {
-                    entries.nextElement()
+                    val entry = entries.nextElement()
+                    totalEntries++
+                    if (!seenNames.add(entry.name)) {
+                        duplicateEntriesRemoved++
+                    }
                 }
             }
-            true
+            DuplicateZipNormalizationResult(
+                totalEntries = totalEntries,
+                uniqueEntries = seenNames.size,
+                duplicateEntriesRemoved = duplicateEntriesRemoved
+            )
         } catch (_: Throwable) {
-            false
+            null
         }
     }
 
-    private fun scan(zipFile: File): DuplicateZipNormalizationResult {
+    private fun scanWithArchiveInputStream(zipFile: File): DuplicateZipNormalizationResult {
         val seenNames = LinkedHashSet<String>()
         var totalEntries = 0
         var duplicateEntriesRemoved = 0

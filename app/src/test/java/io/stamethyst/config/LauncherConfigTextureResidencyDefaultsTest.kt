@@ -13,4 +13,9 @@ class LauncherConfigTextureResidencyDefaultsTest {
     fun largeTextureDownscale_defaultsDisabled() {
         assertFalse(LauncherConfig.DEFAULT_LARGE_TEXTURE_DOWNSCALE_COMPAT_ENABLED)
     }
+
+    @Test
+    fun guardianPressureDownscale_defaultsDisabled() {
+        assertFalse(LauncherConfig.DEFAULT_GPU_RESOURCE_GUARDIAN_PRESSURE_DOWNSCALE_ENABLED)
+    }
 }

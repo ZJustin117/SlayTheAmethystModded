@@ -188,6 +188,9 @@ fun LauncherSettingsScreen(
         onGpuResourceGuardianModeChanged = { mode ->
             viewModel.onGpuResourceGuardianModeChanged(activity, mode)
         },
+        onGpuResourceGuardianPressureDownscaleChanged = { enabled ->
+            viewModel.onGpuResourceGuardianPressureDownscaleChanged(activity, enabled)
+        },
         onRendererSelectionModeChanged = { mode ->
             viewModel.onRendererSelectionModeChanged(activity, mode)
         },
@@ -439,6 +442,7 @@ private fun LauncherSettingsScreenContent(
     onTargetFpsSelected: (Int) -> Unit = {},
     onVirtualResolutionModeChanged: (VirtualResolutionMode) -> Unit = {},
     onGpuResourceGuardianModeChanged: (GpuResourceGuardianMode) -> Unit = {},
+    onGpuResourceGuardianPressureDownscaleChanged: (Boolean) -> Unit = {},
     onRendererSelectionModeChanged: (RendererSelectionMode) -> Unit = {},
     onManualRendererBackendChanged: (RendererBackend) -> Unit = {},
     onRenderSurfaceBackendChanged: (RenderSurfaceBackend) -> Unit = {},
@@ -613,6 +617,8 @@ private fun LauncherSettingsScreenContent(
                         onTargetFpsSelected = onTargetFpsSelected,
                         onVirtualResolutionModeChanged = onVirtualResolutionModeChanged,
                         onGpuResourceGuardianModeChanged = onGpuResourceGuardianModeChanged,
+                        onGpuResourceGuardianPressureDownscaleChanged =
+                            onGpuResourceGuardianPressureDownscaleChanged,
                         onDisplayCutoutAvoidanceChanged = onDisplayCutoutAvoidanceChanged,
                         onScreenBottomCropChanged = onScreenBottomCropChanged,
                         onGameplayFontScaleChanged = onGameplayFontScaleChanged,
@@ -2176,6 +2182,7 @@ internal fun SettingsPerformanceSection(
     onTargetFpsSelected: (Int) -> Unit,
     onVirtualResolutionModeChanged: (VirtualResolutionMode) -> Unit,
     onGpuResourceGuardianModeChanged: (GpuResourceGuardianMode) -> Unit,
+    onGpuResourceGuardianPressureDownscaleChanged: (Boolean) -> Unit,
     onDisplayCutoutAvoidanceChanged: (Boolean) -> Unit,
     onScreenBottomCropChanged: (Boolean) -> Unit,
     onGameplayFontScaleChanged: (Float) -> Unit,
@@ -2258,6 +2265,23 @@ internal fun SettingsPerformanceSection(
     Text(
         text = stringResource(R.string.settings_gpu_resource_guardian_desc),
         style = MaterialTheme.typography.bodySmall
+    )
+
+    SwitchSettingRow(
+        checked = uiState.gpuResourceGuardianPressureDownscaleEnabled,
+        enabled = !uiState.busy &&
+            uiState.gpuResourceGuardianMode != GpuResourceGuardianMode.OFF &&
+            uiState.gpuResourceGuardianMode != GpuResourceGuardianMode.LEGACY,
+        enabledText = stringResource(
+            R.string.settings_gpu_resource_guardian_pressure_downscale_enabled
+        ),
+        disabledText = stringResource(
+            R.string.settings_gpu_resource_guardian_pressure_downscale_disabled
+        ),
+        description = stringResource(
+            R.string.settings_gpu_resource_guardian_pressure_downscale_desc
+        ),
+        onCheckedChange = onGpuResourceGuardianPressureDownscaleChanged
     )
 
     SwitchSettingRow(
@@ -3442,7 +3466,6 @@ private fun gpuResourceGuardianModeDisplayName(mode: GpuResourceGuardianMode): S
             GpuResourceGuardianMode.AGGRESSIVE -> R.string.settings_gpu_resource_guardian_mode_aggressive
             GpuResourceGuardianMode.ULTRA_AGGRESSIVE ->
                 R.string.settings_gpu_resource_guardian_mode_ultra_aggressive
-            GpuResourceGuardianMode.DIAGNOSTIC -> R.string.settings_gpu_resource_guardian_mode_diagnostic
             GpuResourceGuardianMode.LEGACY -> R.string.settings_gpu_resource_guardian_mode_legacy
         }
     )
@@ -3458,8 +3481,6 @@ private fun gpuResourceGuardianModeDescription(mode: GpuResourceGuardianMode): S
                 R.string.settings_gpu_resource_guardian_mode_aggressive_desc
             GpuResourceGuardianMode.ULTRA_AGGRESSIVE ->
                 R.string.settings_gpu_resource_guardian_mode_ultra_aggressive_desc
-            GpuResourceGuardianMode.DIAGNOSTIC ->
-                R.string.settings_gpu_resource_guardian_mode_diagnostic_desc
             GpuResourceGuardianMode.LEGACY -> R.string.settings_gpu_resource_guardian_mode_legacy_desc
         }
     )

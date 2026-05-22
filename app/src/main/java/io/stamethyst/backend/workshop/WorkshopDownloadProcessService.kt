@@ -346,6 +346,7 @@ class WorkshopDownloadProcessService : Service() {
                                     val jarFile = File(outputDir, jarArtifact.relativePath)
                                     when (val importResult = WorkshopAutoImporter.importDownloadedJar(applicationContext, details, jarFile)) {
                                         is WorkshopAutoImportResult.Imported -> {
+                                            cleanDownloadedContent(outputDir)
                                             message = "下载完成，已自动导入 ${importResult.modName}"
                                             downloadedRecord.copy(
                                                 localJarPath = importResult.storagePath,

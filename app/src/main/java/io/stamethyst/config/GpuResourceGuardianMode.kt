@@ -5,7 +5,6 @@ enum class GpuResourceGuardianMode(val persistedValue: String) {
     SAFE("safe"),
     AGGRESSIVE("aggressive"),
     ULTRA_AGGRESSIVE("ultra_aggressive"),
-    DIAGNOSTIC("diagnostic"),
     LEGACY("legacy");
 
     val runtimePropertyValue: String

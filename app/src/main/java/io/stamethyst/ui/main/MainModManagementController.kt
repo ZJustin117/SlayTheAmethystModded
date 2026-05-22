@@ -592,6 +592,9 @@ internal class MainModManagementController(
         executor.execute {
             try {
                 val deleted = ModManager.deleteOptionalModByStoragePath(host, mod.storagePath)
+                if (deleted) {
+                    deleteWorkshopResidueForMod(host, mod)
+                }
                 host.runOnUiThread {
                     setBusy(false, null)
                     clearPendingSelectionForMod(host, mod)
@@ -681,16 +684,13 @@ internal class MainModManagementController(
                         if (mod.isActiveWorkshopDownload()) {
                             WorkshopDownloadProcessService.cancel(host, workshop.appId, workshop.publishedFileId)
                         }
-                        val directory = File(host.filesDir, "workshop/${workshop.appId}/${workshop.publishedFileId}")
-                        if (directory.exists() && directory.deleteRecursively()) {
+                        if (deleteWorkshopResidue(host, workshop)) {
                             deletedCount++
                         } else {
                             missingCount++
                         }
-                        deleteWorkshopTexturePackIfNeeded(workshop.localJarPath)
-                        WorkshopDownloadTaskStore(host).removeAndMarkDeleted(workshop.publishedFileId)
-                        WorkshopMetadataStore(host).remove(workshop.appId, workshop.publishedFileId)
                     } else if (ModManager.deleteOptionalModByStoragePath(host, mod.storagePath)) {
+                        deleteWorkshopResidueForMod(host, mod)
                         deletedCount++
                     } else {
                         missingCount++
@@ -1514,14 +1514,10 @@ internal class MainModManagementController(
         setBusy(true, UiText.StringResource(R.string.main_mod_delete_busy))
         executor.execute {
             try {
-                val directory = File(host.filesDir, "workshop/${workshop.appId}/${workshop.publishedFileId}")
                 if (mod.isActiveWorkshopDownload()) {
                     WorkshopDownloadProcessService.cancel(host, workshop.appId, workshop.publishedFileId)
                 }
-                val deleted = if (directory.exists()) directory.deleteRecursively() else false
-                deleteWorkshopTexturePackIfNeeded(workshop.localJarPath)
-                WorkshopDownloadTaskStore(host).removeAndMarkDeleted(workshop.publishedFileId)
-                WorkshopMetadataStore(host).remove(workshop.appId, workshop.publishedFileId)
+                val deleted = deleteWorkshopResidue(host, workshop)
                 host.runOnUiThread {
                     setBusy(false, null)
                     clearPendingSelectionForMod(host, mod)
@@ -1685,6 +1681,24 @@ internal class MainModManagementController(
     private fun ModItemUi.isActiveWorkshopDownload(): Boolean {
         if (installed) return false
         return workshop?.state == WorkshopModState.Downloading
+    }
+
+    private fun deleteWorkshopResidueForMod(host: Activity, mod: ModItemUi) {
+        val workshop = mod.workshop ?: return
+        deleteWorkshopResidue(host, workshop)
+    }
+
+    private fun deleteWorkshopResidue(host: Activity, workshop: WorkshopModUi): Boolean {
+        val directory = workshopDirectory(host, workshop)
+        val deletedDirectory = if (directory.exists()) directory.deleteRecursively() else false
+        deleteWorkshopTexturePackIfNeeded(workshop.localJarPath)
+        WorkshopDownloadTaskStore(host).removeAndMarkDeleted(workshop.publishedFileId)
+        WorkshopMetadataStore(host).remove(workshop.appId, workshop.publishedFileId)
+        return deletedDirectory
+    }
+
+    private fun workshopDirectory(host: Activity, workshop: WorkshopModUi): File {
+        return File(host.filesDir, "workshop/${workshop.appId}/${workshop.publishedFileId}")
     }
 
     private fun deleteWorkshopTexturePackIfNeeded(path: String) {

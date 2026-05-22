@@ -188,6 +188,16 @@ object CompatibilitySettings {
     }
 
     @JvmStatic
+    fun isGpuResourceGuardianPressureDownscaleEnabled(context: Context): Boolean {
+        return LauncherConfig.isGpuResourceGuardianPressureDownscaleEnabled(context)
+    }
+
+    @JvmStatic
+    fun setGpuResourceGuardianPressureDownscaleEnabled(context: Context, enabled: Boolean) {
+        LauncherConfig.setGpuResourceGuardianPressureDownscaleEnabled(context, enabled)
+    }
+
+    @JvmStatic
     fun isForceLinearMipmapFilterEnabled(context: Context): Boolean {
         return LauncherConfig.isForceLinearMipmapFilterEnabled(context)
     }

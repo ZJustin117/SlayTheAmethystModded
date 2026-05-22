@@ -65,6 +65,7 @@ import io.stamethyst.backend.mods.importing.ImportPatchResult
 import io.stamethyst.backend.mods.importing.ModImportItemPlan
 import io.stamethyst.backend.mods.importing.ModImportPlan
 import io.stamethyst.backend.workshop.WorkshopMetadataStore
+import java.io.File
 
 @Composable
 internal fun ModImportHost(
@@ -107,11 +108,22 @@ internal fun ModImportHost(
                             localJarPath = imported.storagePath,
                             statusText = "已安装 ${imported.modName}",
                         )
+                        cleanWorkshopDownloadedContent(context.filesDir, source)
                     }
                     activity?.runOnUiThread(onImportCompleted)
                 }
             }
         )
+    }
+}
+
+private fun cleanWorkshopDownloadedContent(filesDir: File, source: WorkshopImportSource) {
+    val outputDir = File(filesDir, "workshop/${source.appId}/${source.publishedFileId}")
+    if (!outputDir.isDirectory) return
+    outputDir.listFiles().orEmpty().forEach { file ->
+        if (!file.name.startsWith("preview.", ignoreCase = true)) {
+            file.deleteRecursively()
+        }
     }
 }
 

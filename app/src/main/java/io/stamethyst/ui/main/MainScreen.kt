@@ -2,7 +2,6 @@ package io.stamethyst.ui.main
 
 import android.app.Activity
 import android.os.Build
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.DrawableRes
@@ -113,6 +112,7 @@ import io.stamethyst.model.ModItemUi
 import io.stamethyst.model.WorkshopModState
 import io.stamethyst.ui.Icons
 import io.stamethyst.ui.resolve
+import io.stamethyst.ui.icon.ArrowBack
 import io.stamethyst.ui.icon.Settings
 import io.stamethyst.ui.modimport.ModImportRequestBus
 import io.stamethyst.ui.preferences.LauncherPreferences
@@ -867,6 +867,70 @@ fun LauncherModsScreen(
 }
 
 @Composable
+fun LauncherCrashRecoveryScreen(
+    modifier: Modifier = Modifier,
+    viewModel: MainScreenViewModel,
+    onBack: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenFeedback: () -> Unit,
+    onReturnToMainMenu: () -> Unit,
+) {
+    val context = LocalContext.current
+    val hostActivity = context as? Activity
+    val uiState = viewModel.uiState
+    var effectDialog by remember { mutableStateOf<MainScreenViewModel.Effect.ShowDialog?>(null) }
+
+    LaunchedEffect(viewModel, hostActivity) {
+        viewModel.effects.collect { effect ->
+            when (effect) {
+                is MainScreenViewModel.Effect.ShowSnackbar ->
+                    LauncherTransientNoticeBus.show(
+                        message = effect.message,
+                        duration = effect.duration,
+                        actionLabel = effect.actionLabel,
+                        onAction = effect.onAction
+                    )
+                is MainScreenViewModel.Effect.ShowDialog -> effectDialog = effect
+                is MainScreenViewModel.Effect.OpenExportModPicker -> Unit
+                is MainScreenViewModel.Effect.LaunchIntent -> hostActivity?.startActivity(effect.intent)
+            }
+        }
+    }
+
+    effectDialog?.let { dialog ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { effectDialog = null },
+            title = { Text(dialog.title.resolve()) },
+            text = { Text(dialog.message.resolve()) },
+            confirmButton = {
+                Button(onClick = { effectDialog = null }) {
+                    Text(text = stringResource(R.string.common_action_confirm))
+                }
+            }
+        )
+    }
+
+    val crashRecovery = uiState.crashRecovery
+    if (crashRecovery != null) {
+        CrashRecoveryScreen(
+            modifier = modifier,
+            crashRecovery = crashRecovery,
+            busy = uiState.busy,
+            busyMessage = uiState.busyMessage?.resolve(),
+            onBack = onBack,
+            onOpenRecoverySettings = onOpenSettings,
+            onOpenFeedback = onOpenFeedback,
+            onAskAi = { hostActivity?.let(viewModel::copyCrashRecoveryAiPrompt) },
+            onCopyReport = { hostActivity?.let(viewModel::copyCrashRecoveryReport) },
+            onShareLogs = { hostActivity?.let(viewModel::shareCrashRecoveryReport) },
+            onReturnToMainMenu = onReturnToMainMenu
+        )
+    } else {
+        Box(modifier = modifier.background(MaterialTheme.colorScheme.background))
+    }
+}
+
+@Composable
 private fun LauncherMainRoute(
     modifier: Modifier,
     viewModel: MainScreenViewModel,
@@ -1159,7 +1223,6 @@ private fun LauncherMainScreenContent(
     }
     val showInitializing = uiState.initializing
     val hazeState = rememberHazeState()
-    val crashRecovery = uiState.crashRecovery
     val pendingLaunchUnreadSuggestionModNames = uiState.pendingLaunchUnreadSuggestionModNames
     val enabledModNames = uiState.optionalMods
         .filter { it.enabled }
@@ -1207,10 +1270,6 @@ private fun LauncherMainScreenContent(
         if (uiState.launchInFlight || pendingLaunchUnreadSuggestionModNames.isNotEmpty()) {
             showSteamCloudBottomSheet = false
         }
-    }
-
-    if (crashRecovery != null) {
-        BackHandler(onBack = actions.onDismissCrashRecovery)
     }
 
     if (pendingLaunchUnreadSuggestionModNames.isNotEmpty()) {
@@ -1262,21 +1321,7 @@ private fun LauncherMainScreenContent(
                 .fillMaxSize()
                 .padding(scaffoldPaddingValues)
         ) {
-            if (crashRecovery != null) {
-                CrashRecoveryScreen(
-                    modifier = Modifier.fillMaxSize(),
-                    crashRecovery = crashRecovery,
-                    busy = uiState.busy,
-                    busyMessage = uiState.busyMessage?.resolve(),
-                    onOpenRecoverySettings = onOpenSettings,
-                    onOpenFeedback = onOpenFeedback,
-                    onAskAi = actions.onAskAiAfterCrash,
-                    onCopyReport = actions.onCopyCrashReport,
-                    onShareLogs = actions.onShareCrashRecoveryReport,
-                    onReturnToMainMenu = actions.onReturnToMainMenu
-                )
-            } else {
-                when (contentMode) {
+            when (contentMode) {
                     LauncherMainContentMode.GAME -> {
                         LauncherGamePage(
                             modifier = Modifier.fillMaxSize(),
@@ -1402,7 +1447,6 @@ private fun LauncherMainScreenContent(
                             onHeightChanged = { batchEditBarHeightPx = it },
                         )
                     }
-                }
             }
         }
     }
@@ -1612,6 +1656,7 @@ private fun CrashRecoveryScreen(
     crashRecovery: MainScreenViewModel.CrashRecoveryState,
     busy: Boolean,
     busyMessage: String?,
+    onBack: () -> Unit,
     onOpenRecoverySettings: () -> Unit,
     onOpenFeedback: () -> Unit,
     onAskAi: () -> Unit,
@@ -1673,11 +1718,23 @@ private fun CrashRecoveryScreen(
             .padding(horizontal = 20.dp, vertical = 18.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
-        Text(
-            text = stringResource(R.string.sts_crash_page_title),
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    imageVector = Icons.ArrowBack,
+                    contentDescription = stringResource(R.string.common_content_desc_back)
+                )
+            }
+            Text(
+                text = stringResource(R.string.sts_crash_page_title),
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold
+            )
+        }
         Text(
             text = stringResource(R.string.sts_crash_page_subtitle),
             style = MaterialTheme.typography.titleMedium,

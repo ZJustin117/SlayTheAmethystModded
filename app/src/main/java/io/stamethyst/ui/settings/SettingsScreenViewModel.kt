@@ -239,6 +239,8 @@ class SettingsScreenViewModel : ViewModel() {
         val surfaceBackendForcedByRenderer: Boolean = false,
         val gpuResourceGuardianMode: GpuResourceGuardianMode =
             LauncherPreferences.DEFAULT_GPU_RESOURCE_GUARDIAN_MODE,
+        val gpuResourceGuardianPressureDownscaleEnabled: Boolean =
+            LauncherPreferences.DEFAULT_GPU_RESOURCE_GUARDIAN_PRESSURE_DOWNSCALE_ENABLED,
         val themeMode: LauncherThemeMode = LauncherPreferences.DEFAULT_THEME_MODE,
         val themeColor: LauncherThemeColor = LauncherPreferences.DEFAULT_THEME_COLOR,
         val selectedJvmHeapMaxMb: Int = LauncherPreferences.DEFAULT_JVM_HEAP_MAX_MB,
@@ -2173,6 +2175,15 @@ class SettingsScreenViewModel : ViewModel() {
         refreshStatus(host)
     }
 
+    fun onGpuResourceGuardianPressureDownscaleChanged(host: Activity, enabled: Boolean) {
+        if (uiState.busy || uiState.gpuResourceGuardianPressureDownscaleEnabled == enabled) {
+            return
+        }
+        uiState = uiState.copy(gpuResourceGuardianPressureDownscaleEnabled = enabled)
+        LauncherPreferences.setGpuResourceGuardianPressureDownscaleEnabled(host, enabled)
+        refreshStatus(host)
+    }
+
     fun onMobileGluesAnglePolicyChanged(host: Activity, policy: MobileGluesAnglePolicy) {
         if (uiState.busy || uiState.mobileGluesAnglePolicy == policy) {
             return
@@ -3056,6 +3067,8 @@ class SettingsScreenViewModel : ViewModel() {
             rendererFallbackText = rendererDecision.fallbackSummary(host),
             surfaceBackendForcedByRenderer = rendererDecision.surfaceBackendForced,
             gpuResourceGuardianMode = rendering.gpuResourceGuardianMode,
+            gpuResourceGuardianPressureDownscaleEnabled =
+                rendering.gpuResourceGuardianPressureDownscaleEnabled,
             selectedJvmHeapMaxMb = jvm.heapMaxMb,
             compressedPointersEnabled = jvm.compressedPointersEnabled,
             stringDeduplicationEnabled = jvm.stringDeduplicationEnabled,
@@ -4766,8 +4779,6 @@ class SettingsScreenViewModel : ViewModel() {
                 host.getString(R.string.settings_gpu_resource_guardian_mode_aggressive)
             GpuResourceGuardianMode.ULTRA_AGGRESSIVE ->
                 host.getString(R.string.settings_gpu_resource_guardian_mode_ultra_aggressive)
-            GpuResourceGuardianMode.DIAGNOSTIC ->
-                host.getString(R.string.settings_gpu_resource_guardian_mode_diagnostic)
             GpuResourceGuardianMode.LEGACY ->
                 host.getString(R.string.settings_gpu_resource_guardian_mode_legacy)
         }

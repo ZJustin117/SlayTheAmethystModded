@@ -20,6 +20,8 @@ sealed interface Route : NavKey {
     @Serializable
     data object Main : Route
     @Serializable
+    data object CrashRecovery : Route
+    @Serializable
     data object Mods : Route
     @Serializable
     data object Settings : Route

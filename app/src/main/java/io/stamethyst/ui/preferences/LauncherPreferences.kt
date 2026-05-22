@@ -105,6 +105,8 @@ object LauncherPreferences {
         get() = LauncherConfig.DEFAULT_GPU_RESOURCE_DIAG_ENABLED
     val DEFAULT_GPU_RESOURCE_GUARDIAN_MODE: GpuResourceGuardianMode
         get() = LauncherConfig.DEFAULT_GPU_RESOURCE_GUARDIAN_MODE
+    val DEFAULT_GPU_RESOURCE_GUARDIAN_PRESSURE_DOWNSCALE_ENABLED: Boolean
+        get() = LauncherConfig.DEFAULT_GPU_RESOURCE_GUARDIAN_PRESSURE_DOWNSCALE_ENABLED
     val DEFAULT_GDX_PAD_CURSOR_DEBUG: Boolean
         get() = LauncherConfig.DEFAULT_GDX_PAD_CURSOR_DEBUG
     val DEFAULT_GLBRIDGE_SWAP_HEARTBEAT_DEBUG: Boolean
@@ -409,6 +411,14 @@ object LauncherPreferences {
 
     fun saveGpuResourceGuardianMode(context: Context, mode: GpuResourceGuardianMode) {
         LauncherConfig.saveGpuResourceGuardianMode(context, mode)
+    }
+
+    fun isGpuResourceGuardianPressureDownscaleEnabled(context: Context): Boolean {
+        return LauncherConfig.isGpuResourceGuardianPressureDownscaleEnabled(context)
+    }
+
+    fun setGpuResourceGuardianPressureDownscaleEnabled(context: Context, enabled: Boolean) {
+        LauncherConfig.setGpuResourceGuardianPressureDownscaleEnabled(context, enabled)
     }
 
     fun resetGpuResourceGuardianMode(context: Context) {

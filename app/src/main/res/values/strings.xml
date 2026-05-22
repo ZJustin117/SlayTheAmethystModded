@@ -1320,6 +1320,9 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="settings_gpu_resource_guardian_mode_ultra_aggressive_desc">Use the most aggressive guardian thresholds and allow reclaiming textures that may require up to 64 MB synchronous restore. This can reduce severe GPU pressure but may cause visible stutter when large mod textures are needed again.</string>
     <string name="settings_gpu_resource_guardian_mode_diagnostic_desc">Safe-mode behavior with additional diagnostic logging for short investigations. Do not leave this on for normal play.</string>
     <string name="settings_gpu_resource_guardian_mode_legacy_desc">Disable the new GPU guardian and enable the legacy locked compatibility paths: runtime texture downscale, texture residency manager, FBO manager, FBO idle reclaim, and FBO pressure downscale.</string>
+    <string name="settings_gpu_resource_guardian_pressure_downscale_enabled">Guardian pressure downscale: Enabled</string>
+    <string name="settings_gpu_resource_guardian_pressure_downscale_disabled">Guardian pressure downscale: Disabled</string>
+    <string name="settings_gpu_resource_guardian_pressure_downscale_desc">When the new GPU guardian is enabled, also enable legacy-style texture and FBO pressure downscale to reduce GPU load under pressure. This may lower image quality and takes effect on the next launch.</string>
     <string name="settings_status_loading">Loading status...</string>
     <string name="settings_lwjgl_debug_enabled">LWJGL Debug: Enabled</string>
     <string name="settings_lwjgl_debug_disabled">LWJGL Debug: Disabled</string>

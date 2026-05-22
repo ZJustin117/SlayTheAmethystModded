@@ -50,7 +50,8 @@ internal object SettingsRepository {
         val manualRendererBackend: RendererBackend,
         val mobileGluesSettings: MobileGluesSettings,
         val rendererDecision: RendererDecision,
-        val gpuResourceGuardianMode: GpuResourceGuardianMode
+        val gpuResourceGuardianMode: GpuResourceGuardianMode,
+        val gpuResourceGuardianPressureDownscaleEnabled: Boolean
     )
 
     data class JvmSnapshot(
@@ -151,7 +152,9 @@ internal object SettingsRepository {
                 manualRendererBackend = manualRendererBackend,
                 mobileGluesSettings = mobileGluesSettings,
                 rendererDecision = rendererDecision,
-                gpuResourceGuardianMode = LauncherPreferences.readGpuResourceGuardianMode(context)
+                gpuResourceGuardianMode = LauncherPreferences.readGpuResourceGuardianMode(context),
+                gpuResourceGuardianPressureDownscaleEnabled =
+                    LauncherPreferences.isGpuResourceGuardianPressureDownscaleEnabled(context)
             ),
             jvm = JvmSnapshot(
                 heapMaxMb = heapMaxMb,

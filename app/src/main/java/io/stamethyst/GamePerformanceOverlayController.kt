@@ -52,6 +52,11 @@ internal class GamePerformanceOverlayController(
         val unknownPssBytes: Long?
     )
 
+    private data class GpuResourceSummary(
+        val estimatedBytes: Long?,
+        val guardianReclaimedBytes: Long?
+    )
+
     private object MemoryInfoDetailReader {
         private const val FALLBACK_OTHER_UNKNOWN_DEV = 5
         private const val FALLBACK_OTHER_GL = 15
@@ -140,6 +145,9 @@ internal class GamePerformanceOverlayController(
 
     @Volatile
     private var latestGcWarmupAgeSeconds: Int? = null
+
+    @Volatile
+    private var latestGpuEstimatedBytes: Long? = null
 
     @Volatile
     private var latestGpuGuardianReclaimedBytes: Long? = null
@@ -268,14 +276,12 @@ internal class GamePerformanceOverlayController(
         lastSampleElapsedMs = nowMs
         lastSwapCount = swapCount
 
-        val nativeHeapBytes = Debug.getNativeHeapAllocatedSize()
         val totalMemoryBytes = latestRssBytes ?: latestPssSnapshot?.totalPssBytes
         val gcEventsPerMinute = latestGcEventsPerMinute
         val gcWarmupAgeSeconds = latestGcWarmupAgeSeconds
         val jvmRuntimeMemorySnapshot = readJvmRuntimeMemorySnapshot()
-        val nonJvmBytes = resolveNonJvmMemoryBytes(totalMemoryBytes, jvmRuntimeMemorySnapshot, nativeHeapBytes)
         val jvmText = formatJvmMemory(jvmRuntimeMemorySnapshot)
-        val nativeText = formatMb(nonJvmBytes)
+        val gpuEstimatedText = latestGpuEstimatedBytes?.let(::formatMb) ?: "--"
         val totalText = totalMemoryBytes?.let(::formatMb) ?: "--"
         val guardianReclaimedText = latestGpuGuardianReclaimedBytes?.let(::formatMb) ?: "--"
         val gcText = buildString {
@@ -288,9 +294,9 @@ internal class GamePerformanceOverlayController(
             appendMetric("▣", "渲染", rendererSummary)
             appendMetric("◷", "FPS", String.format(Locale.US, "%.1f", fps))
             appendMetric("J", "JVM", jvmText)
-            appendMetric("N", "原生占用", nativeText)
+            appendMetric("G", "GPU估算", gpuEstimatedText)
             appendMetric("Σ", "总计", totalText)
-            appendMetric("G", "守护回收", guardianReclaimedText)
+            appendMetric("R", "守护累计", guardianReclaimedText)
             appendMetric("↺", "GC", gcText)
         }
     }
@@ -309,7 +315,10 @@ internal class GamePerformanceOverlayController(
                 latestRssBytes = readRssBytes()
                 if (nowMs - latestPssSampleElapsedMs >= PSS_REFRESH_INTERVAL_MS) {
                     latestPssSnapshot = readPssSnapshot()
-                    latestGpuGuardianReclaimedBytes = readLatestGpuGuardianReclaimedBytes()
+                    readLatestGpuResourceSummary()?.let { summary ->
+                        latestGpuEstimatedBytes = summary.estimatedBytes
+                        latestGpuGuardianReclaimedBytes = summary.guardianReclaimedBytes
+                    }
                     latestPssSampleElapsedMs = nowMs
                 }
                 updateGcFrequency(nowMs)
@@ -576,7 +585,7 @@ internal class GamePerformanceOverlayController(
         }
     }
 
-    private fun readLatestGpuGuardianReclaimedBytes(): Long? {
+    private fun readLatestGpuResourceSummary(): GpuResourceSummary? {
         if (!latestLogFile.isFile) {
             return null
         }
@@ -596,9 +605,16 @@ internal class GamePerformanceOverlayController(
                     .filter { line -> line.contains("[gdx-diag] GpuResources summary") }
                     .lastOrNull()
                     ?: return null
+                val textureBytes = parseSummaryLong(latestSummary, "textureBytes") ?: 0L
+                val frameBufferBytes = parseSummaryLong(latestSummary, "frameBufferBytes") ?: 0L
+                val estimatedBytes = textureBytes + frameBufferBytes
                 val guardianTextureBytes = parseSummaryLong(latestSummary, "guardianTextureBytes") ?: 0L
                 val guardianFboBytes = parseSummaryLong(latestSummary, "guardianFboBytes") ?: 0L
-                guardianTextureBytes + guardianFboBytes
+                val guardianReclaimedBytes = guardianTextureBytes + guardianFboBytes
+                GpuResourceSummary(
+                    estimatedBytes = estimatedBytes.takeIf { it > 0L },
+                    guardianReclaimedBytes = guardianReclaimedBytes.takeIf { it > 0L }
+                )
             }
         } catch (_: Throwable) {
             null
@@ -630,18 +646,6 @@ internal class GamePerformanceOverlayController(
             return "--/--"
         }
         return formatMb(snapshot.heapUsedBytes) + "/" + formatMb(snapshot.heapMaxBytes)
-    }
-
-    private fun resolveNonJvmMemoryBytes(
-        totalMemoryBytes: Long?,
-        snapshot: JvmRuntimeMemorySnapshot?,
-        nativeHeapBytes: Long
-    ): Long {
-        val heapUsedBytes = snapshot?.heapUsedBytes
-        if (totalMemoryBytes != null && heapUsedBytes != null) {
-            return (totalMemoryBytes - heapUsedBytes).coerceAtLeast(0L)
-        }
-        return nativeHeapBytes.coerceAtLeast(0L)
     }
 
     private fun StringBuilder.appendMetric(icon: String, label: String, value: String) {

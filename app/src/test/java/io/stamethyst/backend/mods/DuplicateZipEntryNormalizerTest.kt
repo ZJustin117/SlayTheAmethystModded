@@ -2,6 +2,7 @@ package io.stamethyst.backend.mods
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
+import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
 import io.stamethyst.backend.mods.importing.ModImportExecutor
 import io.stamethyst.backend.mods.importing.ModImportPlanner
@@ -114,6 +115,44 @@ class DuplicateZipEntryNormalizerTest {
         assertEquals(listOf("ModTheSpire.json"), readEntryNames(jarFile))
     }
 
+    @Test
+    fun normalizeInPlaceIfNeeded_acceptsPlatformReadableJarWithCentralDirectoryPreamble() {
+        val tempDir = Files.createTempDirectory("duplicate-zip-normalizer-central-preamble")
+        val jarFile = tempDir.resolve("MintyLike.jar").toFile()
+
+        ZipArchiveOutputStream(jarFile).use { zipOut ->
+            writeEntry(
+                zipOut = zipOut,
+                entryName = "ModTheSpire.json",
+                bytes = """
+                    {
+                      "modid": "MintySpire",
+                      "name": "Minty Spire (QoL Compilation)",
+                      "dependencies": ["basemod"]
+                    }
+                """.trimIndent().toByteArray(StandardCharsets.UTF_8)
+            )
+            writeEntry(
+                zipOut = zipOut,
+                entryName = "mintySpire/MintySpire.class",
+                bytes = byteArrayOf(0x01)
+            )
+        }
+        insertCentralDirectoryPreamble(jarFile, byteArrayOf(0x04, 0x14, 0x00, 0x00))
+
+        assertEquals(2, ZipFile(jarFile).use { it.size() })
+
+        val result = DuplicateZipEntryNormalizer.normalizeInPlaceIfNeeded(jarFile)
+
+        assertFalse(result.changed)
+        assertFalse(result.rewritten)
+        assertEquals(2, result.totalEntries)
+        assertEquals(2, result.uniqueEntries)
+        assertEquals(0, result.duplicateEntriesRemoved)
+        assertEquals("MintySpire", ModJarSupport.readModManifest(jarFile).modId)
+        assertEquals("MintySpire", MtsLaunchManifestValidator.resolveLaunchModId(jarFile))
+    }
+
     private fun writeJarWithDuplicateEntries(jarFile: java.io.File) {
         ZipArchiveOutputStream(jarFile).use { zipOut ->
             writeEntry(
@@ -183,5 +222,56 @@ class DuplicateZipEntryNormalizerTest {
             }
         }
         return names
+    }
+
+    private fun insertCentralDirectoryPreamble(jarFile: java.io.File, preamble: ByteArray) {
+        val bytes = jarFile.readBytes()
+        val eocdOffset = findSignature(bytes, byteArrayOf(0x50, 0x4b, 0x05, 0x06))
+        require(eocdOffset >= 0) { "End of central directory not found" }
+        val centralDirectoryOffset = readLittleEndianInt(bytes, eocdOffset + 16)
+        require(centralDirectoryOffset in 0..bytes.size) { "Invalid central directory offset" }
+
+        val updated = ByteArray(bytes.size + preamble.size)
+        System.arraycopy(bytes, 0, updated, 0, centralDirectoryOffset)
+        System.arraycopy(preamble, 0, updated, centralDirectoryOffset, preamble.size)
+        System.arraycopy(
+            bytes,
+            centralDirectoryOffset,
+            updated,
+            centralDirectoryOffset + preamble.size,
+            bytes.size - centralDirectoryOffset
+        )
+        writeLittleEndianInt(updated, eocdOffset + preamble.size + 16, centralDirectoryOffset + preamble.size)
+        jarFile.writeBytes(updated)
+    }
+
+    private fun findSignature(bytes: ByteArray, signature: ByteArray): Int {
+        for (index in bytes.size - signature.size downTo 0) {
+            var matched = true
+            for (offset in signature.indices) {
+                if (bytes[index + offset] != signature[offset]) {
+                    matched = false
+                    break
+                }
+            }
+            if (matched) {
+                return index
+            }
+        }
+        return -1
+    }
+
+    private fun readLittleEndianInt(bytes: ByteArray, offset: Int): Int {
+        return (bytes[offset].toInt() and 0xff) or
+            ((bytes[offset + 1].toInt() and 0xff) shl 8) or
+            ((bytes[offset + 2].toInt() and 0xff) shl 16) or
+            ((bytes[offset + 3].toInt() and 0xff) shl 24)
+    }
+
+    private fun writeLittleEndianInt(bytes: ByteArray, offset: Int, value: Int) {
+        bytes[offset] = (value and 0xff).toByte()
+        bytes[offset + 1] = ((value ushr 8) and 0xff).toByte()
+        bytes[offset + 2] = ((value ushr 16) and 0xff).toByte()
+        bytes[offset + 3] = ((value ushr 24) and 0xff).toByte()
     }
 }

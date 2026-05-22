@@ -387,6 +387,9 @@ object StsLaunchSpec {
             "-Damethyst.gdx.gpu_resource_diag=" +
                 if (LauncherConfig.isGpuResourceDiagEnabled(context)) "true" else "false"
         )
+        if (LauncherConfig.isGamePerformanceOverlayEnabled(context)) {
+            args.add("-Damethyst.gdx.gpu_resource_summary=true")
+        }
         addDebugGpuGuardianTestProperties(context, args)
         val bridgeDelegateMainClass = if (isMtsLaunchMode(launchMode)) {
             "com.evacipated.cardcrawl.modthespire.Loader"

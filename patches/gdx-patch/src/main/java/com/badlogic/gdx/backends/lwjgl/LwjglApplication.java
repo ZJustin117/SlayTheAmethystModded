@@ -88,6 +88,7 @@ public class LwjglApplication implements Application {
 		"amethyst.gdx.runtime_texture_compat_periodic_scan";
 	private static final String GLOBAL_TEXTURE_COMPAT_VERBOSE_PROP = "amethyst.gdx.global_texture_compat_verbose";
 	private static final String GPU_RESOURCE_DIAG_ENABLED_PROP = "amethyst.gdx.gpu_resource_diag";
+	private static final String GPU_RESOURCE_SUMMARY_ENABLED_PROP = "amethyst.gdx.gpu_resource_summary";
 	private static final String GPU_LEAK_INJECTOR_MODE_PROP = "amethyst.gdx.debug_leak_injector";
 	private static final String EXPECTED_EXIT_MARKER_PROP = "amethyst.expected_exit_marker";
 	private static final String NO_CONTEXT_DIAGNOSTICS_PROP = "amethyst.lwjgl.diag.no_context_stack";
@@ -1774,7 +1775,8 @@ public class LwjglApplication implements Application {
 	}
 
 	private static boolean shouldLogGpuResourceSummary () {
-		return readBooleanSystemProperty(GPU_RESOURCE_DIAG_ENABLED_PROP, false);
+		return readBooleanSystemProperty(GPU_RESOURCE_DIAG_ENABLED_PROP, false)
+			|| readBooleanSystemProperty(GPU_RESOURCE_SUMMARY_ENABLED_PROP, false);
 	}
 
 	private static void logGpuResourceSummary (String reason) {

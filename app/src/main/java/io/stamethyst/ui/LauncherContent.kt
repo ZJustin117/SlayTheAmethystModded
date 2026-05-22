@@ -89,6 +89,7 @@ import io.stamethyst.ui.feedback.LauncherFeedbackIssuePreviewScreen
 import io.stamethyst.ui.feedback.LauncherFeedbackSubscriptionsScreen
 import io.stamethyst.ui.feedback.FeedbackSubmissionNotice
 import io.stamethyst.ui.main.LauncherMainScreen
+import io.stamethyst.ui.main.LauncherCrashRecoveryScreen
 import io.stamethyst.ui.main.LauncherModsScreen
 import io.stamethyst.ui.main.MainScreenViewModel
 import io.stamethyst.ui.modimport.ModImportHost
@@ -168,6 +169,18 @@ fun LauncherContent(
         }
     }
 
+    LaunchedEffect(mainUiState.crashRecovery) {
+        if (mainUiState.crashRecovery != null && currentRoute != Route.CrashRecovery) {
+            navigator.push(Route.CrashRecovery)
+        }
+    }
+
+    LaunchedEffect(currentRoute, mainUiState.crashRecovery) {
+        if (currentRoute == Route.CrashRecovery && mainUiState.crashRecovery == null) {
+            navigator.goBack()
+        }
+    }
+
     CompositionLocalProvider(
         LocalNavigator provides navigator,
     ) {
@@ -225,7 +238,11 @@ fun LauncherContent(
                     ),
                     onBack = {
                         if (!isBlockingBusyInteractionLocked) {
-                            navigator.goBack()
+                            if (currentRoute == Route.CrashRecovery) {
+                                mainViewModel.dismissCrashRecovery()
+                            } else {
+                                navigator.goBack()
+                            }
                         }
                     },
                     backStack = navigator.backStack,
@@ -316,6 +333,22 @@ fun LauncherContent(
                                             navigator.push(Route.FeedbackSubscriptions)
                                         }
                                     }
+                                }
+                            )
+                        }
+
+                        entry<Route.CrashRecovery> {
+                            LauncherCrashRecoveryScreen(
+                                viewModel = mainViewModel,
+                                modifier = Modifier.fillMaxSize(),
+                                onBack = {
+                                    mainViewModel.dismissCrashRecovery()
+                                },
+                                onOpenSettings = { navigator.push(Route.Settings) },
+                                onOpenFeedback = { navigator.push(Route.Feedback) },
+                                onReturnToMainMenu = {
+                                    mainViewModel.dismissCrashRecovery()
+                                    navigator.resetRoot(Route.Main)
                                 }
                             )
                         }
@@ -1038,6 +1071,7 @@ private fun Route?.launcherDockRoute(): Route? {
         Route.Workshop -> Route.Workshop
         Route.WorkshopSubscriptions -> Route.Workshop
         Route.Settings -> Route.Settings
+        Route.CrashRecovery,
         is Route.WorkshopDetail,
         Route.WorkshopSubscriptions,
         Route.WorkshopDownloadCenter,

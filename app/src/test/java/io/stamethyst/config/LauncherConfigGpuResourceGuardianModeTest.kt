@@ -49,10 +49,6 @@ class LauncherConfigGpuResourceGuardianModeTest {
             GpuResourceGuardianMode.fromPersistedValue("aggressive")
         )
         assertEquals(
-            GpuResourceGuardianMode.DIAGNOSTIC,
-            GpuResourceGuardianMode.fromPersistedValue("diagnostic")
-        )
-        assertEquals(
             GpuResourceGuardianMode.ULTRA_AGGRESSIVE,
             GpuResourceGuardianMode.fromPersistedValue("ultra_aggressive")
         )

@@ -109,6 +109,9 @@ object LauncherConfig {
     private const val PREF_KEY_TEXTURE_PRESSURE_DOWNSCALE_DIVISOR =
         "compat_texture_pressure_downscale_divisor"
     private const val PREF_KEY_GPU_RESOURCE_GUARDIAN_MODE = "compat_gpu_resource_guardian_mode"
+    private const val PREF_KEY_GPU_RESOURCE_GUARDIAN_PRESSURE_DOWNSCALE =
+        "compat_gpu_resource_guardian_safe_pressure_downscale"
+    private const val LEGACY_GPU_RESOURCE_GUARDIAN_DIAGNOSTIC_MODE = "diagnostic"
     private const val PREF_KEY_FORCE_LINEAR_MIPMAP_FILTER = "compat_force_linear_mipmap_filter"
     private const val PREF_KEY_HINA_CHARACTER_RENDER_COMPAT =
         "compat_hina_character_render"
@@ -241,6 +244,7 @@ object LauncherConfig {
     const val MIN_TEXTURE_PRESSURE_DOWNSCALE_DIVISOR = 2
     const val MAX_TEXTURE_PRESSURE_DOWNSCALE_DIVISOR = 4
     val DEFAULT_GPU_RESOURCE_GUARDIAN_MODE: GpuResourceGuardianMode = GpuResourceGuardianMode.SAFE
+    const val DEFAULT_GPU_RESOURCE_GUARDIAN_PRESSURE_DOWNSCALE_ENABLED = false
     val DEFAULT_LEGACY_GPU_RESOURCE_GUARDIAN_MODE: GpuResourceGuardianMode =
         GpuResourceGuardianMode.LEGACY
     val DEFAULT_LOW_MEMORY_GPU_RESOURCE_GUARDIAN_MODE: GpuResourceGuardianMode =
@@ -922,7 +926,8 @@ object LauncherConfig {
     }
 
     fun isLargeTextureDownscaleCompatEnabled(context: Context): Boolean {
-        return isLegacyGpuResourceModeEnabled(context)
+        return isLegacyGpuResourceModeEnabled(context) ||
+            isGpuResourceGuardianPressureDownscaleActive(context)
     }
 
     fun setLargeTextureDownscaleCompatEnabled(context: Context, enabled: Boolean) {
@@ -965,6 +970,9 @@ object LauncherConfig {
 
     fun readGpuResourceGuardianMode(context: Context): GpuResourceGuardianMode {
         val persisted = prefs(context).getString(PREF_KEY_GPU_RESOURCE_GUARDIAN_MODE, null)
+        if (persisted == LEGACY_GPU_RESOURCE_GUARDIAN_DIAGNOSTIC_MODE) {
+            return GpuResourceGuardianMode.SAFE
+        }
         return GpuResourceGuardianMode.fromPersistedValue(persisted)
             ?: resolveDefaultGpuResourceGuardianMode(context)
     }
@@ -978,6 +986,19 @@ object LauncherConfig {
     fun resetGpuResourceGuardianMode(context: Context) {
         prefs(context).edit {
             remove(PREF_KEY_GPU_RESOURCE_GUARDIAN_MODE)
+        }
+    }
+
+    fun isGpuResourceGuardianPressureDownscaleEnabled(context: Context): Boolean {
+        return prefs(context).getBoolean(
+            PREF_KEY_GPU_RESOURCE_GUARDIAN_PRESSURE_DOWNSCALE,
+            DEFAULT_GPU_RESOURCE_GUARDIAN_PRESSURE_DOWNSCALE_ENABLED
+        )
+    }
+
+    fun setGpuResourceGuardianPressureDownscaleEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit {
+            putBoolean(PREF_KEY_GPU_RESOURCE_GUARDIAN_PRESSURE_DOWNSCALE, enabled)
         }
     }
 
@@ -1060,7 +1081,8 @@ object LauncherConfig {
     }
 
     fun isFboPressureDownscaleCompatEnabled(context: Context): Boolean {
-        return isLegacyGpuResourceModeEnabled(context)
+        return isLegacyGpuResourceModeEnabled(context) ||
+            isGpuResourceGuardianPressureDownscaleActive(context)
     }
 
     fun setFboPressureDownscaleCompatEnabled(context: Context, enabled: Boolean) {
@@ -1071,6 +1093,13 @@ object LauncherConfig {
 
     private fun isLegacyGpuResourceModeEnabled(context: Context): Boolean {
         return readGpuResourceGuardianMode(context) == GpuResourceGuardianMode.LEGACY
+    }
+
+    private fun isGpuResourceGuardianPressureDownscaleActive(context: Context): Boolean {
+        val mode = readGpuResourceGuardianMode(context)
+        return mode != GpuResourceGuardianMode.OFF &&
+            mode != GpuResourceGuardianMode.LEGACY &&
+            isGpuResourceGuardianPressureDownscaleEnabled(context)
     }
 
     fun isLwjglDebugEnabled(context: Context): Boolean {
@@ -1136,9 +1165,18 @@ object LauncherConfig {
     }
 
     fun isGpuResourceDiagEnabled(context: Context): Boolean {
-        return prefs(context).getBoolean(
-            PREF_KEY_GPU_RESOURCE_DIAG_ENABLED,
+        val prefs = prefs(context)
+        val defaultValue = if (
+            prefs.getString(PREF_KEY_GPU_RESOURCE_GUARDIAN_MODE, null) ==
+            LEGACY_GPU_RESOURCE_GUARDIAN_DIAGNOSTIC_MODE
+        ) {
+            true
+        } else {
             DEFAULT_GPU_RESOURCE_DIAG_ENABLED
+        }
+        return prefs.getBoolean(
+            PREF_KEY_GPU_RESOURCE_DIAG_ENABLED,
+            defaultValue
         )
     }
 
