@@ -148,6 +148,11 @@ internal object DiagnosticsArchiveBuilder {
                 File(SteamCloudManifestStore.outputDir(context), "last-websocket-cm-endpoint.txt"),
                 "sts/steam_cloud/phase1/last-websocket-cm-endpoint.txt"
             )
+            exportedCount += writeOptionalDirectoryFiles(
+                zipOutput,
+                SteamCloudDiagnosticsStore.failureHistoryDir(context),
+                "sts/steam_cloud/phase1/login-failures"
+            )
             val phase0Dir = File(RuntimePaths.storageRoot(context), "steam-cloud-phase0")
             exportedCount += writeOptionalFile(
                 zipOutput,
@@ -377,6 +382,23 @@ internal object DiagnosticsArchiveBuilder {
         }
         writeFileToZip(zipOutput, file, entryName)
         return 1
+    }
+
+    @Throws(IOException::class)
+    private fun writeOptionalDirectoryFiles(
+        zipOutput: ZipOutputStream,
+        dir: File,
+        entryDirName: String
+    ): Int {
+        val files = dir.listFiles { file -> file.isFile && file.length() > 0L }
+            ?.sortedBy { it.name }
+            ?: return 0
+        var count = 0
+        files.forEach { file ->
+            writeFileToZip(zipOutput, file, "$entryDirName/${file.name}")
+            count++
+        }
+        return count
     }
 
     private fun buildJvmLogDeviceInfo(context: Context): String = buildString {

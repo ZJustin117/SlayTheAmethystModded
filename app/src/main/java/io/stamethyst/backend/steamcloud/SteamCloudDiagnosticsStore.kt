@@ -11,9 +11,14 @@ import java.util.concurrent.ExecutionException
 
 internal object SteamCloudDiagnosticsStore {
     private const val SUMMARY_FILE_NAME = "last-operation-summary.txt"
+    private const val FAILURE_HISTORY_DIR_NAME = "login-failures"
+    private const val FAILURE_HISTORY_LIMIT = 10
 
     @JvmStatic
     fun summaryFile(context: Context): File = File(SteamCloudManifestStore.outputDir(context), SUMMARY_FILE_NAME)
+
+    fun failureHistoryDir(context: Context): File =
+        File(SteamCloudManifestStore.outputDir(context), FAILURE_HISTORY_DIR_NAME)
 
     @Throws(IOException::class)
     fun writeSummary(
@@ -139,6 +144,13 @@ internal object SteamCloudDiagnosticsStore {
             }
 
             diagnostics?.let { snapshot ->
+                if (snapshot.diagnosticEventLines.isNotEmpty()) {
+                    add("")
+                    add("Diagnostic Event Timeline:")
+                    snapshot.diagnosticEventLines.forEach { line ->
+                        add("  - $line")
+                    }
+                }
                 if (snapshot.javaSteamLogTailLines.isNotEmpty()) {
                     add("")
                     add("JavaSteam Log Tail:")
@@ -155,15 +167,46 @@ internal object SteamCloudDiagnosticsStore {
                 }
             }
         }
-        file.writeText(lines.joinToString("\n") + "\n", Charsets.UTF_8)
+        val text = lines.joinToString("\n") + "\n"
+        file.writeText(text, Charsets.UTF_8)
+        if (operation == "credentials_login" && outcome.equals("FAILED", ignoreCase = true)) {
+            writeFailureHistory(context, startedAtMs, completedAtMs, text)
+        }
     }
 
     fun clear(context: Context) {
         summaryFile(context).delete()
     }
 
+    @Throws(IOException::class)
+    private fun writeFailureHistory(
+        context: Context,
+        startedAtMs: Long,
+        completedAtMs: Long,
+        text: String,
+    ) {
+        val dir = failureHistoryDir(context)
+        if (!dir.isDirectory && !dir.mkdirs()) {
+            throw IOException("Failed to create Steam Cloud login failure history directory: ${dir.absolutePath}")
+        }
+        val fileName = "login-failure-${formatFileTimestamp(startedAtMs)}-${formatFileTimestamp(completedAtMs)}.txt"
+        File(dir, fileName).writeText(text, Charsets.UTF_8)
+        pruneFailureHistory(dir)
+    }
+
+    private fun pruneFailureHistory(dir: File) {
+        val files = dir.listFiles { file -> file.isFile && file.name.startsWith("login-failure-") }
+            ?.sortedByDescending { it.lastModified() }
+            ?: return
+        files.drop(FAILURE_HISTORY_LIMIT).forEach { it.delete() }
+    }
+
     private fun formatTimestamp(timestampMs: Long): String {
         return SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(timestampMs))
+    }
+
+    private fun formatFileTimestamp(timestampMs: Long): String {
+        return SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.US).format(Date(timestampMs))
     }
 
     private fun formatOptionalDurationMs(value: Long?): String {
