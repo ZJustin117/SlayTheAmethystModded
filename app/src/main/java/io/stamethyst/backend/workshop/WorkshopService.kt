@@ -530,6 +530,9 @@ internal class WorkshopService(
             .addQueryParameter("p", query.page.toString())
             .addQueryParameter("numperpage", query.pageSize.toString())
             .apply {
+                query.category.requiredTag?.let { tag ->
+                    addQueryParameter("requiredtags[]", tag)
+                }
                 if (query.sort.usesTimeFilter) {
                     addQueryParameter("days", query.timeFilter.days.toString())
                 }
@@ -568,6 +571,7 @@ internal class WorkshopService(
                     pageSize = query.pageSize,
                     queryType = STEAM_PUBLISHED_FILE_QUERY_TYPE_RANKED_BY_TEXT_SEARCH,
                     language = steamLanguagePreference.protocolLanguage,
+                    requiredTags = query.category.requiredTag?.let(::listOf).orEmpty(),
                 ),
             ).toBrowseParseResult(query.page, query.pageSize)
         }.getOrNull()

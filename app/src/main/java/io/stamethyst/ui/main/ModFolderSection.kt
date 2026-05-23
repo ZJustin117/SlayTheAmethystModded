@@ -132,16 +132,18 @@ internal fun ModFolderSection(
     val organizationDragEnabled = organizationControlsEnabled && !effectiveDragLocked
     val modFileActionsEnabled = !uiState.busy && hostAvailable
     val filterText = interactionState.filterText
-    val filteredMods = remember(mods, filterText) {
-        val keyword = filterText.trim()
-        if (keyword.isEmpty()) {
+    val filterKeyword = filterText.trim()
+    val searchActive = filterKeyword.isNotEmpty()
+    val filteredMods = remember(mods, filterKeyword) {
+        if (filterKeyword.isEmpty()) {
             mods
         } else {
             mods.filter { mod ->
-                mod.name.contains(keyword, ignoreCase = true) ||
-                    mod.modId.contains(keyword, ignoreCase = true) ||
-                    mod.manifestModId.contains(keyword, ignoreCase = true) ||
-                    mod.description.contains(keyword, ignoreCase = true)
+                mod.name.contains(filterKeyword, ignoreCase = true) ||
+                    mod.alias.contains(filterKeyword, ignoreCase = true) ||
+                    mod.modId.contains(filterKeyword, ignoreCase = true) ||
+                    mod.manifestModId.contains(filterKeyword, ignoreCase = true) ||
+                    mod.description.contains(filterKeyword, ignoreCase = true)
             }
         }
     }
@@ -335,6 +337,7 @@ internal fun ModFolderSection(
     }
     val lazyListItems = remember(
         dependencyMods.isNotEmpty(),
+        searchActive,
         folderUiModels,
         folderBodyVisibilityByToken,
         folderBodyExitingTokens.value,
@@ -343,21 +346,27 @@ internal fun ModFolderSection(
         activeDragMod,
         deferExpandedFolderItems
     ) {
-        buildModFolderLazyItems(
-            hasDependencyMods = dependencyMods.isNotEmpty(),
-            folderUiModels = folderUiModels,
-            folderBodyVisibilityByToken = folderBodyVisibilityByToken,
-            previousFolderBodyVisibilityByToken = latestFolderBodyVisibilityByToken,
-            folderBodyExitingTokens = folderBodyExitingTokens.value,
-            shouldCollapseFolders = shouldCollapseFolders,
-            activeDragSourceFolderId = activeDragSourceFolderId,
-            activeDragMod = activeDragMod,
-            initialExpandedFolderModItemBudget = if (deferExpandedFolderItems && activeDragMod == null) {
-                INITIAL_EXPANDED_FOLDER_MOD_ITEM_BUDGET
-            } else {
-                Int.MAX_VALUE
-            }
-        )
+        if (searchActive) {
+            buildModSearchLazyItems(
+                searchResultMods = folderUiModels.flatMap { it.mods }
+            )
+        } else {
+            buildModFolderLazyItems(
+                hasDependencyMods = dependencyMods.isNotEmpty(),
+                folderUiModels = folderUiModels,
+                folderBodyVisibilityByToken = folderBodyVisibilityByToken,
+                previousFolderBodyVisibilityByToken = latestFolderBodyVisibilityByToken,
+                folderBodyExitingTokens = folderBodyExitingTokens.value,
+                shouldCollapseFolders = shouldCollapseFolders,
+                activeDragSourceFolderId = activeDragSourceFolderId,
+                activeDragMod = activeDragMod,
+                initialExpandedFolderModItemBudget = if (deferExpandedFolderItems && activeDragMod == null) {
+                    INITIAL_EXPANDED_FOLDER_MOD_ITEM_BUDGET
+                } else {
+                    Int.MAX_VALUE
+                }
+            )
+        }
     }
     val topLevelItemKeys = remember(lazyListItems) {
         lazyListItems.map { it.key }
@@ -969,12 +978,13 @@ internal fun ModFolderSection(
                             }
                         }
 
-                        is ModFolderLazyItem.FolderMod -> {
+                        is ModFolderModLazyItem -> {
                             val mod = lazyItem.mod
-                            val isHovering =
-                                activeModDragSession?.hoveredFolderTokenId == lazyItem.folderTokenId &&
+                            val folderModItem = lazyItem as? ModFolderLazyItem.FolderMod
+                            val isHovering = folderModItem != null &&
+                                activeModDragSession?.hoveredFolderTokenId == folderModItem.folderTokenId &&
                                     interactionState.activeDragFolderId == null
-                            val bodyShape = if (lazyItem.isLastInFolder) {
+                            val bodyShape = if (folderModItem?.isLastInFolder == true) {
                                 RoundedCornerShape(bottomStart = 10.dp, bottomEnd = 10.dp)
                             } else {
                                 RoundedCornerShape(0.dp)
@@ -1028,8 +1038,11 @@ internal fun ModFolderSection(
                                     onDeleteMod = { pendingDeleteMod = it },
                                     onExportMod = { latestCallbacks.value.onExportMod(it) },
                                     onShareMod = { latestCallbacks.value.onShareMod(it) },
-                                    onRenameModFile = { item, fileName ->
-                                        latestCallbacks.value.onRenameModFile(item, fileName)
+                                    onRenameModAlias = { item, alias ->
+                                        latestCallbacks.value.onRenameModAlias(item, alias)
+                                    },
+                                    onRestoreModOriginalName = { item ->
+                                        latestCallbacks.value.onRestoreModOriginalName(item)
                                     },
                                     onPatchWorkshopMod = { latestCallbacks.value.onPatchWorkshopMod(it) },
                                     onRetryWorkshopDownload = { latestCallbacks.value.onRetryWorkshopDownload(it) },
@@ -1056,60 +1069,71 @@ internal fun ModFolderSection(
                                     }
                                 )
                             }
-                            FolderBodyAnimatedLayer(
-                                visible = lazyItem.bodyVisible,
-                                folderTokenId = lazyItem.folderTokenId,
-                                onExitComplete = { exitedFolderTokenId ->
-                                    if (latestFolderBodyVisibility.value[exitedFolderTokenId] != true) {
-                                        folderBodyExitingTokens.value = folderBodyExitingTokens.value - exitedFolderTokenId
-                                    }
-                                },
-                                modifier = folderPlacementAnimation(
-                                    Modifier.fillMaxWidth()
+                            val cardContent: @Composable () -> Unit = {
+                                ModCard(
+                                    mod = mod,
+                                    suggestionText = suggestionText,
+                                    suggestionRead = suggestionReadKey == null ||
+                                        uiState.readModSuggestionKeys.contains(suggestionReadKey),
+                                    isExpanded = interactionState.expandedCards[mod.storagePath] == true,
+                                    isDraggedInOverlay = activeModDragSession?.mod?.storagePath == mod.storagePath,
+                                    showModFileName = showModFileName,
+                                    setExpanded = setCardExpanded,
+                                    selectionEnabled = organizationControlsEnabled && mod.installed,
+                                    fileActionsEnabled = modFileActionsEnabled && mod.installed,
+                                    dragEnabled = folderModItem != null && mod.installed,
+                                    dragEnabledState = latestOrganizationDragEnabled,
+                                    showDragHandle = folderModItem != null && !batchSelectionMode,
+                                    dragAffordanceAlpha = dragAffordanceAlpha,
+                                    batchSelectionProgress = batchSelectionProgress,
+                                    batchSelectionMode = batchSelectionMode,
+                                    batchSelected = selectedBatchStoragePaths.contains(mod.storagePath),
+                                    batchSelectionEnabled = organizationControlsEnabled && mod.installed,
+                                    onBatchSelectionChange = onBatchSelectionChange,
+                                    onSuggestionRead = onSuggestionRead,
+                                    callbacks = modCardCallbacks
                                 )
-                            ) {
+                            }
+                            if (folderModItem == null) {
                                 Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 6.dp)
-                                        .then(
-                                            if (lazyItem.constrainHeightForDrag) {
-                                                Modifier
-                                                    .height(1.dp)
-                                                    .clipToBounds()
-                                            } else {
-                                                Modifier
-                                            }
-                                        )
-                                        .clip(bodyShape)
-                                        .background(
-                                            if (isHovering) hoveredFolderBackgroundColor else folderBackgroundColor,
-                                            bodyShape
-                                        )
+                                    modifier = folderPlacementAnimation(Modifier.fillMaxWidth())
                                 ) {
-                                    ModCard(
-                                        mod = mod,
-                                        suggestionText = suggestionText,
-                                        suggestionRead = suggestionReadKey == null ||
-                                            uiState.readModSuggestionKeys.contains(suggestionReadKey),
-                                        isExpanded = interactionState.expandedCards[mod.storagePath] == true,
-                                        isDraggedInOverlay = activeModDragSession?.mod?.storagePath == mod.storagePath,
-                                        showModFileName = showModFileName,
-                                        setExpanded = setCardExpanded,
-                                        selectionEnabled = organizationControlsEnabled && mod.installed,
-                                        fileActionsEnabled = modFileActionsEnabled && mod.installed,
-                                        dragEnabled = mod.installed,
-                                        dragEnabledState = latestOrganizationDragEnabled,
-                                        showDragHandle = !batchSelectionMode,
-                                        dragAffordanceAlpha = dragAffordanceAlpha,
-                                        batchSelectionProgress = batchSelectionProgress,
-                                        batchSelectionMode = batchSelectionMode,
-                                        batchSelected = selectedBatchStoragePaths.contains(mod.storagePath),
-                                        batchSelectionEnabled = organizationControlsEnabled && mod.installed,
-                                        onBatchSelectionChange = onBatchSelectionChange,
-                                        onSuggestionRead = onSuggestionRead,
-                                        callbacks = modCardCallbacks
+                                    cardContent()
+                                }
+                            } else {
+                                FolderBodyAnimatedLayer(
+                                    visible = folderModItem.bodyVisible,
+                                    folderTokenId = folderModItem.folderTokenId,
+                                    onExitComplete = { exitedFolderTokenId ->
+                                        if (latestFolderBodyVisibility.value[exitedFolderTokenId] != true) {
+                                            folderBodyExitingTokens.value = folderBodyExitingTokens.value - exitedFolderTokenId
+                                        }
+                                    },
+                                    modifier = folderPlacementAnimation(
+                                        Modifier.fillMaxWidth()
                                     )
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 6.dp)
+                                            .then(
+                                                if (folderModItem.constrainHeightForDrag) {
+                                                    Modifier
+                                                        .height(1.dp)
+                                                        .clipToBounds()
+                                                } else {
+                                                    Modifier
+                                                }
+                                            )
+                                            .clip(bodyShape)
+                                            .background(
+                                                if (isHovering) hoveredFolderBackgroundColor else folderBackgroundColor,
+                                                bodyShape
+                                            )
+                                    ) {
+                                        cardContent()
+                                    }
                                 }
                             }
                         }
@@ -1170,12 +1194,18 @@ private fun FolderBodyAnimatedLayer(
 }
 
 private fun LazyItemScope.folderPlacementAnimation(modifier: Modifier = Modifier): Modifier = modifier.animateItem(
-    fadeInSpec = null,
+    fadeInSpec = tween<Float>(
+        durationMillis = FOLDER_ITEM_FADE_ANIMATION_MS,
+        easing = LinearEasing
+    ),
     placementSpec = tween<IntOffset>(
         durationMillis = FOLDER_PLACEMENT_ANIMATION_MS,
         easing = LinearEasing
     ),
-    fadeOutSpec = null
+    fadeOutSpec = tween<Float>(
+        durationMillis = FOLDER_ITEM_FADE_ANIMATION_MS,
+        easing = LinearEasing
+    )
 )
 
 @Composable
@@ -1317,7 +1347,7 @@ private fun AlertDeleteModDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
-    val displayName = resolveModDisplayName(mod, showModFileName = true)
+    val displayName = resolveModDisplayName(mod)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(text = stringResource(R.string.main_mod_delete)) },
@@ -1561,6 +1591,14 @@ private sealed interface ModFolderLazyItem {
         override val dropFolderTokenId: String? = null
     }
 
+    data class SearchResultMod(
+        override val mod: ModItemUi
+    ) : ModFolderModLazyItem {
+        override val key: String = "mod:${mod.storagePath}"
+        override val contentType: String = "searchResultMod"
+        override val dropFolderTokenId: String? = null
+    }
+
     data class FolderHeader(
         val folderUiModel: FolderUiModel,
         val displayIndex: Int,
@@ -1583,14 +1621,30 @@ private sealed interface ModFolderLazyItem {
 
     data class FolderMod(
         val folderTokenId: String,
-        val mod: ModItemUi,
+        override val mod: ModItemUi,
         val constrainHeightForDrag: Boolean,
         val isLastInFolder: Boolean,
         val bodyVisible: Boolean
-    ) : ModFolderLazyItem {
+    ) : ModFolderModLazyItem {
         override val key: String = "mod:${mod.storagePath}"
         override val contentType: String = "folderMod"
         override val dropFolderTokenId: String = folderTokenId
+    }
+}
+
+private sealed interface ModFolderModLazyItem : ModFolderLazyItem {
+    val mod: ModItemUi
+}
+
+private fun buildModSearchLazyItems(
+    searchResultMods: List<ModItemUi>
+): List<ModFolderLazyItem> {
+    return buildList {
+        add(ModFolderLazyItem.TopPlaceholder)
+        add(ModFolderLazyItem.FilterInput)
+        searchResultMods.forEach { mod ->
+            add(ModFolderLazyItem.SearchResultMod(mod))
+        }
     }
 }
 
@@ -1714,6 +1768,7 @@ private const val DEPENDENCY_FOLDER_KEY = "dependencyFolder"
 private const val FOLDER_TOGGLE_BUTTON_TAG = "mod_folder_toggle_button"
 private const val FOLDER_BODY_ENTER_DELAY_MS = 16L
 private const val FOLDER_BODY_LAYER_ANIMATION_MS = 140
+private const val FOLDER_ITEM_FADE_ANIMATION_MS = 140
 private const val FOLDER_PLACEMENT_ANIMATION_MS = 220
 private const val FOLDER_TOGGLE_THROTTLE_MS = 260L
 private val FOLDER_BODY_ANIMATION_OFFSET = 10.dp

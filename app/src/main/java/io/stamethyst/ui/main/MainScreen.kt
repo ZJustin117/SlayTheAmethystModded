@@ -1096,6 +1096,28 @@ internal fun LauncherMainRoute(
         )
     }
 
+    if (uiState.showModFileNameRemovalNotice && hostActivity != null) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = {},
+            title = { Text(stringResource(R.string.main_mod_file_name_display_removed_title)) },
+            text = { Text(stringResource(R.string.main_mod_file_name_display_removed_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = { viewModel.onApplyFileNameAliasesForRemovedShowFileName(hostActivity) }
+                ) {
+                    Text(stringResource(R.string.main_mod_file_name_display_removed_apply))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { viewModel.onDismissRemovedShowFileNameNotice(hostActivity) }
+                ) {
+                    Text(stringResource(R.string.main_mod_file_name_display_removed_skip))
+                }
+            }
+        )
+    }
+
     content(
         modifier,
         uiState,
@@ -2946,7 +2968,8 @@ private fun ColumnScope.MainContentSwitcher(
                         onDeleteMods = actions.onDeleteMods,
                         onExportMod = actions.onExportMod,
                         onShareMod = actions.onShareMod,
-                        onRenameModFile = actions.onRenameModFile,
+                        onRenameModAlias = actions.onRenameModAlias,
+                        onRestoreModOriginalName = actions.onRestoreModOriginalName,
                         onPatchWorkshopMod = actions.onPatchWorkshopMod,
                         onRetryWorkshopDownload = actions.onRetryWorkshopDownload,
                         onUpdateWorkshopMod = actions.onUpdateWorkshopMod,

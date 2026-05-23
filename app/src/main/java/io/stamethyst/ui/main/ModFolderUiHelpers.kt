@@ -92,19 +92,43 @@ internal fun normalizeModId(raw: String?): String {
     return raw?.trim()?.lowercase().orEmpty()
 }
 
+@Suppress("UNUSED_PARAMETER")
 internal fun resolveModDisplayName(mod: ModItemUi, showModFileName: Boolean = false): String {
-    if (showModFileName) {
-        val fromFile = resolveModFileNameWithoutJar(mod.storagePath)
-        if (!fromFile.isNullOrBlank()) {
-            return fromFile
-        }
+    val alias = mod.alias.trim()
+    if (alias.isNotEmpty()) {
+        return alias
     }
+    return resolveOriginalModDisplayName(mod)
+}
+
+internal fun resolveOriginalModDisplayName(mod: ModItemUi): String {
     return mod.name.ifBlank {
         mod.manifestModId.ifBlank {
             mod.modId.ifBlank {
                 "Unknown"
             }
         }
+    }
+}
+
+internal fun resolveModExportFileName(mod: ModItemUi, fallbackFileName: String): String {
+    return normalizeModExportFileName(
+        preferredName = mod.alias.ifBlank { fallbackFileName },
+        fallbackFileName = fallbackFileName
+    )
+}
+
+internal fun normalizeModExportFileName(preferredName: String, fallbackFileName: String): String {
+    val fallback = fallbackFileName.trim().ifBlank { "mod-export.jar" }
+    val sanitized = preferredName
+        .trim()
+        .replace('/', '_')
+        .replace('\\', '_')
+        .ifBlank { fallback }
+    return if (sanitized.endsWith(".jar", ignoreCase = true)) {
+        sanitized
+    } else {
+        "$sanitized.jar"
     }
 }
 

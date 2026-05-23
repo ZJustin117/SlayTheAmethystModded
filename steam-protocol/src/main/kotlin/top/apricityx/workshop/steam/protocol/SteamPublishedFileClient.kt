@@ -12,6 +12,7 @@ data class SteamPublishedFileQuery(
     val pageSize: Int = 30,
     val queryType: Int = STEAM_PUBLISHED_FILE_QUERY_TYPE_RANKED_BY_TEXT_SEARCH,
     val language: Int = STEAM_LANGUAGE_ENGLISH,
+    val requiredTags: List<String> = emptyList(),
 )
 
 data class SteamPublishedFileQueryResult(
@@ -104,6 +105,12 @@ class SteamPublishedFileClient(
                         .setReturnVoteData(true)
                         .setReturnShortDescription(true)
                         .setStripDescriptionBbcode(true)
+                        .apply {
+                            if (query.requiredTags.isNotEmpty()) {
+                                addAllRequiredtags(query.requiredTags)
+                                setMatchAllTags(true)
+                            }
+                        }
                         .build(),
                     parser = CPublishedFile_QueryFiles_Response.parser(),
                 )

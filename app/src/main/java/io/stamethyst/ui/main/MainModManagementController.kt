@@ -31,7 +31,6 @@ import io.stamethyst.model.WorkshopModUi
 import io.stamethyst.ui.LauncherTransientNoticeDuration
 import io.stamethyst.ui.UiText
 import io.stamethyst.ui.UiBusyOperation
-import io.stamethyst.ui.preferences.LauncherPreferences
 import io.stamethyst.ui.settings.ModImportFlowCoordinator
 import io.stamethyst.ui.settings.SettingsFileService
 import io.stamethyst.ui.workshop.WorkshopDownloadCenterStore
@@ -652,7 +651,7 @@ internal class MainModManagementController(
                 host.runOnUiThread {
                     setBusy(false, null)
                     clearPendingSelectionForMod(host, mod)
-                    removeFolderAssignmentForDeletedMod(mod)
+                    removeStoredStateForDeletedMod(host, mod)
                     refresh(host, storageAccessible = true)
                     emitSnackbar(
                         if (deleted) {
@@ -757,7 +756,7 @@ internal class MainModManagementController(
                 setBusy(false, null)
                 candidates.forEach { mod ->
                     clearPendingSelectionForMod(host, mod)
-                    removeFolderAssignmentForDeletedMod(mod)
+                    removeStoredStateForDeletedMod(host, mod)
                 }
                 refresh(host, storageAccessible = true)
                 val error = firstError
@@ -788,7 +787,7 @@ internal class MainModManagementController(
         hostCallbacks.emitEffect(
             MainScreenViewModel.Effect.OpenExportModPicker(
                 sourcePath = sourceFile.absolutePath,
-                suggestedName = sourceFile.name
+                suggestedName = resolveModExportFileName(mod, sourceFile.name)
             )
         )
     }
@@ -827,7 +826,16 @@ internal class MainModManagementController(
                 }
                 host.runOnUiThread {
                     hostCallbacks.setBusy(false, null)
-                    showToast(host.getString(R.string.main_mod_export_success, sourceFile.name), Toast.LENGTH_SHORT)
+                    showToast(
+                        host.getString(
+                            R.string.main_mod_export_success,
+                            normalizeModExportFileName(
+                                preferredName = ModAliasStore.resolveAlias(host, sourceFile.absolutePath),
+                                fallbackFileName = sourceFile.name
+                            )
+                        ),
+                        Toast.LENGTH_SHORT
+                    )
                 }
             } catch (error: Throwable) {
                 host.runOnUiThread {
@@ -890,71 +898,59 @@ internal class MainModManagementController(
         }
     }
 
-    fun onRenameModFile(host: Activity, mod: ModItemUi, newFileNameInput: String) {
+    fun onRenameModAlias(host: Activity, mod: ModItemUi, aliasInput: String) {
         if (hostCallbacks.isBusy() || mod.required || !mod.installed) {
             return
         }
-        val sourceFile = resolveExportableModFile(mod)
-        if (sourceFile == null) {
+        if (mod.storagePath.isBlank()) {
             emitSnackbar(host.getString(R.string.main_mod_rename_missing))
             return
         }
-        val normalizedFileName = normalizeModJarFileName(newFileNameInput)
-        if (normalizedFileName == null) {
-            emitSnackbar(UiText.StringResource(R.string.main_mod_rename_error_empty))
+        val normalizedAlias = aliasInput.trim()
+        if (normalizedAlias.isEmpty()) {
+            emitSnackbar(UiText.StringResource(R.string.main_mod_alias_error_empty))
             return
         }
-        if (normalizedFileName.contains('/') || normalizedFileName.contains('\\')) {
-            emitSnackbar(UiText.StringResource(R.string.main_mod_rename_error_separator))
+        if (normalizedAlias.contains('/') || normalizedAlias.contains('\\')) {
+            emitSnackbar(UiText.StringResource(R.string.main_mod_alias_error_separator))
             return
         }
+        val originalName = resolveOriginalModDisplayName(mod)
+        val aliasToSave = if (normalizedAlias == originalName) "" else normalizedAlias
+        if (aliasToSave == mod.alias.trim()) {
+            return
+        }
+        ModAliasStore.setAlias(host, mod.storagePath, aliasToSave)
+        refresh(host, storageAccessible = true)
+        emitSnackbar(host.getString(R.string.main_mod_renamed, aliasToSave.ifBlank { originalName }))
+        hostCallbacks.republish(host)
+    }
 
-        val targetFile = File(sourceFile.parentFile, normalizedFileName)
-        if (targetFile.absolutePath == sourceFile.absolutePath) {
+    fun onRestoreModOriginalName(host: Activity, mod: ModItemUi) {
+        if (hostCallbacks.isBusy() || mod.required || !mod.installed || mod.storagePath.isBlank()) {
             return
         }
-        if (targetFile.exists()) {
-            emitSnackbar(host.getString(R.string.main_mod_rename_target_exists, targetFile.name))
-            return
-        }
+        ModAliasStore.setAlias(host, mod.storagePath, "")
+        refresh(host, storageAccessible = true)
+        emitSnackbar(host.getString(R.string.main_mod_alias_restored, resolveOriginalModDisplayName(mod)))
+        hostCallbacks.republish(host)
+    }
 
-        val assignedFolderId = resolveAssignedFolderId(mod)
-        setBusy(true, UiText.StringResource(R.string.main_mod_rename_busy))
-        executor.execute {
-            try {
-                val renamedFile = ModManager.renameOptionalModByStoragePath(
-                    context = host,
-                    storagePath = mod.storagePath,
-                    requestedFileName = normalizedFileName
-                )
-                host.runOnUiThread {
-                    setBusy(false, null)
-                    replacePendingSelectionForRenamedMod(mod, renamedFile.absolutePath)
-                    if (NewlyImportedModHighlightStore.clear(host, mod.storagePath)) {
-                        NewlyImportedModHighlightStore.mark(host, listOf(renamedFile.absolutePath))
-                    }
-                    clearAssignmentForMod(mod)
-                    if (!assignedFolderId.isNullOrBlank()) {
-                        folderAssignments[renamedFile.absolutePath] = assignedFolderId
-                    }
-                    persistFolderState(host)
-                    refresh(host, storageAccessible = true)
-                    emitSnackbar(host.getString(R.string.main_mod_renamed, renamedFile.name))
-                    hostCallbacks.republish(host)
-                }
-            } catch (error: Throwable) {
-                host.runOnUiThread {
-                    setBusy(false, null)
-                    emitSnackbar(
-                        host.getString(
-                            R.string.main_mod_rename_failed,
-                            error.message ?: host.getString(R.string.feedback_unknown_error)
-                        )
-                    )
-                    hostCallbacks.republish(host)
-                }
+    fun applyFileNameAliasesForInstalledOptionalMods(host: Activity): Int {
+        val aliasesByPath = LinkedHashMap<String, String>()
+        ModManager.listInstalledMods(host).forEach { mod ->
+            if (mod.required || !mod.installed || !mod.jarFile.isFile) {
+                return@forEach
+            }
+            val alias = resolveModFileNameWithoutJar(mod.jarFile.absolutePath).orEmpty().trim()
+            if (alias.isNotEmpty()) {
+                aliasesByPath[mod.jarFile.absolutePath] = alias
             }
         }
+        ModAliasStore.setAliases(host, aliasesByPath)
+        refresh(host, storageAccessible = true)
+        hostCallbacks.republish(host)
+        return aliasesByPath.size
     }
 
     fun onToggleMod(host: Activity, mod: ModItemUi, enabled: Boolean) {
@@ -1167,18 +1163,6 @@ internal class MainModManagementController(
         val resolvedPath = resolveExistingModStoragePath(mod.storagePath) ?: return null
         val file = File(resolvedPath)
         return file.takeIf { it.isFile }
-    }
-
-    private fun normalizeModJarFileName(input: String): String? {
-        val trimmed = input.trim()
-        if (trimmed.isEmpty()) {
-            return null
-        }
-        return if (trimmed.endsWith(".jar", ignoreCase = true)) {
-            trimmed
-        } else {
-            "$trimmed.jar"
-        }
     }
 
     @Throws(IOException::class)
@@ -1514,6 +1498,7 @@ internal class MainModManagementController(
     }
 
     private fun loadModItems(host: Activity): List<ModItemUi> {
+        val aliases = ModAliasStore.loadAliases(host)
         val importedPatchInfoByPath = ImportedModPatchRegistry.readAll(host)
         val workshopRecords = WorkshopMetadataStore(host).list()
         val workshopRecordsByInstalledPath = workshopRecords
@@ -1546,6 +1531,7 @@ internal class MainModManagementController(
                 explicitPriority = mod.explicitPriority,
                 effectivePriority = mod.effectivePriority,
                 importPatchDetails = importPatchDetails,
+                alias = ModAliasStore.resolveAlias(mod.jarFile.absolutePath, aliases),
                 newlyImported = NewlyImportedModHighlightStore.contains(mod.jarFile.absolutePath) ||
                     workshopRecord?.let { record ->
                         NewlyImportedModHighlightStore.contains("workshop:${record.appId}:${record.publishedFileId}")
@@ -1574,7 +1560,7 @@ internal class MainModManagementController(
                 host.runOnUiThread {
                     setBusy(false, null)
                     clearPendingSelectionForMod(host, mod)
-                    removeFolderAssignmentForDeletedMod(mod)
+                    removeStoredStateForDeletedMod(host, mod)
                     refresh(host, storageAccessible = true)
                     emitSnackbar(
                         if (deleted) {
@@ -2017,8 +2003,9 @@ internal class MainModManagementController(
         }
     }
 
-    private fun removeFolderAssignmentForDeletedMod(mod: ModItemUi) {
+    private fun removeStoredStateForDeletedMod(host: Activity, mod: ModItemUi) {
         clearAssignmentForMod(mod)
+        ModAliasStore.setAlias(host, mod.storagePath, "")
     }
 
     private fun buildFolderOrderTokens(): List<String> {
@@ -2109,10 +2096,7 @@ internal class MainModManagementController(
         folderName: String,
         previousFolderId: String?
     ) {
-        val displayName = resolveModDisplayName(
-            mod = mod,
-            showModFileName = LauncherPreferences.readShowModFileName(host)
-        )
+        val displayName = resolveModDisplayName(mod)
         emitSnackbar(
             message = UiText.DynamicString(
                 host.getString(R.string.main_mod_moved_to_folder, displayName, folderName)
@@ -2198,7 +2182,7 @@ internal class MainModManagementController(
     }
 
     private fun resolveModDisplayName(mod: ModItemUi): String {
-        return io.stamethyst.ui.main.resolveModDisplayName(mod, showModFileName = false)
+        return io.stamethyst.ui.main.resolveModDisplayName(mod)
     }
 
     private fun resolveModFileName(storagePath: String): String {

@@ -3701,10 +3701,6 @@ class SettingsScreenViewModel : ViewModel() {
             toggleStateText(host, input.autoSwitchLeftAfterRightClick)
         )
         lines += host.getString(
-            R.string.settings_status_mod_name_from_file,
-            toggleStateText(host, input.showModFileName)
-        )
-        lines += host.getString(
             R.string.settings_status_lwjgl_debug,
             toggleStateText(host, diagnostics.lwjglDebugEnabled)
         )

@@ -33,6 +33,8 @@ import io.stamethyst.backend.mods.ModJarSupport
 import io.stamethyst.backend.mods.ModManager
 import io.stamethyst.model.ModItemUi
 import io.stamethyst.ui.main.MainFolderStateStore
+import io.stamethyst.ui.main.ModAliasStore
+import io.stamethyst.ui.main.normalizeModExportFileName
 import io.stamethyst.ui.main.resolveAssignedFolderId
 import io.stamethyst.ui.main.resolveModStoragePathCandidates
 import java.io.File
@@ -2179,19 +2181,29 @@ internal object SettingsFileService {
 
     private fun collectModExportSources(host: Activity): List<ModExportSource> {
         val sources = LinkedHashMap<String, ModExportSource>()
+        val aliases = ModAliasStore.loadAliases(host)
 
-        fun addFile(file: File?) {
+        fun addFile(file: File?, preferredEntryName: String? = null) {
             if (file == null || !file.isFile) {
                 return
             }
-            val entryName = file.name.trim()
+            val entryName = allocateUniqueModEntryName(
+                existingEntryNames = sources.keys,
+                requestedEntryName = normalizeModExportFileName(
+                    preferredName = preferredEntryName ?: file.name,
+                    fallbackFileName = file.name
+                )
+            )
             if (entryName.isEmpty()) {
                 return
             }
-            sources.putIfAbsent(entryName, ModExportSource(entryName = entryName, file = file))
+            sources[entryName] = ModExportSource(entryName = entryName, file = file)
         }
 
-        fun addAssetIfMissing(entryName: String, assetPath: String) {
+        fun addAssetIfMissing(entryName: String, assetPath: String, installedFile: File? = null) {
+            if (installedFile?.isFile == true) {
+                return
+            }
             val normalizedEntryName = entryName.trim()
             if (normalizedEntryName.isEmpty() || sources.containsKey(normalizedEntryName)) {
                 return
@@ -2209,17 +2221,53 @@ internal object SettingsFileService {
         ModManager.listInstalledMods(host)
             .asSequence()
             .filter { it.installed }
-            .map { it.jarFile }
-            .filter { it.isFile }
-            .sortedWith(compareBy<File>({ it.name.lowercase(Locale.ROOT) }, { it.name }, { it.absolutePath }))
-            .forEach(::addFile)
+            .filter { it.jarFile.isFile }
+            .sortedWith(
+                compareBy<ModManager.InstalledMod>(
+                    { it.jarFile.name.lowercase(Locale.ROOT) },
+                    { it.jarFile.name },
+                    { it.jarFile.absolutePath }
+                )
+            )
+            .forEach { mod ->
+                addFile(
+                    file = mod.jarFile,
+                    preferredEntryName = ModAliasStore.resolveAlias(mod.jarFile.absolutePath, aliases)
+                        .ifBlank { mod.jarFile.name }
+                )
+            }
 
-        addAssetIfMissing("ModTheSpire.jar", "components/mods/ModTheSpire.jar")
-        addAssetIfMissing("BaseMod.jar", "components/mods/BaseMod.jar")
-        addAssetIfMissing("StSLib.jar", "components/mods/StSLib.jar")
-        addAssetIfMissing("AmethystRuntimeCompat.jar", "components/mods/AmethystRuntimeCompat.jar")
+        addAssetIfMissing("ModTheSpire.jar", "components/mods/ModTheSpire.jar", RuntimePaths.importedMtsJar(host))
+        addAssetIfMissing("BaseMod.jar", "components/mods/BaseMod.jar", RuntimePaths.importedBaseModJar(host))
+        addAssetIfMissing("StSLib.jar", "components/mods/StSLib.jar", RuntimePaths.importedStsLibJar(host))
+        addAssetIfMissing(
+            "AmethystRuntimeCompat.jar",
+            "components/mods/AmethystRuntimeCompat.jar",
+            RuntimePaths.importedAmethystRuntimeCompatJar(host)
+        )
 
         return sources.values.toList()
+    }
+
+    private fun allocateUniqueModEntryName(
+        existingEntryNames: Set<String>,
+        requestedEntryName: String
+    ): String {
+        val normalized = requestedEntryName.trim().ifBlank { "mod-export.jar" }
+        if (!existingEntryNames.contains(normalized)) {
+            return normalized
+        }
+        val dotIndex = normalized.lastIndexOf('.')
+        val baseName = if (dotIndex > 0) normalized.substring(0, dotIndex) else normalized
+        val extension = if (dotIndex > 0) normalized.substring(dotIndex) else ""
+        var index = 2
+        while (true) {
+            val candidate = "$baseName ($index)$extension"
+            if (!existingEntryNames.contains(candidate)) {
+                return candidate
+            }
+            index++
+        }
     }
 
     private fun hasAsset(host: Activity, assetPath: String): Boolean {

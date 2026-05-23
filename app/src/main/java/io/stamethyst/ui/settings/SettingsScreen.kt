@@ -195,6 +195,9 @@ fun LauncherSettingsLauncherScreen(
         onThemeColorChanged = { themeColor ->
             viewModel.onThemeColorChanged(activity, themeColor)
         },
+        onShowModFileNameChanged = { enabled ->
+            viewModel.onShowModFileNameChanged(activity, enabled)
+        },
         onAutoCheckUpdatesChanged = { enabled ->
             viewModel.onAutoCheckUpdatesChanged(activity, enabled)
         },
@@ -270,9 +273,6 @@ fun LauncherSettingsGameScreen(
         },
         onAutoSwitchLeftAfterRightClickChanged = { enabled ->
             viewModel.onAutoSwitchLeftAfterRightClickChanged(activity, enabled)
-        },
-        onShowModFileNameChanged = { enabled ->
-            viewModel.onShowModFileNameChanged(activity, enabled)
         },
         onGamePerformanceOverlayChanged = { enabled ->
             viewModel.onGamePerformanceOverlayChanged(activity, enabled)
@@ -620,6 +620,7 @@ private fun LauncherSettingsLauncherScreenContent(
     onOpenBasicTutorial: () -> Unit = {},
     onThemeModeChanged: (LauncherThemeMode) -> Unit = {},
     onThemeColorChanged: (LauncherThemeColor) -> Unit = {},
+    onShowModFileNameChanged: (Boolean) -> Unit = {},
     onAutoCheckUpdatesChanged: (Boolean) -> Unit = {},
     onPreferredUpdateMirrorChanged: (UpdateSource) -> Unit = {},
     onManualCheckUpdates: () -> Unit = {},
@@ -651,6 +652,7 @@ private fun LauncherSettingsLauncherScreenContent(
                     uiState = uiState,
                     onThemeModeChanged = onThemeModeChanged,
                     onThemeColorChanged = onThemeColorChanged,
+                    onShowModFileNameChanged = onShowModFileNameChanged,
                 )
             }
         }
@@ -702,7 +704,6 @@ private fun LauncherSettingsGameScreenContent(
     onBuiltInSoftKeyboardChanged: (Boolean) -> Unit = {},
     onHapticFeedbackChanged: (Boolean) -> Unit = {},
     onAutoSwitchLeftAfterRightClickChanged: (Boolean) -> Unit = {},
-    onShowModFileNameChanged: (Boolean) -> Unit = {},
     onGamePerformanceOverlayChanged: (Boolean) -> Unit = {},
 ) {
     SettingsRouteScaffold(
@@ -743,7 +744,6 @@ private fun LauncherSettingsGameScreenContent(
                     onBuiltInSoftKeyboardChanged = onBuiltInSoftKeyboardChanged,
                     onHapticFeedbackChanged = onHapticFeedbackChanged,
                     onAutoSwitchLeftAfterRightClickChanged = onAutoSwitchLeftAfterRightClickChanged,
-                    onShowModFileNameChanged = onShowModFileNameChanged,
                     onGamePerformanceOverlayChanged = onGamePerformanceOverlayChanged,
                 )
             }
@@ -1599,6 +1599,7 @@ internal fun SettingsAppearanceSection(
     uiState: SettingsScreenViewModel.UiState,
     onThemeModeChanged: (LauncherThemeMode) -> Unit,
     onThemeColorChanged: (LauncherThemeColor) -> Unit,
+    onShowModFileNameChanged: (Boolean) -> Unit,
 ) {
     var showThemeModeDialog by rememberSaveable { mutableStateOf(false) }
     var showThemeColorDialog by rememberSaveable { mutableStateOf(false) }
@@ -3113,7 +3114,6 @@ private fun SettingsInputSection(
     onBuiltInSoftKeyboardChanged: (Boolean) -> Unit,
     onHapticFeedbackChanged: (Boolean) -> Unit,
     onAutoSwitchLeftAfterRightClickChanged: (Boolean) -> Unit,
-    onShowModFileNameChanged: (Boolean) -> Unit,
     onGamePerformanceOverlayChanged: (Boolean) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -3128,7 +3128,6 @@ private fun SettingsInputSection(
             onTouchscreenInputModeChanged = onTouchscreenInputModeChanged,
             onTouchDoubleClickAsRightClickChanged = onTouchDoubleClickAsRightClickChanged,
             onHapticFeedbackChanged = onHapticFeedbackChanged,
-            onShowModFileNameChanged = onShowModFileNameChanged,
             onGamePerformanceOverlayChanged = onGamePerformanceOverlayChanged,
         )
         HorizontalDivider()
@@ -3156,7 +3155,6 @@ internal fun SettingsInputBasicsSection(
     onTouchscreenInputModeChanged: (TouchscreenInputMode) -> Unit,
     onTouchDoubleClickAsRightClickChanged: (Boolean) -> Unit,
     onHapticFeedbackChanged: (Boolean) -> Unit,
-    onShowModFileNameChanged: (Boolean) -> Unit,
     onGamePerformanceOverlayChanged: (Boolean) -> Unit,
 ) {
     var showPlayerNameDialog by rememberSaveable { mutableStateOf(false) }
@@ -3206,15 +3204,6 @@ internal fun SettingsInputBasicsSection(
         disabledText = stringResource(R.string.settings_haptic_feedback_disabled),
         description = stringResource(R.string.settings_haptic_feedback_desc),
         onCheckedChange = onHapticFeedbackChanged
-    )
-
-    SwitchSettingRow(
-        checked = uiState.showModFileName,
-        enabled = !uiState.busy,
-        enabledText = stringResource(R.string.settings_mod_name_from_file_enabled),
-        disabledText = stringResource(R.string.settings_mod_name_from_file_disabled),
-        description = stringResource(R.string.settings_mod_name_from_file_desc),
-        onCheckedChange = onShowModFileNameChanged
     )
 
 //    SwitchSettingRow(

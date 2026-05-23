@@ -164,6 +164,7 @@ class MainScreenViewModel : ViewModel() {
         val unassignedFolderName: String = DEFAULT_UNASSIGNED_FOLDER_NAME,
         val unassignedFolderOrder: Int = 0,
         val favoriteModKeys: Set<String> = emptySet(),
+        val showModFileNameRemovalNotice: Boolean = false,
         val steamCloudIndicator: SteamCloudIndicatorUi = SteamCloudIndicatorUi(),
     )
 
@@ -768,8 +769,33 @@ class MainScreenViewModel : ViewModel() {
         modManagementController.onShareMod(host, mod)
     }
 
-    fun onRenameModFile(host: Activity, mod: ModItemUi, newFileNameInput: String) {
-        modManagementController.onRenameModFile(host, mod, newFileNameInput)
+    fun onRenameModAlias(host: Activity, mod: ModItemUi, aliasInput: String) {
+        modManagementController.onRenameModAlias(host, mod, aliasInput)
+    }
+
+    fun onRestoreModOriginalName(host: Activity, mod: ModItemUi) {
+        modManagementController.onRestoreModOriginalName(host, mod)
+    }
+
+    fun onApplyFileNameAliasesForRemovedShowFileName(host: Activity) {
+        if (uiState.busy) {
+            return
+        }
+        val count = modManagementController.applyFileNameAliasesForInstalledOptionalMods(host)
+        LauncherPreferences.saveShowModFileName(host, false)
+        ModAliasStore.markShowFileNameRemovalNoticeHandled(host)
+        uiState = uiState.copy(showModFileName = false, showModFileNameRemovalNotice = false)
+        _effects.tryEmit(
+            Effect.ShowSnackbar(
+                UiText.StringResource(R.string.main_mod_alias_file_name_migration_done, count)
+            )
+        )
+    }
+
+    fun onDismissRemovedShowFileNameNotice(host: Activity) {
+        LauncherPreferences.saveShowModFileName(host, false)
+        ModAliasStore.markShowFileNameRemovalNoticeHandled(host)
+        uiState = uiState.copy(showModFileName = false, showModFileNameRemovalNotice = false)
     }
 
     fun onToggleMod(host: Activity, mod: ModItemUi, enabled: Boolean) {
@@ -2475,7 +2501,7 @@ class MainScreenViewModel : ViewModel() {
     }
 
     private fun resolveModDisplayName(mod: ModItemUi): String {
-        return io.stamethyst.ui.main.resolveModDisplayName(mod, showModFileName = false)
+        return io.stamethyst.ui.main.resolveModDisplayName(mod)
     }
 
     private fun resolveModFileName(storagePath: String): String {
@@ -2543,7 +2569,7 @@ class MainScreenViewModel : ViewModel() {
             controlsEnabled = resolveControlsEnabled(currentBusy, currentBusyOperation, storageIssue != null),
             gameProcessRunning = gameProcessRunning,
             launchInFlight = launchInFlight,
-            showModFileName = LauncherPreferences.readShowModFileName(host),
+            showModFileName = false,
             modSuggestions = currentModSuggestions,
             readModSuggestionKeys = currentReadModSuggestionKeys,
             pendingLaunchUnreadSuggestionModNames = pendingLaunchUnreadSuggestionModNames,
@@ -2558,6 +2584,8 @@ class MainScreenViewModel : ViewModel() {
             unassignedFolderName = snapshot.unassignedFolderName,
             unassignedFolderOrder = snapshot.unassignedFolderOrder,
             favoriteModKeys = snapshot.favoriteModKeys,
+            showModFileNameRemovalNotice = LauncherPreferences.readShowModFileName(host) &&
+                !ModAliasStore.isShowFileNameRemovalNoticeHandled(host),
             steamCloudIndicator = currentSteamCloudIndicator,
         )
     }

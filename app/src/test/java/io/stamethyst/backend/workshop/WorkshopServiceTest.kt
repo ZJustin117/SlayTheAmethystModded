@@ -78,7 +78,13 @@ class WorkshopServiceTest {
 
         val service = newService()
         val result = runBlocking {
-            service.browse(WorkshopBrowseQuery(searchText = "test", timeFilter = WorkshopBrowseTimeFilter.ThirtyDays))
+            service.browse(
+                WorkshopBrowseQuery(
+                    searchText = "test",
+                    timeFilter = WorkshopBrowseTimeFilter.ThirtyDays,
+                    category = WorkshopModCategory.Character,
+                )
+            )
         }
 
         assertEquals(1, result.items.size)
@@ -98,6 +104,7 @@ class WorkshopServiceTest {
         assertEquals("readytouseitems", browseRequest.url.queryParameter("section"))
         assertEquals("30", browseRequest.url.queryParameter("numperpage"))
         assertEquals("30", browseRequest.url.queryParameter("days"))
+        assertEquals("Character", browseRequest.url.queryParameter("requiredtags[]"))
         assertEquals(1, detailsServer.requestCount)
         assertEquals("/ISteamRemoteStorage/GetPublishedFileDetails/v1/", detailsServer.takeRequest().url.encodedPath)
     }

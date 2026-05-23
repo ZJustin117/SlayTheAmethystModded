@@ -19,7 +19,8 @@ data class ModItemUi(
     val importPatchDetails: String? = null,
     val newlyImported: Boolean = false,
     val favorite: Boolean = false,
-    val workshop: WorkshopModUi? = null
+    val workshop: WorkshopModUi? = null,
+    val alias: String = ""
 )
 
 @Stable

@@ -281,11 +281,12 @@ internal fun ModPriorityDialog(
 }
 
 @Composable
-internal fun RenameModFileDialog(
+internal fun RenameModAliasDialog(
     visible: Boolean,
     value: String,
     controlsEnabled: Boolean,
     onDismiss: () -> Unit,
+    onRestoreOriginal: () -> Unit,
     onConfirm: (String) -> Unit
 ) {
     if (!visible) {
@@ -294,21 +295,21 @@ internal fun RenameModFileDialog(
     var input by remember(visible, value) { mutableStateOf(value) }
     val normalizedInput = input.trim()
     val errorText = when {
-        normalizedInput.isEmpty() -> stringResource(R.string.main_mod_rename_error_empty)
+        normalizedInput.isEmpty() -> stringResource(R.string.main_mod_alias_error_empty)
         normalizedInput.contains('/') || normalizedInput.contains('\\') ->
-            stringResource(R.string.main_mod_rename_error_separator)
+            stringResource(R.string.main_mod_alias_error_separator)
 
         else -> null
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(text = stringResource(R.string.main_mod_rename_dialog_title)) },
+        title = { Text(text = stringResource(R.string.main_mod_alias_dialog_title)) },
         text = {
             OutlinedTextField(
                 value = input,
                 onValueChange = { input = it },
                 singleLine = true,
-                label = { Text(stringResource(R.string.main_mod_rename_hint)) },
+                label = { Text(stringResource(R.string.main_mod_alias_hint)) },
                 enabled = controlsEnabled,
                 isError = errorText != null,
                 supportingText = {
@@ -327,36 +328,16 @@ internal fun RenameModFileDialog(
             }
         },
         dismissButton = {
-            PillCancelButton(onClick = onDismiss) {
-                Text(stringResource(R.string.main_folder_dialog_cancel))
-            }
-        }
-    )
-}
-
-@Composable
-internal fun RenameModFileDisplayModeWarningDialog(
-    visible: Boolean,
-    onDismiss: () -> Unit,
-    onConfirm: () -> Unit
-) {
-    if (!visible) {
-        return
-    }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(text = stringResource(R.string.main_mod_rename_display_mode_warning_title)) },
-        text = {
-            Text(text = stringResource(R.string.main_mod_rename_display_mode_warning_message))
-        },
-        confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text(text = stringResource(R.string.main_mod_rename_display_mode_warning_confirm))
-            }
-        },
-        dismissButton = {
-            PillCancelButton(onClick = onDismiss) {
-                Text(text = stringResource(R.string.main_mod_rename_display_mode_warning_dismiss))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(
+                    onClick = onRestoreOriginal,
+                    enabled = controlsEnabled
+                ) {
+                    Text(stringResource(R.string.main_mod_alias_restore_original))
+                }
+                PillCancelButton(onClick = onDismiss) {
+                    Text(stringResource(R.string.main_folder_dialog_cancel))
+                }
             }
         }
     )

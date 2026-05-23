@@ -8,6 +8,7 @@ data class WorkshopBrowseQuery(
     val searchText: String = "",
     val sort: WorkshopBrowseSort = WorkshopBrowseSort.MostPopular,
     val timeFilter: WorkshopBrowseTimeFilter = WorkshopBrowseTimeFilter.OneWeek,
+    val category: WorkshopModCategory = WorkshopModCategory.All,
     val page: Int = 1,
     val pageSize: Int = 30,
 )
@@ -35,6 +36,29 @@ enum class WorkshopBrowseTimeFilter(
     SixMonths(180, "6个月"),
     OneYear(365, "1年"),
     AllTime(-1, "全部时间"),
+}
+
+enum class WorkshopModCategory(val requiredTag: String?) {
+    All(null),
+    Tools("Tools"),
+    Api("Api"),
+    Character("Character"),
+    Utility("Utility"),
+    Relics("Relics"),
+    Events("Events"),
+    Cards("Cards"),
+    Bosses("Bosses"),
+    Elites("Elites"),
+    Monsters("Monsters"),
+    Modifiers("Modifiers"),
+    Potions("Potions"),
+    Rooms("Rooms"),
+    Neow("Neow"),
+    Twitch("Twitch"),
+    Qol("Qol"),
+    Expansion("Expansion"),
+    Content("Content"),
+    Rewards("Rewards"),
 }
 
 data class WorkshopBrowseResult(

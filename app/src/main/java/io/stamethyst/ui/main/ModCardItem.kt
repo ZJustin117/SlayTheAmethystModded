@@ -99,7 +99,8 @@ internal data class ModCardCallbacks(
     val onDeleteMod: (ModItemUi) -> Unit = {},
     val onExportMod: (ModItemUi) -> Unit = {},
     val onShareMod: (ModItemUi) -> Unit = {},
-    val onRenameModFile: (ModItemUi, String) -> Unit = { _, _ -> },
+    val onRenameModAlias: (ModItemUi, String) -> Unit = { _, _ -> },
+    val onRestoreModOriginalName: (ModItemUi) -> Unit = {},
     val onPatchWorkshopMod: (ModItemUi) -> Unit = {},
     val onRetryWorkshopDownload: (ModItemUi) -> Unit = {},
     val onUpdateWorkshopMod: (ModItemUi) -> Unit = {},
@@ -141,7 +142,6 @@ internal fun ModCard(
     var showActionsDialog by remember(mod.storagePath) { mutableStateOf(false) }
     var showPriorityDialog by remember(mod.storagePath) { mutableStateOf(false) }
     var showRenameDialog by remember(mod.storagePath) { mutableStateOf(false) }
-    var showRenameDisplayModeWarningDialog by remember(mod.storagePath) { mutableStateOf(false) }
     var showSuggestionDialog by remember(mod.storagePath, suggestionText) { mutableStateOf(false) }
     var showImportPatchDialog by remember(mod.storagePath, mod.importPatchDetails) { mutableStateOf(false) }
     var showWorkshopUpdateConfirmDialog by remember(mod.storagePath) { mutableStateOf(false) }
@@ -652,13 +652,7 @@ internal fun ModCard(
         onEditPriority = { showPriorityDialog = true },
         onExport = { callbacks.onExportMod(mod) },
         onShare = { callbacks.onShareMod(mod) },
-        onRename = {
-            if (showModFileName) {
-                showRenameDialog = true
-            } else {
-                showRenameDisplayModeWarningDialog = true
-            }
-        },
+        onRename = { showRenameDialog = true },
         onDelete = { callbacks.onDeleteMod(mod) }
     )
 
@@ -679,23 +673,18 @@ internal fun ModCard(
         }
     )
 
-    RenameModFileDisplayModeWarningDialog(
-        visible = showRenameDisplayModeWarningDialog,
-        onDismiss = { showRenameDisplayModeWarningDialog = false },
-        onConfirm = {
-            showRenameDisplayModeWarningDialog = false
-            showRenameDialog = true
-        }
-    )
-
-    RenameModFileDialog(
+    RenameModAliasDialog(
         visible = showRenameDialog,
-        value = resolveModFileNameWithoutJar(mod.storagePath).orEmpty(),
+        value = mod.alias.ifBlank { resolveOriginalModDisplayName(mod) },
         controlsEnabled = fileActionsEnabled,
         onDismiss = { showRenameDialog = false },
-        onConfirm = { newFileName ->
+        onRestoreOriginal = {
             showRenameDialog = false
-            callbacks.onRenameModFile(mod, newFileName)
+            callbacks.onRestoreModOriginalName(mod)
+        },
+        onConfirm = { newAlias ->
+            showRenameDialog = false
+            callbacks.onRenameModAlias(mod, newAlias)
         }
     )
 }

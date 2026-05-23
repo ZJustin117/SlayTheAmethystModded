@@ -26,6 +26,7 @@ import io.stamethyst.backend.workshop.WorkshopInstalledModRecord
 import io.stamethyst.backend.workshop.WorkshopItemDetails
 import io.stamethyst.backend.workshop.WorkshopItemSummary
 import io.stamethyst.backend.workshop.WorkshopMetadataStore
+import io.stamethyst.backend.workshop.WorkshopModCategory
 import io.stamethyst.backend.workshop.WorkshopModCardState
 import io.stamethyst.backend.workshop.WorkshopService
 import io.stamethyst.backend.workshop.WorkshopUpdateCheckResult
@@ -54,6 +55,7 @@ internal class WorkshopViewModel : ViewModel() {
     private var activeQueryText: String = ""
     private var activeSort: WorkshopBrowseSort = WorkshopBrowseSort.MostPopular
     private var activeTimeFilter: WorkshopBrowseTimeFilter = WorkshopBrowseTimeFilter.OneWeek
+    private var activeCategory: WorkshopModCategory = WorkshopModCategory.All
     private var browseRequestGeneration = 0
     private val detailsCache = mutableMapOf<String, WorkshopItemDetails>()
     private val translationClient = BaiduAiTextTranslationClient()
@@ -111,22 +113,18 @@ internal class WorkshopViewModel : ViewModel() {
         refreshLocalDownloadState()
     }
 
-    fun search(context: Context, queryText: String) {
-        activeListMode = WorkshopListMode.Browse
-        activeQueryText = queryText
-        loadBrowsePage(context, queryText = queryText, page = 1, append = false)
-    }
-
     fun search(
         context: Context,
         queryText: String,
-        sort: WorkshopBrowseSort,
-        timeFilter: WorkshopBrowseTimeFilter,
+        sort: WorkshopBrowseSort = WorkshopBrowseSort.MostPopular,
+        timeFilter: WorkshopBrowseTimeFilter = WorkshopBrowseTimeFilter.OneWeek,
+        category: WorkshopModCategory = WorkshopModCategory.All,
     ) {
         activeListMode = WorkshopListMode.Browse
         activeQueryText = queryText
         activeSort = sort
         activeTimeFilter = timeFilter
+        activeCategory = category
         loadBrowsePage(context, queryText = queryText, page = 1, append = false)
     }
 
@@ -198,6 +196,7 @@ internal class WorkshopViewModel : ViewModel() {
                             searchText = queryText,
                             sort = activeSort,
                             timeFilter = activeTimeFilter,
+                            category = activeCategory,
                             page = page,
                             pageSize = WorkshopUiState.PAGE_SIZE,
                         )

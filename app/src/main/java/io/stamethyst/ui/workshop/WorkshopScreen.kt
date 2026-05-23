@@ -14,6 +14,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -90,6 +91,7 @@ import io.stamethyst.backend.workshop.WorkshopBrowseSort
 import io.stamethyst.backend.workshop.WorkshopBrowseTimeFilter
 import io.stamethyst.backend.workshop.WorkshopItemRating
 import io.stamethyst.backend.workshop.WorkshopItemSummary
+import io.stamethyst.backend.workshop.WorkshopModCategory
 import io.stamethyst.backend.workshop.WorkshopPreviewCacheStore
 import io.stamethyst.backend.workshop.isActiveDownload
 import io.stamethyst.ui.CollapsibleFloatingGlassHeader
@@ -140,12 +142,13 @@ internal fun WorkshopScreen(
     var query by rememberSaveable { mutableStateOf("") }
     var sort by rememberSaveable { mutableStateOf(WorkshopBrowseSort.MostPopular) }
     var timeFilter by rememberSaveable { mutableStateOf(WorkshopBrowseTimeFilter.OneWeek) }
+    var category by rememberSaveable { mutableStateOf(WorkshopModCategory.All) }
     fun searchWithPopularAllTime() {
         val searchSort = WorkshopBrowseSort.MostPopular
         val searchTimeFilter = WorkshopBrowseTimeFilter.AllTime
         sort = searchSort
         timeFilter = searchTimeFilter
-        viewModel.search(context.applicationContext, query, searchSort, searchTimeFilter)
+        viewModel.search(context.applicationContext, query, searchSort, searchTimeFilter, category)
     }
     val shouldLoadMore by remember {
         derivedStateOf {
@@ -225,6 +228,7 @@ internal fun WorkshopScreen(
                             loading = state.browseLoading,
                             sort = sort,
                             timeFilter = timeFilter,
+                            category = category,
                             onQueryChange = { query = it },
                             onSearch = ::searchWithPopularAllTime,
                             onOpenDetailsById = { publishedFileId ->
@@ -232,11 +236,15 @@ internal fun WorkshopScreen(
                             },
                             onSortChange = { selectedSort ->
                                 sort = selectedSort
-                                viewModel.search(context.applicationContext, query, selectedSort, timeFilter)
+                                viewModel.search(context.applicationContext, query, selectedSort, timeFilter, category)
                             },
                             onTimeFilterChange = { selectedTimeFilter ->
                                 timeFilter = selectedTimeFilter
-                                viewModel.search(context.applicationContext, query, sort, selectedTimeFilter)
+                                viewModel.search(context.applicationContext, query, sort, selectedTimeFilter, category)
+                            },
+                            onCategoryChange = { selectedCategory ->
+                                category = selectedCategory
+                                viewModel.search(context.applicationContext, query, sort, timeFilter, selectedCategory)
                             },
                         )
                     }
@@ -249,7 +257,7 @@ internal fun WorkshopScreen(
                             message = state.errorMessage,
                             onRetry = {
                                 when (state.listMode) {
-                                    WorkshopListMode.Browse -> viewModel.search(context.applicationContext, query, sort, timeFilter)
+                                    WorkshopListMode.Browse -> viewModel.search(context.applicationContext, query, sort, timeFilter, category)
                                     WorkshopListMode.Subscriptions -> viewModel.showSubscribedWorkshopMods(context.applicationContext)
                                 }
                             },
@@ -301,7 +309,7 @@ internal fun WorkshopScreen(
                                 },
                                 onRetry = {
                                     when (state.listMode) {
-                                        WorkshopListMode.Browse -> viewModel.search(context.applicationContext, query, sort, timeFilter)
+                                        WorkshopListMode.Browse -> viewModel.search(context.applicationContext, query, sort, timeFilter, category)
                                         WorkshopListMode.Subscriptions -> viewModel.showSubscribedWorkshopMods(context.applicationContext)
                                     }
                                 },
@@ -374,6 +382,7 @@ internal fun WorkshopScreen(
                             loading = state.browseLoading,
                             sort = sort,
                             timeFilter = timeFilter,
+                            category = category,
                             onQueryChange = { query = it },
                             onSearch = ::searchWithPopularAllTime,
                             onOpenDetailsById = { publishedFileId ->
@@ -381,11 +390,15 @@ internal fun WorkshopScreen(
                             },
                             onSortChange = { selectedSort ->
                                 sort = selectedSort
-                                viewModel.search(context.applicationContext, query, selectedSort, timeFilter)
+                                viewModel.search(context.applicationContext, query, selectedSort, timeFilter, category)
                             },
                             onTimeFilterChange = { selectedTimeFilter ->
                                 timeFilter = selectedTimeFilter
-                                viewModel.search(context.applicationContext, query, sort, selectedTimeFilter)
+                                viewModel.search(context.applicationContext, query, sort, selectedTimeFilter, category)
+                            },
+                            onCategoryChange = { selectedCategory ->
+                                category = selectedCategory
+                                viewModel.search(context.applicationContext, query, sort, timeFilter, selectedCategory)
                             },
                             contained = false,
                         )
@@ -676,16 +689,19 @@ private fun SearchPanel(
     loading: Boolean,
     sort: WorkshopBrowseSort,
     timeFilter: WorkshopBrowseTimeFilter,
+    category: WorkshopModCategory,
     onQueryChange: (String) -> Unit,
     onSearch: () -> Unit,
     onOpenDetailsById: (ULong) -> Unit,
     onSortChange: (WorkshopBrowseSort) -> Unit,
     onTimeFilterChange: (WorkshopBrowseTimeFilter) -> Unit,
+    onCategoryChange: (WorkshopModCategory) -> Unit,
     contained: Boolean = true,
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
     var sortMenuExpanded by remember { mutableStateOf(false) }
     var timeMenuExpanded by remember { mutableStateOf(false) }
+    var categoryMenuExpanded by remember { mutableStateOf(false) }
     var openDetailsByIdDialogVisible by rememberSaveable { mutableStateOf(false) }
     var openDetailsByIdText by rememberSaveable { mutableStateOf("") }
     var openDetailsByIdError by rememberSaveable { mutableStateOf<String?>(null) }
@@ -714,15 +730,19 @@ private fun SearchPanel(
                 loading = loading,
                 sort = sort,
                 timeFilter = timeFilter,
+                category = category,
                 sortMenuExpanded = sortMenuExpanded,
                 timeMenuExpanded = timeMenuExpanded,
+                categoryMenuExpanded = categoryMenuExpanded,
                 onQueryChange = onQueryChange,
                 onSearch = ::submitSearch,
                 onOpenDetailsByIdClick = { openDetailsByIdDialogVisible = true },
                 onSortMenuExpandedChange = { sortMenuExpanded = it },
                 onTimeMenuExpandedChange = { timeMenuExpanded = it },
+                onCategoryMenuExpandedChange = { categoryMenuExpanded = it },
                 onSortChange = onSortChange,
                 onTimeFilterChange = onTimeFilterChange,
+                onCategoryChange = onCategoryChange,
             )
         }
     } else {
@@ -732,15 +752,19 @@ private fun SearchPanel(
             loading = loading,
             sort = sort,
             timeFilter = timeFilter,
+            category = category,
             sortMenuExpanded = sortMenuExpanded,
             timeMenuExpanded = timeMenuExpanded,
+            categoryMenuExpanded = categoryMenuExpanded,
             onQueryChange = onQueryChange,
             onSearch = ::submitSearch,
             onOpenDetailsByIdClick = { openDetailsByIdDialogVisible = true },
             onSortMenuExpandedChange = { sortMenuExpanded = it },
             onTimeMenuExpandedChange = { timeMenuExpanded = it },
+            onCategoryMenuExpandedChange = { categoryMenuExpanded = it },
             onSortChange = onSortChange,
             onTimeFilterChange = onTimeFilterChange,
+            onCategoryChange = onCategoryChange,
         )
     }
 
@@ -768,15 +792,19 @@ private fun SearchPanelContent(
     loading: Boolean,
     sort: WorkshopBrowseSort,
     timeFilter: WorkshopBrowseTimeFilter,
+    category: WorkshopModCategory,
     sortMenuExpanded: Boolean,
     timeMenuExpanded: Boolean,
+    categoryMenuExpanded: Boolean,
     onQueryChange: (String) -> Unit,
     onSearch: () -> Unit,
     onOpenDetailsByIdClick: () -> Unit,
     onSortMenuExpandedChange: (Boolean) -> Unit,
     onTimeMenuExpandedChange: (Boolean) -> Unit,
+    onCategoryMenuExpandedChange: (Boolean) -> Unit,
     onSortChange: (WorkshopBrowseSort) -> Unit,
     onTimeFilterChange: (WorkshopBrowseTimeFilter) -> Unit,
+    onCategoryChange: (WorkshopModCategory) -> Unit,
 ) {
     Column(
         modifier.animateContentSize(),
@@ -802,57 +830,77 @@ private fun SearchPanelContent(
             expanded = false,
             onExpandedChange = {},
         ) {}
-        Row(
+        FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            itemVerticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (sort.usesTimeFilter) {
-                    Box {
-                        OutlinedButton(
-                            enabled = !loading,
-                            onClick = { onTimeMenuExpandedChange(true) }
-                        ) {
-                            Text(timeFilter.displayName())
-                        }
-                        DropdownMenu(
-                            expanded = timeMenuExpanded,
-                            onDismissRequest = { onTimeMenuExpandedChange(false) }
-                        ) {
-                            WorkshopBrowseTimeFilter.entries.forEach { option ->
-                                DropdownMenuItem(
-                                    text = { Text(option.displayName()) },
-                                    onClick = {
-                                        onTimeMenuExpandedChange(false)
-                                        if (option != timeFilter) {
-                                            onTimeFilterChange(option)
-                                        }
-                                    }
-                                )
+            Box {
+                OutlinedButton(enabled = !loading, onClick = { onCategoryMenuExpandedChange(true) }) {
+                    Text(category.displayName())
+                }
+                DropdownMenu(
+                    expanded = categoryMenuExpanded,
+                    onDismissRequest = { onCategoryMenuExpandedChange(false) }
+                ) {
+                    WorkshopModCategory.entries.forEach { option ->
+                        DropdownMenuItem(
+                            text = { Text(option.displayName()) },
+                            onClick = {
+                                onCategoryMenuExpandedChange(false)
+                                if (option != category) {
+                                    onCategoryChange(option)
+                                }
                             }
-                        }
+                        )
                     }
                 }
+            }
+            if (sort.usesTimeFilter) {
                 Box {
-                    OutlinedButton(enabled = !loading, onClick = { onSortMenuExpandedChange(true) }) {
-                        Text(sort.displayName())
+                    OutlinedButton(
+                        enabled = !loading,
+                        onClick = { onTimeMenuExpandedChange(true) }
+                    ) {
+                        Text(timeFilter.displayName())
                     }
                     DropdownMenu(
-                        expanded = sortMenuExpanded,
-                        onDismissRequest = { onSortMenuExpandedChange(false) }
+                        expanded = timeMenuExpanded,
+                        onDismissRequest = { onTimeMenuExpandedChange(false) }
                     ) {
-                        WorkshopBrowseSort.entries.forEach { option ->
+                        WorkshopBrowseTimeFilter.entries.forEach { option ->
                             DropdownMenuItem(
                                 text = { Text(option.displayName()) },
                                 onClick = {
-                                    onSortMenuExpandedChange(false)
-                                    if (option != sort) {
-                                        onSortChange(option)
+                                    onTimeMenuExpandedChange(false)
+                                    if (option != timeFilter) {
+                                        onTimeFilterChange(option)
                                     }
                                 }
                             )
                         }
+                    }
+                }
+            }
+            Box {
+                OutlinedButton(enabled = !loading, onClick = { onSortMenuExpandedChange(true) }) {
+                    Text(sort.displayName())
+                }
+                DropdownMenu(
+                    expanded = sortMenuExpanded,
+                    onDismissRequest = { onSortMenuExpandedChange(false) }
+                ) {
+                    WorkshopBrowseSort.entries.forEach { option ->
+                        DropdownMenuItem(
+                            text = { Text(option.displayName()) },
+                            onClick = {
+                                onSortMenuExpandedChange(false)
+                                if (option != sort) {
+                                    onSortChange(option)
+                                }
+                            }
+                        )
                     }
                 }
             }
@@ -956,7 +1004,7 @@ private fun WorkshopRatingIndicator(
         ?.coerceIn(0f, 1f)
         ?: 0f
     val scoreText = rating?.let { stringResource(R.string.workshop_rating_score_format, it.score, it.maxScore) }
-        ?: stringResource(R.string.workshop_rating_unrated_score_format, maxScore)
+        ?: stringResource(R.string.workshop_rating_unrated_score)
     val scoreDescription = rating?.let {
         stringResource(R.string.workshop_rating_content_description, it.score, it.maxScore)
     } ?: stringResource(R.string.workshop_rating_unrated_content_description)
@@ -1204,6 +1252,32 @@ private fun WorkshopBrowseTimeFilter.displayName(): String = when (this) {
     WorkshopBrowseTimeFilter.OneYear -> stringResource(R.string.workshop_time_one_year)
     WorkshopBrowseTimeFilter.AllTime -> stringResource(R.string.workshop_time_all_time)
 }
+
+private val WORKSHOP_MOD_CATEGORY_LABEL_RES_IDS = mapOf(
+    WorkshopModCategory.All to R.string.workshop_category_all,
+    WorkshopModCategory.Tools to R.string.workshop_category_tools,
+    WorkshopModCategory.Api to R.string.workshop_category_api,
+    WorkshopModCategory.Character to R.string.workshop_category_character,
+    WorkshopModCategory.Utility to R.string.workshop_category_utility,
+    WorkshopModCategory.Relics to R.string.workshop_category_relics,
+    WorkshopModCategory.Events to R.string.workshop_category_events,
+    WorkshopModCategory.Cards to R.string.workshop_category_cards,
+    WorkshopModCategory.Bosses to R.string.workshop_category_bosses,
+    WorkshopModCategory.Elites to R.string.workshop_category_elites,
+    WorkshopModCategory.Monsters to R.string.workshop_category_monsters,
+    WorkshopModCategory.Modifiers to R.string.workshop_category_modifiers,
+    WorkshopModCategory.Potions to R.string.workshop_category_potions,
+    WorkshopModCategory.Rooms to R.string.workshop_category_rooms,
+    WorkshopModCategory.Neow to R.string.workshop_category_neow,
+    WorkshopModCategory.Twitch to R.string.workshop_category_twitch,
+    WorkshopModCategory.Qol to R.string.workshop_category_qol,
+    WorkshopModCategory.Expansion to R.string.workshop_category_expansion,
+    WorkshopModCategory.Content to R.string.workshop_category_content,
+    WorkshopModCategory.Rewards to R.string.workshop_category_rewards,
+)
+
+@Composable
+private fun WorkshopModCategory.displayName(): String = stringResource(WORKSHOP_MOD_CATEGORY_LABEL_RES_IDS.getValue(this))
 
 @Composable
 private fun LoadingPanel(

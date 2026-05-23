@@ -131,6 +131,43 @@ class ModFolderUiHelpersTest {
     }
 
     @Test
+    fun resolveModDisplayName_prefersAliasOverOriginalNameAndFileName() {
+        val mod = createMod(
+            storagePath = "C:\\mods\\FileName.jar"
+        ).copy(alias = "Custom Alias")
+
+        assertEquals("Custom Alias", resolveModDisplayName(mod))
+        assertEquals("Custom Alias", resolveModDisplayName(mod, showModFileName = true))
+    }
+
+    @Test
+    fun resolveModDisplayName_ignoresLegacyFileNameDisplayFlagWithoutAlias() {
+        val mod = createMod(
+            storagePath = "C:\\mods\\FileName.jar"
+        )
+
+        assertEquals("Test Mod", resolveModDisplayName(mod, showModFileName = true))
+    }
+
+    @Test
+    fun resolveModExportFileName_usesAliasAsJarFileName() {
+        val mod = createMod(
+            storagePath = "C:\\mods\\Original.jar"
+        ).copy(alias = "Custom Alias")
+
+        assertEquals("Custom Alias.jar", resolveModExportFileName(mod, fallbackFileName = "Original.jar"))
+    }
+
+    @Test
+    fun resolveModExportFileName_sanitizesAliasPathSeparators() {
+        val mod = createMod(
+            storagePath = "C:\\mods\\Original.jar"
+        ).copy(alias = "Folder/Custom")
+
+        assertEquals("Folder_Custom.jar", resolveModExportFileName(mod, fallbackFileName = "Original.jar"))
+    }
+
+    @Test
     fun collectEnabledUnreadSuggestionModDisplayNames_onlyReturnsEnabledUnreadMods() {
         val alpha = createMod(
             storagePath = "C:\\mods\\Alpha.jar",
