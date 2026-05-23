@@ -13,6 +13,7 @@ import io.stamethyst.backend.mods.ImportedModPatchRegistry
 import io.stamethyst.backend.mods.ModManager
 import io.stamethyst.backend.mods.MtsLaunchManifestValidator
 import io.stamethyst.backend.workshop.WorkshopDownloadProcessService
+import io.stamethyst.backend.workshop.WorkshopDownloadTaskRecord
 import io.stamethyst.backend.workshop.WorkshopDownloadTaskStore
 import io.stamethyst.backend.workshop.WorkshopInterruptedDownloadRecovery
 import io.stamethyst.backend.workshop.WorkshopInstalledModRecord
@@ -21,6 +22,8 @@ import io.stamethyst.backend.workshop.WorkshopModCardState
 import io.stamethyst.backend.workshop.WorkshopModStateResolver
 import io.stamethyst.backend.workshop.WorkshopResolvedModState
 import io.stamethyst.backend.workshop.WorkshopResolvedModStateKind
+import io.stamethyst.backend.workshop.isActiveDownload
+import io.stamethyst.backend.workshop.isRunningDownload
 import io.stamethyst.config.RuntimePaths
 import io.stamethyst.model.ModItemUi
 import io.stamethyst.model.WorkshopModState
@@ -31,6 +34,8 @@ import io.stamethyst.ui.UiBusyOperation
 import io.stamethyst.ui.preferences.LauncherPreferences
 import io.stamethyst.ui.settings.ModImportFlowCoordinator
 import io.stamethyst.ui.settings.SettingsFileService
+import io.stamethyst.ui.workshop.WorkshopDownloadCenterStore
+import io.stamethyst.ui.workshop.toRecord
 import java.io.File
 import java.io.IOException
 import java.util.ArrayDeque
@@ -51,6 +56,10 @@ internal data class MainMtsLaunchValidationIssue(
 internal class MainModManagementController(
     private val hostCallbacks: Host
 ) {
+    private companion object {
+        const val ACTIVE_WORKSHOP_DOWNLOAD_RECOVERY_GRACE_MS = 30_000L
+    }
+
     interface Host {
         fun canEditMainScreenState(): Boolean
         fun isBusy(): Boolean
@@ -170,8 +179,9 @@ internal class MainModManagementController(
     private fun recoverInterruptedWorkshopDownloads(host: Activity) {
         val metadataStore = WorkshopMetadataStore(host)
         val taskStore = WorkshopDownloadTaskStore(host)
+        val now = System.currentTimeMillis()
         taskStore.list().forEach { task ->
-            if (!WorkshopDownloadProcessService.isActiveDownload(task.publishedFileId)) {
+            if (task.shouldRecoverInterruptedWorkshopDownload(host, now)) {
                 WorkshopInterruptedDownloadRecovery.recoverFinishedTransferIfPossible(
                     context = host,
                     metadataStore = metadataStore,
@@ -181,7 +191,7 @@ internal class MainModManagementController(
             }
         }
         taskStore.recoverInterruptedTasksWithResult { task ->
-            !WorkshopDownloadProcessService.isActiveDownload(task.publishedFileId)
+            task.shouldRecoverInterruptedWorkshopDownload(host, now)
         }.forEach { task ->
             if (WorkshopInterruptedDownloadRecovery.recoverFinishedTransferIfPossible(
                     context = host,
@@ -200,6 +210,12 @@ internal class MainModManagementController(
                 statusText = task.message.ifBlank { host.getString(R.string.workshop_download_task_message_paused) },
             )
         }
+    }
+
+    private fun WorkshopDownloadTaskRecord.shouldRecoverInterruptedWorkshopDownload(host: Activity, now: Long): Boolean {
+        if (WorkshopDownloadProcessService.isActiveDownload(host, publishedFileId)) return false
+        if (status.isRunningDownload() && now - updatedAtMillis < ACTIVE_WORKSHOP_DOWNLOAD_RECOVERY_GRACE_MS) return false
+        return true
     }
 
     fun snapshot(): Snapshot {
@@ -1505,8 +1521,7 @@ internal class MainModManagementController(
                 if (absoluteJarPath.isEmpty()) null else absoluteJarPath to record
             }
             .toMap()
-        val downloadTasksByPublishedFileId = WorkshopDownloadTaskStore(host).list()
-            .associateBy { it.publishedFileId }
+        val downloadTasksByPublishedFileId = loadDownloadCenterTaskRecords(host)
         return ModManager.listInstalledMods(host).map { mod ->
             val workshopRecord = workshopRecordsByInstalledPath[mod.jarFile.absolutePath]
             val importPatchDetails = if (mod.required) {
@@ -1586,8 +1601,7 @@ internal class MainModManagementController(
 
     private fun loadWorkshopCardItems(host: Activity, installedMods: List<ModItemUi>): List<ModItemUi> {
         val installedPaths = installedMods.map { it.storagePath }.toSet()
-        val downloadTasksByPublishedFileId = WorkshopDownloadTaskStore(host).list()
-            .associateBy { it.publishedFileId }
+        val downloadTasksByPublishedFileId = loadDownloadCenterTaskRecords(host)
         return WorkshopMetadataStore(host).list()
             .filter { record ->
                 val absoluteJarPath = resolveWorkshopJarPath(host, record)
@@ -1599,6 +1613,47 @@ internal class MainModManagementController(
                     task = downloadTasksByPublishedFileId[record.publishedFileId],
                 )
             }
+    }
+
+    private fun loadDownloadCenterTaskRecords(host: Activity): Map<ULong, WorkshopDownloadTaskRecord> {
+        val persistedTasks = WorkshopDownloadTaskStore(host).list()
+            .map { task -> task.normalizeActiveDownloadTask(host) }
+        val visibleDownloadCenterTasks = WorkshopDownloadCenterStore.tasks
+            .map { task -> task.toRecord().normalizeActiveDownloadTask(host) }
+        return (persistedTasks + visibleDownloadCenterTasks)
+            .groupBy { it.publishedFileId }
+            .mapValues { (_, tasks) -> mergeDownloadCenterTaskRecords(tasks) }
+    }
+
+    private fun mergeDownloadCenterTaskRecords(tasks: List<WorkshopDownloadTaskRecord>): WorkshopDownloadTaskRecord {
+        val latest = tasks.maxBy { it.updatedAtMillis }
+        val latestActive = tasks
+            .filter { it.status.isActiveDownload() }
+            .maxByOrNull { it.updatedAtMillis }
+        return if (latestActive != null && !latest.status.isFinishedDownload()) {
+            latest.copy(
+                status = latestActive.status,
+                message = latestActive.message.ifBlank { latest.message },
+            )
+        } else {
+            latest
+        }
+    }
+
+    private fun io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus.isFinishedDownload(): Boolean = when (this) {
+        io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus.Completed,
+        io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus.Failed,
+        io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus.Cancelled -> true
+        else -> false
+    }
+
+    private fun WorkshopDownloadTaskRecord.normalizeActiveDownloadTask(host: Activity): WorkshopDownloadTaskRecord {
+        if (status != io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus.Paused) return this
+        if (!WorkshopDownloadProcessService.isActiveDownload(host, publishedFileId)) return this
+        return copy(
+            status = io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus.Downloading,
+            message = host.getString(R.string.workshop_download_task_message_downloading),
+        )
     }
 
     private fun WorkshopInstalledModRecord.toWorkshopModItem(
@@ -1637,7 +1692,8 @@ internal class MainModManagementController(
         task: io.stamethyst.backend.workshop.WorkshopDownloadTaskRecord?,
     ): WorkshopModUi {
         val absoluteJarPath = resolveWorkshopJarPath(host, this)
-        val resolved = if (!representedByInstalledMod && shouldShowWorkshopFileMissing(this, absoluteJarPath)) {
+        val taskIsActive = task?.status?.isActiveDownload() == true
+        val resolved = if (!representedByInstalledMod && !taskIsActive && shouldShowWorkshopFileMissing(this, absoluteJarPath)) {
             WorkshopResolvedModState(
                 kind = WorkshopResolvedModStateKind.FileMissing,
                 statusText = "已下载文件缺失，请重新下载",

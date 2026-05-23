@@ -34,6 +34,11 @@ internal object WorkshopBrowseParser {
         """class="[^"]*\bworkshopItemAuthorName\b[^"]*">(.*?)</div>""",
         setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
     )
+    private val itemRatingRegex = Regex(
+        """<img\b[^>]*class="[^"]*\bfileRating\b[^"]*"[^>]*src="[^"]*/sharedfiles/([^"/?]+)\.png[^"]*""",
+        setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
+    )
+    private val starRatingRegex = Regex("""(\d+)-star""", RegexOption.IGNORE_CASE)
     private val hoverRegex = Regex(
         """SharedFileBindMouseHover\(\s*"sharedfile_(\d+)"\s*,\s*false\s*,\s*(\{.*?\})\s*\);""",
         setOf(RegexOption.DOT_MATCHES_ALL),
@@ -125,6 +130,7 @@ internal object WorkshopBrowseParser {
             previewUrl = itemPreviewRegex.find(block)?.groupValues?.getOrNull(1).orEmpty(),
             description = description,
             authorName = authorName,
+            rating = parseLegacyRating(block),
         )
     }
 
@@ -192,6 +198,9 @@ internal object WorkshopBrowseParser {
                     authorName = creatorSteamId?.let(creatorNames::get).orEmpty(),
                     description = item.stringValueOrNull("short_description").orEmpty(),
                     fileSizeBytes = item.longValueOrNull("file_size") ?: 0L,
+                    rating = item.objectValue("vote_data")
+                        ?.floatValueOrNull("score")
+                        .let(::normalizedWorkshopRating),
                 )
             }
 
@@ -206,6 +215,12 @@ internal object WorkshopBrowseParser {
         .replace(Regex("^by\\s+", RegexOption.IGNORE_CASE), "")
         .replace(Regex("^作者[：:]\\s*", RegexOption.IGNORE_CASE), "")
         .trim()
+
+    private fun parseLegacyRating(block: String): WorkshopItemRating? {
+        val ratingAssetName = itemRatingRegex.find(block)?.groupValues?.getOrNull(1).orEmpty()
+        val score = starRatingRegex.find(ratingAssetName)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: return null
+        return WorkshopItemRating(score = score.coerceIn(1, 5), maxScore = 5)
+    }
 
     private fun decodeJsonStringLiteral(encoded: String): String? =
         runCatching {
@@ -266,6 +281,8 @@ private fun JsonObject.stringValueOrNull(key: String): String? = this[key].strin
 private fun JsonObject.intValueOrNull(key: String): Int? = stringValueOrNull(key)?.toIntOrNull()
 
 private fun JsonObject.longValueOrNull(key: String): Long? = stringValueOrNull(key)?.toLongOrNull()
+
+private fun JsonObject.floatValueOrNull(key: String): Float? = stringValueOrNull(key)?.toFloatOrNull()
 
 private fun JsonObject.uintValueOrNull(key: String): UInt? = stringValueOrNull(key)?.toUIntOrNull()
 

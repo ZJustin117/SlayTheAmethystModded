@@ -351,7 +351,15 @@ object StsLaunchSpec {
         )
         args.add(
             "-Damethyst.gdx.texture_pressure_downscale.allow_texture_atlas_pages=" +
-                if (runtimeDownscalePolicy.textureAtlasPages) "true" else "false"
+                if (runtimeDownscalePolicy.textureAtlasPages.enabled) "true" else "false"
+        )
+        args.add(
+            "-Damethyst.gdx.texture_pressure_downscale.texture_atlas_max_pixels=" +
+                runtimeDownscalePolicy.textureAtlasPages.maxPixels
+        )
+        args.add(
+            "-Damethyst.gdx.texture_pressure_downscale.texture_atlas_max_edge=" +
+                runtimeDownscalePolicy.textureAtlasPages.maxEdge
         )
         args.add(
             "-Damethyst.gdx.texture_pressure_downscale.allow_spine=" +

@@ -33,6 +33,7 @@ data class SteamPublishedFileItem(
     val views: Int,
     val timeCreatedEpochSeconds: Long,
     val timeUpdatedEpochSeconds: Long,
+    val ratingScore: Float? = null,
 )
 
 class SteamPublishedFileClient(
@@ -63,6 +64,7 @@ class SteamPublishedFileClient(
                         .setType(type)
                         .setSortmethod(sortMethod)
                         .setLanguage(language)
+                        .setReturnVoteData(true)
                         .setReturnShortDescription(true)
                         .setStripDescriptionBbcode(true)
                         .build(),
@@ -99,6 +101,7 @@ class SteamPublishedFileClient(
                         .setSearchText(query.searchText)
                         .setLanguage(query.language)
                         .setReturnDetails(true)
+                        .setReturnVoteData(true)
                         .setReturnShortDescription(true)
                         .setStripDescriptionBbcode(true)
                         .build(),
@@ -136,6 +139,7 @@ private fun List<top.apricityx.workshop.steam.proto.PublishedFileDetails>.toStea
                 views = detail.views,
                 timeCreatedEpochSeconds = detail.timeCreated.toLong(),
                 timeUpdatedEpochSeconds = detail.timeUpdated.toLong(),
+                ratingScore = detail.takeIf { it.hasVoteData() }?.voteData?.score,
             )
         }
     }

@@ -1,6 +1,7 @@
 package io.stamethyst.backend.workshop
 
 import java.io.File
+import kotlin.math.roundToInt
 
 data class WorkshopBrowseQuery(
     val appId: UInt = 646570u,
@@ -54,7 +55,23 @@ data class WorkshopItemSummary(
     val fileSizeBytes: Long = 0L,
     val updatedAtMillis: Long = 0L,
     val downloadCount: Long = 0L,
+    val rating: WorkshopItemRating? = null,
 )
+
+data class WorkshopItemRating(
+    val score: Int,
+    val maxScore: Int = 5,
+)
+
+internal fun normalizedWorkshopRating(score: Float?, maxScore: Int = 5): WorkshopItemRating? {
+    val rawScore = score ?: return null
+    if (!rawScore.isFinite() || rawScore <= 0f || maxScore <= 0) return null
+    val scaledScore = if (rawScore <= 1f) rawScore * maxScore else rawScore
+    return WorkshopItemRating(
+        score = scaledScore.roundToInt().coerceIn(1, maxScore),
+        maxScore = maxScore,
+    )
+}
 
 data class WorkshopItemDetails(
     val summary: WorkshopItemSummary,
@@ -62,6 +79,8 @@ data class WorkshopItemDetails(
     val hcontentFile: ULong? = null,
     val depotId: UInt? = null,
     val jsonMetadata: String = "",
+    val changeNotes: String = "",
+    val changeNotesUrl: String = "",
     val dependencies: List<WorkshopItemSummary> = emptyList(),
     val commentsUrl: String = "",
     val commentThreadContext: WorkshopCommentThreadContext? = null,
@@ -71,6 +90,13 @@ data class WorkshopItemDetails(
     val hasPreviousCommentPage: Boolean = false,
     val hasNextCommentPage: Boolean = false,
     val comments: List<WorkshopComment> = emptyList(),
+)
+
+data class WorkshopChangeNotes(
+    val publishedFileId: ULong,
+    val markdown: String,
+    val latestMarkdown: String,
+    val url: String,
 )
 
 data class WorkshopCommentThreadContext(

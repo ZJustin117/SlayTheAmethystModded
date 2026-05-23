@@ -52,6 +52,8 @@ import io.stamethyst.R
 import io.stamethyst.backend.workshop.BaiduAiTextTranslationClient
 import io.stamethyst.backend.workshop.BaiduTranslationCredentials
 import io.stamethyst.ui.Icons
+import io.stamethyst.ui.LauncherTransientNoticeBus
+import io.stamethyst.ui.LauncherTransientNoticeDuration
 import io.stamethyst.ui.icon.ArrowBack
 import kotlinx.coroutines.launch
 
@@ -70,9 +72,6 @@ internal fun LauncherBaiduTranslationCredentialsScreen(
     var appIdInput by remember { mutableStateOf("") }
     var apiKeyInput by remember { mutableStateOf("") }
     var isTesting by remember { mutableStateOf(false) }
-    var testResultText by remember { mutableStateOf<String?>(null) }
-    var testFailureReason by remember { mutableStateOf<String?>(null) }
-    var successMessage by remember { mutableStateOf<String?>(null) }
     var pendingNotice by remember(notice) { mutableStateOf(notice?.takeIf(String::isNotBlank)) }
 
     LaunchedEffect(activity) {
@@ -155,9 +154,6 @@ internal fun LauncherBaiduTranslationCredentialsScreen(
                 Button(
                     onClick = {
                         viewModel.onSaveBaiduTranslationCredentials(activity, appIdInput, apiKeyInput)
-                        successMessage = null
-                        testResultText = null
-                        testFailureReason = null
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
@@ -173,15 +169,14 @@ internal fun LauncherBaiduTranslationCredentialsScreen(
                         )
                         val validationMessage = validateBaiduCredentialsForScreen(credentials)
                         if (validationMessage != null) {
-                            testResultText = null
-                            testFailureReason = validationMessage
-                            successMessage = null
+                            LauncherTransientNoticeBus.show(
+                                activity,
+                                validationMessage,
+                                LauncherTransientNoticeDuration.LONG,
+                            )
                             return@OutlinedButton
                         }
                         isTesting = true
-                        testResultText = null
-                        testFailureReason = null
-                        successMessage = null
                         coroutineScope.launch {
                             runCatching {
                                 translationClient.translate(
@@ -193,15 +188,26 @@ internal fun LauncherBaiduTranslationCredentialsScreen(
                                 )
                             }.onSuccess { translatedText ->
                                 isTesting = false
-                                testResultText = translatedText
-                                testFailureReason = null
-                                successMessage = activity.getString(R.string.settings_baidu_translation_test_success)
+                                val successMessage = activity.getString(R.string.settings_baidu_translation_test_success)
+                                LauncherTransientNoticeBus.show(
+                                    activity,
+                                    translatedText.takeIf(String::isNotBlank)
+                                        ?.let { "$successMessage\n$it" }
+                                        ?: successMessage,
+                                    LauncherTransientNoticeDuration.LONG,
+                                )
                             }.onFailure { error ->
                                 isTesting = false
-                                testResultText = null
-                                testFailureReason = error.message
-                                    ?: activity.getString(R.string.settings_baidu_translation_test_failed)
-                                successMessage = null
+                                val fallbackMessage = activity.getString(R.string.settings_baidu_translation_test_failed)
+                                val failureMessage = error.message
+                                    ?.takeIf(String::isNotBlank)
+                                    ?.let { "$fallbackMessage\n$it" }
+                                    ?: fallbackMessage
+                                LauncherTransientNoticeBus.show(
+                                    activity,
+                                    failureMessage,
+                                    LauncherTransientNoticeDuration.LONG,
+                                )
                             }
                         }
                     },
@@ -229,38 +235,6 @@ internal fun LauncherBaiduTranslationCredentialsScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
-
-                testResultText?.let { resultText ->
-                    Text(stringResource(R.string.settings_baidu_translation_test_result_title), style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        text = resultText,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-
-                testFailureReason?.let { failureReason ->
-                    Text(
-                        text = stringResource(R.string.settings_baidu_translation_test_failure_title),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                    Text(
-                        text = failureReason,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-            }
-
-            successMessage?.let { message ->
-                SettingsPanelCard {
-                    Text(
-                        text = message,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
             }
 
             SettingsPanelCard {

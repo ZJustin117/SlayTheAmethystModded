@@ -1,12 +1,14 @@
 package io.stamethyst.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
-import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.core.tween
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -106,7 +108,7 @@ import io.stamethyst.ui.modimport.ModImportHost
 import io.stamethyst.ui.workshop.WorkshopScreen
 import io.stamethyst.ui.workshop.WorkshopDownloadCenterScreen
 import io.stamethyst.ui.workshop.WorkshopDetailScreen
-import io.stamethyst.ui.workshop.WorkshopListMode
+import io.stamethyst.ui.workshop.WorkshopSubscriptionsScreen
 import io.stamethyst.ui.workshop.WorkshopViewModel
 import io.stamethyst.ui.quickstart.QuickStartScreen
 import io.stamethyst.ui.quickstart.QuickStartJarImportScreen
@@ -116,17 +118,24 @@ import io.stamethyst.ui.settings.LauncherDeveloperSettingsScreen
 import io.stamethyst.ui.settings.LauncherBaiduTranslationCredentialsScreen
 import io.stamethyst.ui.settings.LauncherMobileGluesSettingsScreen
 import io.stamethyst.ui.settings.LauncherNativeLibraryMarketScreen
+import io.stamethyst.ui.settings.LauncherSettingsAboutScreen
+import io.stamethyst.ui.settings.LauncherSettingsFeedbackScreen
+import io.stamethyst.ui.settings.LauncherSettingsGameScreen
+import io.stamethyst.ui.settings.LauncherSettingsLauncherScreen
+import io.stamethyst.ui.settings.LauncherSettingsMarketCloudScreen
 import io.stamethyst.ui.settings.LauncherSettingsScreen
 import io.stamethyst.ui.settings.LauncherSteamCloudGuardScreen
 import io.stamethyst.ui.settings.LauncherSteamCloudLoginScreen
 import io.stamethyst.ui.settings.LauncherSteamCloudSaveSettingsScreen
 import io.stamethyst.ui.settings.LauncherSteamCloudSyncBlacklistSettingsScreen
+import io.stamethyst.ui.settings.SettingsEffectsHandler
 import io.stamethyst.ui.settings.SettingsScreenViewModel
 import io.stamethyst.ui.preferences.LauncherPreferences
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 private const val PAGE_TRANSITION_DURATION_MS = 420
+private const val DOCK_VISIBILITY_ANIMATION_MS = 220
 internal const val LAUNCHER_DOCK_ITEM_TAG_PREFIX = "launcher_dock_item_"
 private val LauncherDockRoutes = listOf(
     Route.Main,
@@ -158,13 +167,14 @@ fun LauncherContent(
     val workshopViewModel: WorkshopViewModel = viewModel()
     val workshopSubscriptionsViewModel: WorkshopViewModel = viewModel(key = "workshop-subscriptions")
     val currentRoute = navigator.backStack.lastOrNull() as? Route
+    val rootRoute = navigator.backStack.firstOrNull() as? Route
     val initialDockPage = initialRoute.launcherDockIndex() ?: 0
     val dockPagerState = rememberPagerState(initialPage = initialDockPage) {
         LauncherDockRoutes.size
     }
     val dockPageRoute = dockPagerState.currentLauncherDockRoute()
     val coroutineScope = rememberCoroutineScope()
-    val showDockPager = currentRoute.launcherDockIndex() != null
+    val showDockPager = rootRoute.launcherDockIndex() != null || currentRoute.launcherDockIndex() != null
     val showOverlayNav = currentRoute.launcherDockIndex() == null || navigator.stackSize > 1
     var forwardPageTransition by remember { mutableStateOf(true) }
     var modsBatchSelectionMode by remember { mutableStateOf(false) }
@@ -264,6 +274,7 @@ fun LauncherContent(
     CompositionLocalProvider(
         LocalNavigator provides navigator,
     ) {
+        SettingsEffectsHandler(viewModel = settingsViewModel)
         LaunchedEffect(activity) {
             FeedbackInboxCoordinator.bind(activity.applicationContext)
             FeedbackInboxCoordinator.syncOnLauncherStart(activity.applicationContext)
@@ -324,6 +335,7 @@ fun LauncherContent(
                             onOpenFeedback = { navigator.push(Route.Feedback) },
                             onOpenWorkshop = { selectDockRoute(Route.Workshop) },
                             onOpenFeedbackUpdates = { openFeedbackUpdates() },
+                            onOpenFeedbackSubscriptions = { navigator.push(Route.FeedbackSubscriptions) },
                             onOpenSteamLogin = { navigator.push(Route.SteamCloudLogin) },
                             onOpenDownloadCenter = { navigator.push(Route.WorkshopDownloadCenter) },
                             onOpenSubscriptions = { navigator.push(Route.WorkshopSubscriptions) },
@@ -344,8 +356,7 @@ fun LauncherContent(
                                 .hazeSource(state = launcherDockHazeState),
                         )
                     }
-                    if (showOverlayNav) {
-                        NavDisplay(
+                    NavDisplay(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(scaffoldPadding),
@@ -439,6 +450,7 @@ fun LauncherContent(
                                     onOpenWorkshop = { selectDockRoute(Route.Workshop) },
                                     feedbackUnreadCount = feedbackInboxState.unreadIssueCount,
                                     onOpenFeedbackUpdates = { openFeedbackUpdates() },
+                                    onOpenFeedbackSubscriptions = { navigator.push(Route.FeedbackSubscriptions) },
                                 )
                             }
                         }
@@ -491,6 +503,45 @@ fun LauncherContent(
                             }
                         }
 
+                        entry<Route.SettingsLauncher> {
+                            LauncherSettingsLauncherScreen(
+                                viewModel = settingsViewModel,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+
+                        entry<Route.SettingsGame> {
+                            LauncherSettingsGameScreen(
+                                viewModel = settingsViewModel,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+
+                        entry<Route.SettingsMarketCloud> {
+                            LauncherSettingsMarketCloudScreen(
+                                viewModel = settingsViewModel,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+
+                        entry<Route.SettingsFeedback> {
+                            LauncherSettingsFeedbackScreen(
+                                viewModel = settingsViewModel,
+                                modifier = Modifier.fillMaxSize(),
+                                feedbackSubmissionNotice = pendingFeedbackNotice,
+                                onDismissFeedbackSubmissionNotice = {
+                                    pendingFeedbackNotice = null
+                                },
+                            )
+                        }
+
+                        entry<Route.SettingsAbout> {
+                            LauncherSettingsAboutScreen(
+                                viewModel = settingsViewModel,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+
                         entry<Route.Workshop> {
                             if (showDockPager) {
                                 Box(modifier = Modifier.fillMaxSize())
@@ -517,13 +568,9 @@ fun LauncherContent(
                         }
 
                         entry<Route.WorkshopSubscriptions> {
-                            WorkshopScreen(
+                            WorkshopSubscriptionsScreen(
                                 viewModel = workshopSubscriptionsViewModel,
                                 modifier = Modifier.fillMaxSize(),
-                                showBackButton = true,
-                                initialListMode = WorkshopListMode.Subscriptions,
-                                title = stringResource(R.string.workshop_subscriptions_title),
-                                subtitle = stringResource(R.string.workshop_subscriptions_subtitle),
                                 onBack = { navigator.goBack() },
                                 onOpenSteamLogin = { navigator.push(Route.SteamCloudLogin) },
                                 onOpenDownloadCenter = { navigator.push(Route.WorkshopDownloadCenter) },
@@ -699,18 +746,18 @@ fun LauncherContent(
                     }
                     )
                 }
-                }
                 AnimatedVisibility(
                     visible = showAnimatedLauncherDock,
                     modifier = Modifier.align(Alignment.BottomCenter),
                     enter = slideInVertically(
-                        animationSpec = tween(durationMillis = 220),
-                        initialOffsetY = { fullHeight -> fullHeight }
-                    ),
+                        initialOffsetY = { fullHeight -> fullHeight },
+                        animationSpec = tween(durationMillis = DOCK_VISIBILITY_ANIMATION_MS)
+                    ) + fadeIn(animationSpec = tween(durationMillis = DOCK_VISIBILITY_ANIMATION_MS)),
                     exit = slideOutVertically(
-                        animationSpec = tween(durationMillis = 220),
-                        targetOffsetY = { fullHeight -> fullHeight }
-                    )
+                        targetOffsetY = { fullHeight -> fullHeight },
+                        animationSpec = tween(durationMillis = DOCK_VISIBILITY_ANIMATION_MS)
+                    ) + fadeOut(animationSpec = tween(durationMillis = DOCK_VISIBILITY_ANIMATION_MS)),
+                    label = "launcherDockVisibility"
                 ) {
                     LauncherDockBar(
                         hazeState = launcherDockHazeState,
@@ -1030,6 +1077,7 @@ private fun LauncherDockPager(
     onOpenFeedback: () -> Unit,
     onOpenWorkshop: () -> Unit,
     onOpenFeedbackUpdates: () -> Unit,
+    onOpenFeedbackSubscriptions: () -> Unit,
     onOpenSteamLogin: () -> Unit,
     onOpenDownloadCenter: () -> Unit,
     onOpenSubscriptions: () -> Unit,
@@ -1075,6 +1123,7 @@ private fun LauncherDockPager(
                         onOpenFeedback = onOpenFeedback,
                         feedbackUnreadCount = feedbackUnreadCount,
                         onOpenFeedbackUpdates = onOpenFeedbackUpdates,
+                        onOpenFeedbackSubscriptions = onOpenFeedbackSubscriptions,
                     )
                 }
 
@@ -1296,6 +1345,11 @@ private fun Route?.launcherDockRoute(): Route? {
         Route.Workshop -> Route.Workshop
         Route.WorkshopSubscriptions -> Route.Workshop
         Route.Settings -> Route.Settings
+        Route.SettingsLauncher,
+        Route.SettingsGame,
+        Route.SettingsMarketCloud,
+        Route.SettingsFeedback,
+        Route.SettingsAbout -> Route.Settings
         Route.CrashRecovery,
         is Route.WorkshopDetail,
         Route.WorkshopDownloadCenter,

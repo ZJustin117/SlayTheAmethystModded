@@ -57,6 +57,7 @@ fun CollapsibleFloatingGlassHeader(
     shape: Shape = RoundedCornerShape(24.dp),
     contentPadding: PaddingValues = PaddingValues(16.dp),
     shadowElevation: Dp = 0.dp,
+    expandedContentTopPadding: Dp = 14.dp,
     pinnedContent: @Composable ColumnScope.() -> Unit,
     expandedContent: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
@@ -79,7 +80,7 @@ fun CollapsibleFloatingGlassHeader(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 14.dp),
+                        .padding(top = expandedContentTopPadding),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                     content = expandedContent,
                 )

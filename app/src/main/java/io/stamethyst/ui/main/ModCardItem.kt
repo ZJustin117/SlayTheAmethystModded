@@ -9,11 +9,15 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -28,6 +32,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -57,11 +62,16 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
 import io.stamethyst.R
+import io.stamethyst.backend.workshop.WorkshopService
 import io.stamethyst.model.ModItemUi
 import io.stamethyst.model.WorkshopModState
+import io.stamethyst.ui.SimpleMarkdownCard
 import io.stamethyst.ui.haptics.LauncherHaptics
 import kotlin.math.max
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 
 internal data class ModCardDragStartInfo(
     val overlayAnchor: ModDragOverlayAnchor,
@@ -72,6 +82,14 @@ private val MOD_DRAG_HANDLE_SLOT_WIDTH = 28.dp
 private val MOD_BATCH_CHECKBOX_SLOT_WIDTH = 48.dp
 private val MOD_ENABLE_CHECKBOX_SLOT_WIDTH = 48.dp
 private val FavoriteCardBorderColor = Color(0xFFF2A8CB)
+private const val WORKSHOP_UPDATE_CHANGE_NOTES_TIMEOUT_MS = 8_000L
+
+private sealed interface WorkshopUpdateChangeNotesState {
+    data object Idle : WorkshopUpdateChangeNotesState
+    data object Loading : WorkshopUpdateChangeNotesState
+    data class Loaded(val latestMarkdown: String) : WorkshopUpdateChangeNotesState
+    data class Failed(val message: String) : WorkshopUpdateChangeNotesState
+}
 
 @Stable
 internal data class ModCardCallbacks(
@@ -127,6 +145,10 @@ internal fun ModCard(
     var showSuggestionDialog by remember(mod.storagePath, suggestionText) { mutableStateOf(false) }
     var showImportPatchDialog by remember(mod.storagePath, mod.importPatchDetails) { mutableStateOf(false) }
     var showWorkshopUpdateConfirmDialog by remember(mod.storagePath) { mutableStateOf(false) }
+    var updateChangeNotesReloadToken by remember(mod.storagePath) { mutableStateOf(0) }
+    var updateChangeNotesState by remember(mod.storagePath) {
+        mutableStateOf<WorkshopUpdateChangeNotesState>(WorkshopUpdateChangeNotesState.Idle)
+    }
     val cardShape = RoundedCornerShape(10.dp)
     val batchSelectionAnimationProgress = if (batchSelectionMode) {
         batchSelectionProgress?.value ?: 1f
@@ -234,6 +256,31 @@ internal fun ModCard(
         }
     )
 
+    LaunchedEffect(showWorkshopUpdateConfirmDialog, updateChangeNotesReloadToken, mod.workshop?.publishedFileId) {
+        val workshop = mod.workshop
+        if (!showWorkshopUpdateConfirmDialog || workshop?.state != WorkshopModState.UpdateAvailable) return@LaunchedEffect
+        updateChangeNotesState = WorkshopUpdateChangeNotesState.Loading
+        updateChangeNotesState = runCatching {
+            withContext(Dispatchers.IO) {
+                withTimeout(WORKSHOP_UPDATE_CHANGE_NOTES_TIMEOUT_MS) {
+                    WorkshopService(context.applicationContext)
+                        .getChangeNotes(workshop.publishedFileId)
+                        .latestMarkdown
+                }
+            }
+        }.fold(
+            onSuccess = { markdown -> WorkshopUpdateChangeNotesState.Loaded(markdown) },
+            onFailure = { error ->
+                WorkshopUpdateChangeNotesState.Failed(
+                    context.getString(
+                        R.string.workshop_change_notes_load_failed,
+                        error.message ?: error.javaClass.simpleName,
+                    )
+                )
+            },
+        )
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -298,7 +345,11 @@ internal fun ModCard(
             importPatchBadgeEnabled = true,
             onImportPatchClick = { showImportPatchDialog = true },
             updateBadgeEnabled = !batchSelectionMode,
-            onUpdateBadgeClick = { showWorkshopUpdateConfirmDialog = true },
+            onUpdateBadgeClick = {
+                updateChangeNotesState = WorkshopUpdateChangeNotesState.Idle
+                updateChangeNotesReloadToken++
+                showWorkshopUpdateConfirmDialog = true
+            },
             headerLeading = {
                 Box(
                     modifier = Modifier
@@ -519,15 +570,62 @@ internal fun ModCard(
             onDismissRequest = { showWorkshopUpdateConfirmDialog = false },
             title = { Text(stringResource(R.string.main_mod_workshop_update_dialog_title)) },
             text = {
-                Text(
-                    text = stringResource(
-                        R.string.main_mod_workshop_update_dialog_message,
-                        resolveModDisplayName(mod, showModFileName = false)
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 420.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        text = stringResource(
+                            R.string.main_mod_workshop_update_dialog_message,
+                            resolveModDisplayName(mod, showModFileName = false)
+                        )
                     )
-                )
+                    when (val changeNotesState = updateChangeNotesState) {
+                        WorkshopUpdateChangeNotesState.Idle,
+                        WorkshopUpdateChangeNotesState.Loading -> {
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            Text(
+                                text = stringResource(R.string.workshop_change_notes_loading),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        is WorkshopUpdateChangeNotesState.Loaded -> {
+                            if (changeNotesState.latestMarkdown.isNotBlank()) {
+                                SimpleMarkdownCard(
+                                    title = stringResource(R.string.workshop_change_notes_latest_title),
+                                    markdown = changeNotesState.latestMarkdown,
+                                )
+                            } else {
+                                Text(
+                                    text = stringResource(R.string.workshop_change_notes_empty),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        is WorkshopUpdateChangeNotesState.Failed -> {
+                            Text(
+                                text = changeNotesState.message,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                            OutlinedButton(
+                                onClick = { updateChangeNotesReloadToken++ },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(stringResource(R.string.workshop_action_retry))
+                            }
+                        }
+                    }
+                }
             },
             confirmButton = {
                 TextButton(
+                    enabled = updateChangeNotesState !is WorkshopUpdateChangeNotesState.Idle &&
+                        updateChangeNotesState !is WorkshopUpdateChangeNotesState.Loading,
                     onClick = {
                         showWorkshopUpdateConfirmDialog = false
                         callbacks.onUpdateWorkshopMod(mod)

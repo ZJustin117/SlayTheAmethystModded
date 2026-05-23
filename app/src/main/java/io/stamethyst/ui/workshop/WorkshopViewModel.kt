@@ -19,6 +19,7 @@ import io.stamethyst.backend.workshop.BaiduTranslationCredentialsRepository
 import io.stamethyst.backend.workshop.WorkshopBrowseQuery
 import io.stamethyst.backend.workshop.WorkshopBrowseSort
 import io.stamethyst.backend.workshop.WorkshopBrowseTimeFilter
+import io.stamethyst.backend.workshop.WorkshopChangeNotes
 import io.stamethyst.backend.workshop.WorkshopDownloadProcessService
 import io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus
 import io.stamethyst.backend.workshop.WorkshopInstalledModRecord
@@ -53,6 +54,7 @@ internal class WorkshopViewModel : ViewModel() {
     private var activeQueryText: String = ""
     private var activeSort: WorkshopBrowseSort = WorkshopBrowseSort.MostPopular
     private var activeTimeFilter: WorkshopBrowseTimeFilter = WorkshopBrowseTimeFilter.OneWeek
+    private var browseRequestGeneration = 0
     private val detailsCache = mutableMapOf<String, WorkshopItemDetails>()
     private val translationClient = BaiduAiTextTranslationClient()
 
@@ -174,6 +176,7 @@ internal class WorkshopViewModel : ViewModel() {
     ) {
         val currentService = service ?: return
         activeListMode = WorkshopListMode.Browse
+        val requestGeneration = ++browseRequestGeneration
         viewModelScope.launch {
             uiState = if (append) {
                 uiState.copy(loadingMore = true, errorMessage = null)
@@ -201,7 +204,7 @@ internal class WorkshopViewModel : ViewModel() {
                     )
                 }
             }.onSuccess { result ->
-                if (activeListMode != WorkshopListMode.Browse) return@onSuccess
+                if (activeListMode != WorkshopListMode.Browse || requestGeneration != browseRequestGeneration) return@onSuccess
                 val existing = if (append) uiState.items else emptyList()
                 val merged = (existing + result.items).distinctBy { it.publishedFileId }
                 uiState = uiState.copy(
@@ -213,7 +216,7 @@ internal class WorkshopViewModel : ViewModel() {
                     errorMessage = if (merged.isEmpty()) context.getString(R.string.workshop_error_no_entries_found) else null,
                 )
             }.onFailure { error ->
-                if (activeListMode != WorkshopListMode.Browse) return@onFailure
+                if (activeListMode != WorkshopListMode.Browse || requestGeneration != browseRequestGeneration) return@onFailure
                 uiState = uiState.copy(
                     browseLoading = false,
                     loadingMore = false,
@@ -302,6 +305,8 @@ internal class WorkshopViewModel : ViewModel() {
                 detailTranslationModeKey = null,
                 detailTranslationLoadingId = null,
                 detailTranslationErrorMessage = null,
+                detailChangeNotesLoadingId = null,
+                detailChangeNotesErrorMessage = null,
             )
             runCatching {
                 withContext(Dispatchers.IO) { currentService.getDetails(appId, publishedFileId) }
@@ -320,6 +325,52 @@ internal class WorkshopViewModel : ViewModel() {
                 }
             }.onFailure { error ->
                 uiState = uiState.copy(detailLoadingId = null, errorMessage = error.message ?: error.javaClass.simpleName)
+            }
+        }
+    }
+
+    fun loadSelectedChangeNotes(context: Context) {
+        val currentService = service ?: return
+        val details = uiState.selected ?: return
+        val summary = details.summary
+        val changeNotesKey = details.cacheKey()
+        if (uiState.detailChangeNotes.containsKey(changeNotesKey)) {
+            uiState = uiState.copy(detailChangeNotesErrorMessage = null)
+            return
+        }
+        if (uiState.detailChangeNotesLoadingId == summary.publishedFileId) return
+
+        uiState = uiState.copy(
+            detailChangeNotesLoadingId = summary.publishedFileId,
+            detailChangeNotesErrorMessage = null,
+        )
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) { currentService.getChangeNotes(summary.publishedFileId) }
+            }.onSuccess { changeNotes ->
+                val current = uiState.selected?.takeIf { selected -> selected.cacheKey() == changeNotesKey }
+                val updatedDetails = current?.copy(
+                    changeNotes = changeNotes.markdown,
+                    changeNotesUrl = changeNotes.url,
+                )
+                if (updatedDetails != null) {
+                    detailsCache[changeNotesKey] = updatedDetails
+                }
+                uiState = uiState.copy(
+                    selected = updatedDetails ?: uiState.selected,
+                    detailChangeNotes = uiState.detailChangeNotes + (changeNotesKey to changeNotes),
+                    detailChangeNotesLoadingId = null,
+                    detailChangeNotesErrorMessage = null,
+                )
+            }.onFailure { error ->
+                val stillSelected = uiState.selected?.cacheKey() == changeNotesKey
+                uiState = uiState.copy(
+                    detailChangeNotesLoadingId = null,
+                    detailChangeNotesErrorMessage = if (stillSelected) context.getString(
+                        R.string.workshop_change_notes_load_failed,
+                        error.message ?: error.javaClass.simpleName,
+                    ) else uiState.detailChangeNotesErrorMessage,
+                )
             }
         }
     }
@@ -867,6 +918,9 @@ internal data class WorkshopUiState(
     val detailTranslations: Map<String, WorkshopDetailTranslation> = emptyMap(),
     val detailTranslationLoadingId: ULong? = null,
     val detailTranslationErrorMessage: String? = null,
+    val detailChangeNotes: Map<String, WorkshopChangeNotes> = emptyMap(),
+    val detailChangeNotesLoadingId: ULong? = null,
+    val detailChangeNotesErrorMessage: String? = null,
     val errorMessage: String? = null,
 ) {
     companion object {

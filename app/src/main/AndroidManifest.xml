@@ -19,7 +19,7 @@
         android:isGame="true"
         android:allowNativeHeapPointerTagging="false"
         android:icon="@mipmap/ic_launcher_amethyst"
-        android:label="SlayTheAmethyst"
+        android:label="Slay the Amethyst"
         android:roundIcon="@mipmap/ic_launcher_amethyst_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.SlayTheAmethyst"

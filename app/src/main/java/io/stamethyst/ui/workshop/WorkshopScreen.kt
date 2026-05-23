@@ -7,7 +7,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
@@ -44,6 +43,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
@@ -51,6 +51,7 @@ import androidx.compose.material3.SearchBar
 import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -70,6 +71,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -79,6 +84,7 @@ import dev.chrisbanes.haze.rememberHazeState
 import io.stamethyst.R
 import io.stamethyst.backend.workshop.WorkshopBrowseSort
 import io.stamethyst.backend.workshop.WorkshopBrowseTimeFilter
+import io.stamethyst.backend.workshop.WorkshopItemRating
 import io.stamethyst.backend.workshop.WorkshopItemSummary
 import io.stamethyst.backend.workshop.WorkshopPreviewCacheStore
 import io.stamethyst.backend.workshop.isActiveDownload
@@ -96,6 +102,7 @@ internal fun WorkshopScreen(
     showBackButton: Boolean = true,
     initialListMode: WorkshopListMode = WorkshopListMode.Browse,
     showSubscriptionsButton: Boolean = false,
+    useFloatingHeader: Boolean = true,
     title: String? = null,
     subtitle: String? = null,
     onBack: () -> Unit,
@@ -121,8 +128,9 @@ internal fun WorkshopScreen(
     val headerCollapsed = listState.firstVisibleItemIndex > 0 ||
         listState.firstVisibleItemScrollOffset > with(density) { 24.dp.roundToPx() }
     val measuredHeaderHeight = with(density) { headerHeightPx.toDp() }
-    val headerContentTopInset = (if (headerHeightPx == 0) 102.dp else measuredHeaderHeight) + 16.dp
-    val refreshIndicatorTopInset = (if (headerHeightPx == 0) 102.dp else measuredHeaderHeight) + 8.dp
+    val headerPlaceholderHeight = if (useFloatingHeader && state.listMode == WorkshopListMode.Browse) 250.dp else 102.dp
+    val headerContentTopInset = (if (headerHeightPx == 0) headerPlaceholderHeight else measuredHeaderHeight) + 16.dp
+    val refreshIndicatorTopInset = (if (headerHeightPx == 0) headerPlaceholderHeight else measuredHeaderHeight) + 8.dp
     val pullToRefreshState = rememberPullToRefreshState()
     val activeDownloadTaskCount = WorkshopDownloadCenterStore.tasks.count { it.status.isActiveDownload() }
     var query by rememberSaveable { mutableStateOf("") }
@@ -164,10 +172,10 @@ internal fun WorkshopScreen(
         }
     }
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-    ) {
+    val content: @Composable (Modifier) -> Unit = { contentModifier ->
+        Box(
+            modifier = contentModifier.fillMaxSize()
+        ) {
         PullToRefreshBox(
             isRefreshing = state.browseLoading && state.items.isNotEmpty(),
             onRefresh = { viewModel.refreshBrowse(context.applicationContext) },
@@ -183,8 +191,8 @@ internal fun WorkshopScreen(
             },
             modifier = Modifier
                 .fillMaxSize()
-                .hazeSource(state = headerHazeState)
-                .padding(start = 16.dp, top = 18.dp, end = 16.dp),
+                .then(if (useFloatingHeader) Modifier.hazeSource(state = headerHazeState) else Modifier)
+                .padding(start = 16.dp, top = if (useFloatingHeader) 18.dp else 0.dp, end = 16.dp),
         ) {
             LazyColumn(
                 state = listState,
@@ -192,8 +200,10 @@ internal fun WorkshopScreen(
                 contentPadding = PaddingValues(bottom = 132.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                item {
-                    Spacer(modifier = Modifier.height(headerContentTopInset))
+                if (useFloatingHeader) {
+                    item {
+                        Spacer(modifier = Modifier.height(headerContentTopInset))
+                    }
                 }
                 if (!state.steamLoggedIn) {
                     item(key = "workshop-status-header") {
@@ -204,7 +214,7 @@ internal fun WorkshopScreen(
                     }
                 }
 
-                if (state.listMode == WorkshopListMode.Browse) {
+                if (!useFloatingHeader && state.listMode == WorkshopListMode.Browse) {
                     item(key = "workshop-search-panel") {
                         SearchPanel(
                             query = query,
@@ -247,7 +257,7 @@ internal fun WorkshopScreen(
                             WorkshopListMode.Subscriptions -> stringResource(R.string.workshop_subscriptions_title)
                         },
                         subtitle = when {
-                            state.browseLoading -> stringResource(R.string.workshop_section_loading)
+                            state.items.isEmpty() && state.browseLoading -> ""
                             state.items.isEmpty() -> stringResource(R.string.workshop_section_no_results)
                             else -> stringResource(R.string.workshop_section_item_count, state.items.size)
                         },
@@ -322,32 +332,80 @@ internal fun WorkshopScreen(
             }
         }
 
-        CollapsibleFloatingGlassHeader(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth(),
-            hazeState = headerHazeState,
-            collapsed = headerCollapsed,
-            shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
-            contentPadding = PaddingValues(0.dp),
-            onHeightChanged = {
-                if (!headerCollapsed) {
-                    headerHeightPx = maxOf(headerHeightPx, it)
-                }
-            },
-            pinnedContent = {
-                WorkshopHeaderPinnedContent(
+        if (useFloatingHeader) {
+            CollapsibleFloatingGlassHeader(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth(),
+                hazeState = headerHazeState,
+                collapsed = headerCollapsed,
+                shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
+                contentPadding = PaddingValues(0.dp),
+                expandedContentTopPadding = 0.dp,
+                onHeightChanged = {
+                    if (!headerCollapsed) {
+                        headerHeightPx = maxOf(headerHeightPx, it)
+                    }
+                },
+                pinnedContent = {
+                    WorkshopHeaderPinnedContent(
+                        showBackButton = showBackButton,
+                        activeDownloadTaskCount = activeDownloadTaskCount,
+                        showSubscriptionsButton = showSubscriptionsButton && state.steamLoggedIn,
+                        title = title ?: stringResource(R.string.workshop_market_title),
+                        subtitle = subtitle ?: stringResource(R.string.workshop_market_subtitle),
+                        onBack = onBack,
+                        onOpenSubscriptions = onOpenSubscriptions,
+                        onOpenDownloadCenter = onOpenDownloadCenter,
+                    )
+                },
+                expandedContent = if (state.listMode == WorkshopListMode.Browse) {
+                    {
+                        SearchPanel(
+                            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                            query = query,
+                            loading = state.browseLoading,
+                            sort = sort,
+                            timeFilter = timeFilter,
+                            onQueryChange = { query = it },
+                            onSearch = ::searchWithPopularAllTime,
+                            onSortChange = { selectedSort ->
+                                sort = selectedSort
+                                viewModel.search(context.applicationContext, query, selectedSort, timeFilter)
+                            },
+                            onTimeFilterChange = { selectedTimeFilter ->
+                                timeFilter = selectedTimeFilter
+                                viewModel.search(context.applicationContext, query, sort, selectedTimeFilter)
+                            },
+                            contained = false,
+                        )
+                    }
+                } else {
+                    null
+                },
+            )
+        }
+        }
+    }
+
+    if (useFloatingHeader) {
+        content(modifier)
+    } else {
+        Scaffold(
+            modifier = modifier,
+            topBar = {
+                WorkshopStandardTopBar(
                     showBackButton = showBackButton,
                     activeDownloadTaskCount = activeDownloadTaskCount,
-                    showSubscriptionsButton = showSubscriptionsButton && state.steamLoggedIn,
                     title = title ?: stringResource(R.string.workshop_market_title),
                     subtitle = subtitle ?: stringResource(R.string.workshop_market_subtitle),
                     onBack = onBack,
-                    onOpenSubscriptions = onOpenSubscriptions,
                     onOpenDownloadCenter = onOpenDownloadCenter,
                 )
             },
-        )
+        ) { padding ->
+            content(Modifier.padding(padding))
+        }
     }
 
     state.pendingDependencyDownload?.let { pending ->
@@ -361,6 +419,30 @@ internal fun WorkshopScreen(
             },
         )
     }
+}
+
+@Composable
+internal fun WorkshopSubscriptionsScreen(
+    viewModel: WorkshopViewModel,
+    modifier: Modifier = Modifier,
+    onBack: () -> Unit,
+    onOpenSteamLogin: () -> Unit,
+    onOpenDownloadCenter: () -> Unit,
+    onOpenDetails: (WorkshopItemSummary) -> Unit,
+) {
+    WorkshopScreen(
+        viewModel = viewModel,
+        modifier = modifier,
+        showBackButton = true,
+        initialListMode = WorkshopListMode.Subscriptions,
+        useFloatingHeader = false,
+        title = stringResource(R.string.workshop_subscriptions_title),
+        subtitle = stringResource(R.string.workshop_subscriptions_subtitle),
+        onBack = onBack,
+        onOpenSteamLogin = onOpenSteamLogin,
+        onOpenDownloadCenter = onOpenDownloadCenter,
+        onOpenDetails = onOpenDetails,
+    )
 }
 
 @Composable
@@ -463,6 +545,68 @@ private fun WorkshopHeaderPinnedContent(
 }
 
 @Composable
+private fun WorkshopStandardTopBar(
+    showBackButton: Boolean,
+    activeDownloadTaskCount: Int,
+    title: String,
+    subtitle: String,
+    onBack: () -> Unit,
+    onOpenDownloadCenter: () -> Unit,
+) {
+    val downloadCenterDescription = if (activeDownloadTaskCount > 0) {
+        stringResource(R.string.workshop_download_center_with_active_tasks, activeDownloadTaskCount)
+    } else {
+        stringResource(R.string.workshop_download_center_title)
+    }
+    TopAppBar(
+        title = {
+            Column {
+                Text(
+                    text = title,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        },
+        navigationIcon = {
+            if (showBackButton) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.ArrowBack,
+                        contentDescription = stringResource(R.string.common_content_desc_back),
+                    )
+                }
+            }
+        },
+        actions = {
+            IconButton(onClick = onOpenDownloadCenter) {
+                BadgedBox(
+                    badge = {
+                        if (activeDownloadTaskCount > 0) {
+                            Badge {
+                                Text(if (activeDownloadTaskCount > 99) "99+" else activeDownloadTaskCount.toString())
+                            }
+                        }
+                    },
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_workshop_download),
+                        contentDescription = downloadCenterDescription,
+                    )
+                }
+            }
+        },
+    )
+}
+
+@Composable
 private fun BrowsePaginationFooter(
     modifier: Modifier = Modifier,
     loading: Boolean,
@@ -517,6 +661,7 @@ private fun WorkshopStatusHeader(
 
 @Composable
 private fun SearchPanel(
+    modifier: Modifier = Modifier,
     query: String,
     loading: Boolean,
     sort: WorkshopBrowseSort,
@@ -525,93 +670,118 @@ private fun SearchPanel(
     onSearch: () -> Unit,
     onSortChange: (WorkshopBrowseSort) -> Unit,
     onTimeFilterChange: (WorkshopBrowseTimeFilter) -> Unit,
+    contained: Boolean = true,
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
     var sortMenuExpanded by remember { mutableStateOf(false) }
     var timeMenuExpanded by remember { mutableStateOf(false) }
     fun submitSearch() {
-        if (!loading) {
-            keyboardController?.hide()
-            onSearch()
-        }
+        keyboardController?.hide()
+        onSearch()
     }
 
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            Modifier
-                .padding(16.dp)
-                .animateContentSize(),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+    if (contained) {
+        Card(modifier = modifier.fillMaxWidth()) {
+            SearchPanelContent(
+                modifier = Modifier.padding(16.dp),
+                query = query,
+                loading = loading,
+                sort = sort,
+                timeFilter = timeFilter,
+                sortMenuExpanded = sortMenuExpanded,
+                timeMenuExpanded = timeMenuExpanded,
+                onQueryChange = onQueryChange,
+                onSearch = ::submitSearch,
+                onSortMenuExpandedChange = { sortMenuExpanded = it },
+                onTimeMenuExpandedChange = { timeMenuExpanded = it },
+                onSortChange = onSortChange,
+                onTimeFilterChange = onTimeFilterChange,
+            )
+        }
+    } else {
+        SearchPanelContent(
+            modifier = modifier.fillMaxWidth(),
+            query = query,
+            loading = loading,
+            sort = sort,
+            timeFilter = timeFilter,
+            sortMenuExpanded = sortMenuExpanded,
+            timeMenuExpanded = timeMenuExpanded,
+            onQueryChange = onQueryChange,
+            onSearch = ::submitSearch,
+            onSortMenuExpandedChange = { sortMenuExpanded = it },
+            onTimeMenuExpandedChange = { timeMenuExpanded = it },
+            onSortChange = onSortChange,
+            onTimeFilterChange = onTimeFilterChange,
+        )
+    }
+}
+
+@Composable
+private fun SearchPanelContent(
+    modifier: Modifier = Modifier,
+    query: String,
+    loading: Boolean,
+    sort: WorkshopBrowseSort,
+    timeFilter: WorkshopBrowseTimeFilter,
+    sortMenuExpanded: Boolean,
+    timeMenuExpanded: Boolean,
+    onQueryChange: (String) -> Unit,
+    onSearch: () -> Unit,
+    onSortMenuExpandedChange: (Boolean) -> Unit,
+    onTimeMenuExpandedChange: (Boolean) -> Unit,
+    onSortChange: (WorkshopBrowseSort) -> Unit,
+    onTimeFilterChange: (WorkshopBrowseTimeFilter) -> Unit,
+) {
+    Column(
+        modifier.animateContentSize(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        SearchBar(
+            modifier = Modifier.fillMaxWidth(),
+            inputField = {
+                SearchBarDefaults.InputField(
+                    query = query,
+                    onQueryChange = onQueryChange,
+                    onSearch = { onSearch() },
+                    expanded = false,
+                    onExpandedChange = {},
+                    placeholder = { Text(stringResource(R.string.workshop_search_placeholder)) },
+                    trailingIcon = {
+                        TextButton(
+                            onClick = onSearch,
+                        ) { Text(stringResource(R.string.workshop_search_action)) }
+                    },
+                )
+            },
+            expanded = false,
+            onExpandedChange = {},
+        ) {}
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            SearchBar(
-                modifier = Modifier.fillMaxWidth(),
-                inputField = {
-                    SearchBarDefaults.InputField(
-                        query = query,
-                        onQueryChange = onQueryChange,
-                        onSearch = { submitSearch() },
-                        expanded = false,
-                        onExpandedChange = {},
-                        enabled = !loading,
-                        placeholder = { Text(stringResource(R.string.workshop_search_placeholder)) },
-                        trailingIcon = {
-                            TextButton(
-                                enabled = !loading,
-                                onClick = { submitSearch() },
-                            ) { Text(stringResource(R.string.workshop_search_action)) }
-                        },
-                    )
-                },
-                expanded = false,
-                onExpandedChange = {},
-            ) {}
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (sort.usesTimeFilter) {
-                        Box {
-                            OutlinedButton(
-                                enabled = !loading,
-                                onClick = { timeMenuExpanded = true }
-                            ) {
-                                Text(timeFilter.displayName())
-                            }
-                            DropdownMenu(
-                                expanded = timeMenuExpanded,
-                                onDismissRequest = { timeMenuExpanded = false }
-                            ) {
-                                WorkshopBrowseTimeFilter.entries.forEach { option ->
-                                    DropdownMenuItem(
-                                        text = { Text(option.displayName()) },
-                                        onClick = {
-                                            timeMenuExpanded = false
-                                            if (option != timeFilter) {
-                                                onTimeFilterChange(option)
-                                            }
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (sort.usesTimeFilter) {
                     Box {
-                        OutlinedButton(enabled = !loading, onClick = { sortMenuExpanded = true }) {
-                            Text(sort.displayName())
+                        OutlinedButton(
+                            enabled = !loading,
+                            onClick = { onTimeMenuExpandedChange(true) }
+                        ) {
+                            Text(timeFilter.displayName())
                         }
                         DropdownMenu(
-                            expanded = sortMenuExpanded,
-                            onDismissRequest = { sortMenuExpanded = false }
+                            expanded = timeMenuExpanded,
+                            onDismissRequest = { onTimeMenuExpandedChange(false) }
                         ) {
-                            WorkshopBrowseSort.entries.forEach { option ->
+                            WorkshopBrowseTimeFilter.entries.forEach { option ->
                                 DropdownMenuItem(
                                     text = { Text(option.displayName()) },
                                     onClick = {
-                                        sortMenuExpanded = false
-                                        if (option != sort) {
-                                            onSortChange(option)
+                                        onTimeMenuExpandedChange(false)
+                                        if (option != timeFilter) {
+                                            onTimeFilterChange(option)
                                         }
                                     }
                                 )
@@ -619,12 +789,27 @@ private fun SearchPanel(
                         }
                     }
                 }
-            }
-            AnimatedVisibility(
-                visible = loading,
-                label = "workshop-search-loading"
-            ) {
-                LinearProgressIndicator(Modifier.fillMaxWidth())
+                Box {
+                    OutlinedButton(enabled = !loading, onClick = { onSortMenuExpandedChange(true) }) {
+                        Text(sort.displayName())
+                    }
+                    DropdownMenu(
+                        expanded = sortMenuExpanded,
+                        onDismissRequest = { onSortMenuExpandedChange(false) }
+                    ) {
+                        WorkshopBrowseSort.entries.forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(option.displayName()) },
+                                onClick = {
+                                    onSortMenuExpandedChange(false)
+                                    if (option != sort) {
+                                        onSortChange(option)
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -663,6 +848,7 @@ private fun WorkshopItemCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
+                WorkshopRatingIndicator(rating = item.rating)
             }
             WorkshopDownloadActionButton(
                 state = downloadState,
@@ -670,6 +856,46 @@ private fun WorkshopItemCard(
                 iconOnly = true,
             )
         }
+    }
+}
+
+@Composable
+private fun WorkshopRatingIndicator(
+    rating: WorkshopItemRating?,
+    modifier: Modifier = Modifier,
+) {
+    val maxScore = rating?.maxScore?.takeIf { it > 0 } ?: 5
+    val progress = rating
+        ?.let { it.score.toFloat() / maxScore.toFloat() }
+        ?.coerceIn(0f, 1f)
+        ?: 0f
+    val scoreText = rating?.let { stringResource(R.string.workshop_rating_score_format, it.score, it.maxScore) }
+        ?: stringResource(R.string.workshop_rating_unrated_score_format, maxScore)
+    val scoreDescription = rating?.let {
+        stringResource(R.string.workshop_rating_content_description, it.score, it.maxScore)
+    } ?: stringResource(R.string.workshop_rating_unrated_content_description)
+
+    Row(
+        modifier = modifier.semantics {
+            contentDescription = scoreDescription
+            progressBarRangeInfo = ProgressBarRangeInfo(progress, 0f..1f)
+        },
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CircularProgressIndicator(
+            progress = { progress },
+            modifier = Modifier.size(18.dp),
+            color = MaterialTheme.colorScheme.primary,
+            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+            strokeWidth = 2.dp,
+        )
+        Text(
+            text = scoreText,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+        )
     }
 }
 

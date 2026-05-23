@@ -3971,7 +3971,7 @@ class SettingsScreenViewModel : ViewModel() {
     }
 
     private fun RuntimeDownscaleMaterialPolicy.allowsAnyTextureDownscale(): Boolean {
-        return ordinaryTextures || textureAtlasPages || spineTextures
+        return ordinaryTextures || textureAtlasPages.enabled || spineTextures
     }
 
     private fun formatRuntimeDownscaleMaterials(
@@ -3980,7 +3980,9 @@ class SettingsScreenViewModel : ViewModel() {
     ): String {
         val enabled = ArrayList<String>()
         if (policy.ordinaryTextures) enabled += host.getString(R.string.compat_runtime_downscale_ordinary_texture_title)
-        if (policy.textureAtlasPages) enabled += host.getString(R.string.compat_runtime_downscale_texture_atlas_title)
+        if (policy.textureAtlasPages.enabled) {
+            enabled += host.getString(R.string.compat_runtime_downscale_texture_atlas_title)
+        }
         if (policy.spineTextures) enabled += host.getString(R.string.compat_runtime_downscale_spine_title)
         if (policy.offscreenFrameBuffers) enabled += host.getString(R.string.compat_runtime_downscale_fbo_title)
         return enabled.joinToString().ifBlank { host.getString(R.string.settings_status_none) }

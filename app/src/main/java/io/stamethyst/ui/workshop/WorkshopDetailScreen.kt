@@ -24,7 +24,10 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -37,6 +40,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -55,10 +59,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import io.stamethyst.R
+import io.stamethyst.backend.workshop.WorkshopChangeNotes
 import io.stamethyst.backend.workshop.WorkshopComment
 import io.stamethyst.backend.workshop.WorkshopItemDetails
 import io.stamethyst.backend.workshop.WorkshopItemSummary
 import io.stamethyst.ui.Icons
+import io.stamethyst.ui.SimpleMarkdownCard
 import io.stamethyst.ui.icon.ArrowBack
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -102,14 +108,26 @@ internal fun WorkshopDetailScreen(
 
     val selectedDetails = state.selected?.takeIf { it.summary.publishedFileId == publishedFileId }
     val isTranslatingDetails = state.detailTranslationLoadingId == publishedFileId
-    val selectedTranslationKey = selectedDetails?.summary?.let { summary ->
+    val selectedDetailsKey = selectedDetails?.summary?.let { summary ->
         "${summary.appId}:${summary.publishedFileId}"
     }
+    val selectedTranslationKey = selectedDetailsKey
     val isTranslationMode = selectedTranslationKey != null && state.detailTranslationModeKey == selectedTranslationKey
     val selectedTranslation = selectedTranslationKey?.let { key -> state.detailTranslations[key] }
+    val selectedChangeNotes = selectedDetailsKey?.let { key -> state.detailChangeNotes[key] }
+        ?: selectedDetails?.takeIf { it.changeNotes.isNotBlank() }?.let { details ->
+            WorkshopChangeNotes(
+                publishedFileId = details.summary.publishedFileId,
+                markdown = details.changeNotes,
+                latestMarkdown = details.changeNotes,
+                url = details.changeNotesUrl,
+            )
+        }
+    val isLoadingChangeNotes = state.detailChangeNotesLoadingId == publishedFileId
     val canTranslateDetails = selectedDetails?.summary?.let { summary ->
         summary.title.isNotBlank() || summary.description.isNotBlank()
     } == true
+    var showChangeNotesDialog by rememberSaveable(publishedFileId.toString()) { mutableStateOf(false) }
     val primaryContentState = when {
         state.detailLoadingId == publishedFileId && selectedDetails == null -> DetailPrimaryContentState.Loading
         state.errorMessage != null && selectedDetails == null -> DetailPrimaryContentState.Error
@@ -253,6 +271,10 @@ internal fun WorkshopDetailScreen(
                         },
                         isTranslating = isTranslatingDetails,
                         translationErrorMessage = state.detailTranslationErrorMessage,
+                        onViewChangeNotes = {
+                            showChangeNotesDialog = true
+                            viewModel.loadSelectedChangeNotes(context.applicationContext)
+                        },
                     )
                 }
                 item(key = "workshop-detail-comments") {
@@ -281,6 +303,107 @@ internal fun WorkshopDetailScreen(
             },
         )
     }
+
+    if (showChangeNotesDialog && selectedDetails != null) {
+        WorkshopChangeNotesDialog(
+            title = selectedDetails.summary.title.ifBlank { stringResource(R.string.workshop_change_notes_title) },
+            changeNotes = selectedChangeNotes,
+            isLoading = isLoadingChangeNotes,
+            errorMessage = state.detailChangeNotesErrorMessage,
+            onRetry = { viewModel.loadSelectedChangeNotes(context.applicationContext) },
+            onDismiss = { showChangeNotesDialog = false },
+        )
+    }
+}
+
+@Composable
+private fun WorkshopChangeNotesDialog(
+    title: String,
+    changeNotes: WorkshopChangeNotes?,
+    isLoading: Boolean,
+    errorMessage: String?,
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val markdown = changeNotes?.markdown.orEmpty()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    text = stringResource(R.string.workshop_change_notes_title),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                when {
+                    isLoading && markdown.isBlank() -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(140.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
+                                Text(
+                                    text = stringResource(R.string.workshop_change_notes_loading),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                    markdown.isNotBlank() -> SimpleMarkdownCard(
+                        title = stringResource(R.string.workshop_change_notes_title),
+                        markdown = markdown,
+                    )
+                    else -> {
+                        errorMessage?.let { message ->
+                            Surface(
+                                color = MaterialTheme.colorScheme.errorContainer,
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                                shape = RoundedCornerShape(16.dp),
+                            ) {
+                                Text(
+                                    text = message,
+                                    modifier = Modifier.padding(12.dp),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            }
+                        }
+                        Text(
+                            text = stringResource(R.string.workshop_change_notes_empty),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.common_action_close))
+            }
+        },
+        dismissButton = {
+            if (!isLoading && errorMessage != null) {
+                TextButton(onClick = onRetry) {
+                    Text(stringResource(R.string.workshop_action_retry))
+                }
+            }
+        },
+    )
 }
 
 @Composable
@@ -491,6 +614,7 @@ private fun DetailDescriptionCard(
     text: String,
     isTranslating: Boolean,
     translationErrorMessage: String?,
+    onViewChangeNotes: () -> Unit,
 ) {
     var expanded by rememberSaveable(publishedFileId.toString()) { mutableStateOf(false) }
     val description = text.ifBlank { stringResource(R.string.workshop_description_empty) }
@@ -522,6 +646,14 @@ private fun DetailDescriptionCard(
                 maxLines = if (expanded) Int.MAX_VALUE else 4,
                 overflow = TextOverflow.Ellipsis,
             )
+            OutlinedButton(
+                onClick = onViewChangeNotes,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
+            ) {
+                Text(stringResource(R.string.workshop_action_view_change_notes))
+            }
             if (isTranslating) {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),

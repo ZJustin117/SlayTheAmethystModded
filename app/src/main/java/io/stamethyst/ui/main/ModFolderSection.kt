@@ -37,12 +37,13 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.SearchBar
+import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -70,6 +71,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -92,6 +94,7 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
 private const val INITIAL_EXPANDED_FOLDER_MOD_ITEM_BUDGET = 48
 private const val EXPANDED_FOLDER_FULL_MOUNT_DELAY_MS = 220L
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ModFolderSection(
     modifier: Modifier = Modifier,
@@ -172,6 +175,7 @@ internal fun ModFolderSection(
     val selectedBatchMods = remember(filteredMods, selectedBatchStoragePaths) {
         filteredMods.filter { selectedBatchStoragePaths.contains(it.storagePath) }
     }
+    val keyboardController = LocalSoftwareKeyboardController.current
     val density = LocalDensity.current
     val headerCollapseThresholdPx = with(density) { 24.dp.roundToPx() }
     LaunchedEffect(interactionState.listState, headerCollapseThresholdPx) {
@@ -643,32 +647,29 @@ internal fun ModFolderSection(
                         }
 
                         ModFolderLazyItem.FilterInput -> {
-                            OutlinedTextField(
-                                value = filterText,
-                                onValueChange = { interactionState.filterText = it },
-                                singleLine = true,
-                                textStyle = MaterialTheme.typography.bodySmall,
-                                placeholder = {
-                                    Text(
-                                        text = stringResource(R.string.main_folder_filter_hint),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.outline
-                                    )
-                                },
-                                shape = RoundedCornerShape(12.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.52f),
-                                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.38f),
-                                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.48f),
-                                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.32f),
-                                    focusedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    unfocusedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    cursorColor = MaterialTheme.colorScheme.outline
-                                ),
+                            SearchBar(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 8.dp, vertical = 2.dp)
-                            )
+                                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                                inputField = {
+                                    SearchBarDefaults.InputField(
+                                        query = filterText,
+                                        onQueryChange = { interactionState.filterText = it },
+                                        onSearch = { keyboardController?.hide() },
+                                        expanded = false,
+                                        onExpandedChange = {},
+                                        placeholder = { Text(stringResource(R.string.main_folder_filter_hint)) },
+                                        trailingIcon = {
+                                            TextButton(onClick = { keyboardController?.hide() }) {
+                                                Text(stringResource(R.string.workshop_search_action))
+                                            }
+                                        },
+                                    )
+                                },
+                                expanded = false,
+                                onExpandedChange = {},
+                                shape = RoundedCornerShape(10.dp),
+                            ) {}
                         }
 
                         ModFolderLazyItem.DependencyFolder -> {

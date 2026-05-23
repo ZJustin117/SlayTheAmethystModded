@@ -56,7 +56,7 @@ object CompatibilitySettings {
         )
         setRuntimeDownscaleTextureAtlasPagesEnabled(
             context,
-            LauncherConfig.DEFAULT_RUNTIME_DOWNSCALE_TEXTURE_ATLAS_PAGES_ENABLED
+            LauncherConfig.DEFAULT_RUNTIME_DOWNSCALE_TEXTURE_ATLAS_PAGES_QUALITY
         )
         setRuntimeDownscaleSpineTexturesEnabled(
             context,
@@ -292,8 +292,11 @@ object CompatibilitySettings {
     }
 
     @JvmStatic
-    fun setRuntimeDownscaleTextureAtlasPagesEnabled(context: Context, enabled: Boolean) {
-        LauncherConfig.setRuntimeDownscaleTextureAtlasPagesEnabled(context, enabled)
+    fun setRuntimeDownscaleTextureAtlasPagesEnabled(
+        context: Context,
+        quality: RuntimeTextureAtlasDownscaleQuality
+    ) {
+        LauncherConfig.setRuntimeDownscaleTextureAtlasPagesQuality(context, quality)
     }
 
     @JvmStatic

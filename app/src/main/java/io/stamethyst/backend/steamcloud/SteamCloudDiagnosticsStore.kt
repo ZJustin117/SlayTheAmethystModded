@@ -12,13 +12,18 @@ import java.util.concurrent.ExecutionException
 internal object SteamCloudDiagnosticsStore {
     private const val SUMMARY_FILE_NAME = "last-operation-summary.txt"
     private const val FAILURE_HISTORY_DIR_NAME = "login-failures"
+    private const val LOGIN_HISTORY_DIR_NAME = "login-history"
     private const val FAILURE_HISTORY_LIMIT = 10
+    private const val LOGIN_HISTORY_LIMIT = 10
 
     @JvmStatic
     fun summaryFile(context: Context): File = File(SteamCloudManifestStore.outputDir(context), SUMMARY_FILE_NAME)
 
     fun failureHistoryDir(context: Context): File =
         File(SteamCloudManifestStore.outputDir(context), FAILURE_HISTORY_DIR_NAME)
+
+    fun loginHistoryDir(context: Context): File =
+        File(SteamCloudManifestStore.outputDir(context), LOGIN_HISTORY_DIR_NAME)
 
     @Throws(IOException::class)
     fun writeSummary(
@@ -169,8 +174,11 @@ internal object SteamCloudDiagnosticsStore {
         }
         val text = lines.joinToString("\n") + "\n"
         file.writeText(text, Charsets.UTF_8)
-        if (operation == "credentials_login" && outcome.equals("FAILED", ignoreCase = true)) {
-            writeFailureHistory(context, startedAtMs, completedAtMs, text)
+        if (operation == "credentials_login") {
+            runCatching { writeLoginHistory(context, startedAtMs, completedAtMs, outcome, text) }
+            if (outcome.equals("FAILED", ignoreCase = true)) {
+                runCatching { writeFailureHistory(context, startedAtMs, completedAtMs, text) }
+            }
         }
     }
 
@@ -194,11 +202,36 @@ internal object SteamCloudDiagnosticsStore {
         pruneFailureHistory(dir)
     }
 
+    @Throws(IOException::class)
+    private fun writeLoginHistory(
+        context: Context,
+        startedAtMs: Long,
+        completedAtMs: Long,
+        outcome: String,
+        text: String,
+    ) {
+        val dir = loginHistoryDir(context)
+        if (!dir.isDirectory && !dir.mkdirs()) {
+            throw IOException("Failed to create Steam Cloud login history directory: ${dir.absolutePath}")
+        }
+        val normalizedOutcome = outcome.trim().lowercase(Locale.US).ifBlank { "unknown" }
+        val fileName = "login-$normalizedOutcome-${formatFileTimestamp(startedAtMs)}-${formatFileTimestamp(completedAtMs)}.txt"
+        File(dir, fileName).writeText(text, Charsets.UTF_8)
+        pruneLoginHistory(dir)
+    }
+
     private fun pruneFailureHistory(dir: File) {
         val files = dir.listFiles { file -> file.isFile && file.name.startsWith("login-failure-") }
             ?.sortedByDescending { it.lastModified() }
             ?: return
         files.drop(FAILURE_HISTORY_LIMIT).forEach { it.delete() }
+    }
+
+    private fun pruneLoginHistory(dir: File) {
+        val files = dir.listFiles { file -> file.isFile && file.name.startsWith("login-") }
+            ?.sortedByDescending { it.lastModified() }
+            ?: return
+        files.drop(LOGIN_HISTORY_LIMIT).forEach { it.delete() }
     }
 
     private fun formatTimestamp(timestampMs: Long): String {

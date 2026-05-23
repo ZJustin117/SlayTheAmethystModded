@@ -3,6 +3,7 @@ package io.stamethyst.ui.workshop
 import android.content.Context
 import androidx.compose.runtime.mutableStateListOf
 import io.stamethyst.R
+import io.stamethyst.backend.workshop.WorkshopDownloadProcessService
 import io.stamethyst.backend.workshop.WorkshopDownloadTaskRecord
 import io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus
 import io.stamethyst.backend.workshop.WorkshopDownloadTaskStore
@@ -10,13 +11,18 @@ import io.stamethyst.backend.workshop.WorkshopInterruptedDownloadRecovery
 import io.stamethyst.backend.workshop.WorkshopItemDetails
 import io.stamethyst.backend.workshop.WorkshopMetadataStore
 import io.stamethyst.backend.workshop.WorkshopModCardState
+import io.stamethyst.backend.workshop.isRunningDownload
 
 internal object WorkshopDownloadCenterStore {
+    private const val ACTIVE_DOWNLOAD_RECOVERY_GRACE_MS = 30_000L
+
     val tasks = mutableStateListOf<WorkshopDownloadTaskUi>()
     private var store: WorkshopDownloadTaskStore? = null
+    private var appContext: Context? = null
     private var loaded = false
 
     fun initialize(context: Context) {
+        appContext = context.applicationContext
         if (!loaded) {
             loaded = true
             store = WorkshopDownloadTaskStore(context)
@@ -27,8 +33,9 @@ internal object WorkshopDownloadCenterStore {
 
     fun refresh() {
         val records = store?.list().orEmpty()
+        val context = appContext
         tasks.clear()
-        tasks.addAll(records.map { it.toUi() })
+        tasks.addAll(records.map { it.toUi(context) })
     }
 
     fun upsert(task: WorkshopDownloadTaskUi) {
@@ -46,7 +53,7 @@ internal object WorkshopDownloadCenterStore {
     }
 
     fun update(publishedFileId: ULong, transform: (WorkshopDownloadTaskUi) -> WorkshopDownloadTaskUi) {
-        store?.update(publishedFileId) { record -> transform(record.toUi()).toRecord() }
+        store?.update(publishedFileId) { record -> transform(record.toUi(appContext)).toRecord() }
         refresh()
     }
 
@@ -55,17 +62,18 @@ internal object WorkshopDownloadCenterStore {
         refresh()
     }
 
-    fun find(publishedFileId: ULong): WorkshopDownloadTaskUi? = store?.find(publishedFileId)?.toUi()
+    fun find(publishedFileId: ULong): WorkshopDownloadTaskUi? = store?.find(publishedFileId)?.toUi(appContext)
 
     fun hasRunningTask(): Boolean = store?.hasRunningTask() == true
 
-    fun nextQueuedTask(): WorkshopDownloadTaskUi? = store?.nextQueuedTask()?.toUi()
+    fun nextQueuedTask(): WorkshopDownloadTaskUi? = store?.nextQueuedTask()?.toUi(appContext)
 
     private fun recoverInterruptedDownloads(context: Context) {
         val taskStore = store ?: return
         val metadataStore = WorkshopMetadataStore(context)
+        val now = System.currentTimeMillis()
         taskStore.list().forEach { task ->
-            if (!io.stamethyst.backend.workshop.WorkshopDownloadProcessService.isActiveDownload(task.publishedFileId)) {
+            if (task.shouldRecoverInterrupted(context, now)) {
                 WorkshopInterruptedDownloadRecovery.recoverFinishedTransferIfPossible(
                     context = context,
                     metadataStore = metadataStore,
@@ -75,7 +83,7 @@ internal object WorkshopDownloadCenterStore {
             }
         }
         val recovered = store?.recoverInterruptedTasksWithResult { task ->
-            !io.stamethyst.backend.workshop.WorkshopDownloadProcessService.isActiveDownload(task.publishedFileId)
+            task.shouldRecoverInterrupted(context, now)
         }.orEmpty()
         if (recovered.isEmpty()) return
         recovered.forEach { task ->
@@ -96,6 +104,12 @@ internal object WorkshopDownloadCenterStore {
                 statusText = task.message.ifBlank { context.getString(R.string.workshop_download_task_message_paused) },
             )
         }
+    }
+
+    private fun WorkshopDownloadTaskRecord.shouldRecoverInterrupted(context: Context, now: Long): Boolean {
+        if (WorkshopDownloadProcessService.isActiveDownload(context, publishedFileId)) return false
+        if (status.isRunningDownload() && now - updatedAtMillis < ACTIVE_DOWNLOAD_RECOVERY_GRACE_MS) return false
+        return true
     }
 }
 
@@ -123,29 +137,45 @@ internal data class WorkshopDownloadTaskUi(
     val downloadLog: String = "",
 )
 
-private fun WorkshopDownloadTaskRecord.toUi(): WorkshopDownloadTaskUi = WorkshopDownloadTaskUi(
-    publishedFileId = publishedFileId,
-    title = title,
-    status = status,
-    message = message,
-    updatedAtMillis = updatedAtMillis,
-    details = details,
-    previewUrl = previewUrl,
-    description = description,
-    authorName = authorName,
-    fileSizeBytes = fileSizeBytes,
-    progressPercent = progressPercent,
-    downloadedBytes = downloadedBytes,
-    totalBytes = totalBytes,
-    completedFiles = completedFiles,
-    totalFiles = totalFiles,
-    completedChunks = completedChunks,
-    totalChunks = totalChunks,
-    errorClass = errorClass,
-    errorMessage = errorMessage,
-    errorStackTrace = errorStackTrace,
-    downloadLog = downloadLog,
-)
+private fun WorkshopDownloadTaskRecord.toUi(context: Context?): WorkshopDownloadTaskUi {
+    val normalizedStatus = if (
+        status == WorkshopDownloadTaskStatus.Paused &&
+        context != null &&
+        WorkshopDownloadProcessService.isActiveDownload(context, publishedFileId)
+    ) {
+        WorkshopDownloadTaskStatus.Downloading
+    } else {
+        status
+    }
+    val normalizedMessage = if (normalizedStatus != status) {
+        context?.getString(R.string.workshop_download_task_message_downloading) ?: "正在下载"
+    } else {
+        message
+    }
+    return WorkshopDownloadTaskUi(
+        publishedFileId = publishedFileId,
+        title = title,
+        status = normalizedStatus,
+        message = normalizedMessage,
+        updatedAtMillis = updatedAtMillis,
+        details = details,
+        previewUrl = previewUrl,
+        description = description,
+        authorName = authorName,
+        fileSizeBytes = fileSizeBytes,
+        progressPercent = progressPercent,
+        downloadedBytes = downloadedBytes,
+        totalBytes = totalBytes,
+        completedFiles = completedFiles,
+        totalFiles = totalFiles,
+        completedChunks = completedChunks,
+        totalChunks = totalChunks,
+        errorClass = errorClass,
+        errorMessage = errorMessage,
+        errorStackTrace = errorStackTrace,
+        downloadLog = downloadLog,
+    )
+}
 
 internal fun WorkshopDownloadTaskUi.toRecord(): WorkshopDownloadTaskRecord = WorkshopDownloadTaskRecord(
     publishedFileId = publishedFileId,

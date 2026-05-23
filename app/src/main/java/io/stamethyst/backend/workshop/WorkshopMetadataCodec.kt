@@ -57,6 +57,8 @@ private fun List<WorkshopItemSummary>.toJsonArray(): JSONArray = JSONArray().als
                 .put("fileSizeBytes", item.fileSizeBytes)
                 .put("updatedAtMillis", item.updatedAtMillis)
                 .put("downloadCount", item.downloadCount)
+                .put("ratingScore", item.rating?.score ?: 0)
+                .put("ratingMaxScore", item.rating?.maxScore ?: 0)
         )
     }
 }
@@ -78,8 +80,15 @@ private fun JSONArray?.toWorkshopSummaries(): List<WorkshopItemSummary> {
                     fileSizeBytes = item.optLong("fileSizeBytes"),
                     updatedAtMillis = item.optLong("updatedAtMillis"),
                     downloadCount = item.optLong("downloadCount"),
+                    rating = item.toWorkshopItemRating(),
                 )
             )
         }
     }
+}
+
+private fun JSONObject.toWorkshopItemRating(): WorkshopItemRating? {
+    val maxScore = optInt("ratingMaxScore").takeIf { it > 0 } ?: return null
+    val score = optInt("ratingScore").takeIf { it > 0 } ?: return null
+    return WorkshopItemRating(score = score.coerceIn(1, maxScore), maxScore = maxScore)
 }

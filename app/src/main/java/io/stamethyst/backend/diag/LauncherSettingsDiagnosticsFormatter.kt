@@ -269,9 +269,9 @@ internal object LauncherSettingsDiagnosticsFormatter {
                         "runtimeDownscaleOrdinaryTextures" to formatBoolean(
                             runtimeDownscalePolicy.ordinaryTextures
                         ),
-                        "runtimeDownscaleTextureAtlasPages" to formatBoolean(
-                            runtimeDownscalePolicy.textureAtlasPages
-                        ),
+                        "runtimeDownscaleTextureAtlasPages" to runtimeDownscalePolicy
+                            .textureAtlasPages
+                            .prefValue,
                         "runtimeDownscaleSpineTextures" to formatBoolean(
                             runtimeDownscalePolicy.spineTextures
                         ),

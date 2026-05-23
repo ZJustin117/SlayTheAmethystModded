@@ -80,6 +80,7 @@ class WorkshopBrowseParserTest {
                     <img class="workshopItemPreviewImage " src="https://images.steamusercontent.com/ugc/base/preview.jpg">
                   </div>
                 </a>
+                <img class="fileRating" src="https://community.akamai.steamstatic.com/public/images/sharedfiles/4-star.png?v=2" />
                 <a data-panel="{&quot;focusable&quot;:false}" href="https://steamcommunity.com/sharedfiles/filedetails/?id=1605833019&searchtext=BaseMod" class="item_link"><div class="workshopItemTitle ellipsis">BaseMod</div></a>
                 <div class="workshopItemAuthorName ellipsis">作者：&nbsp;<a class="workshop_author_link" href="https://steamcommunity.com/profiles/76561197996637426/myworkshopfiles/?appid=646570">Bug Kiooeht</a></div>
                 <div style="clear: both"></div>
@@ -97,6 +98,8 @@ class WorkshopBrowseParserTest {
         assertEquals("BaseMod", page.items.single().title)
         assertEquals("Bug Kiooeht", page.items.single().authorName)
         assertEquals("BaseMod description", page.items.single().description)
+        assertEquals(4, page.items.single().rating?.score)
+        assertEquals(5, page.items.single().rating?.maxScore)
     }
 
     @Test
@@ -129,7 +132,8 @@ class WorkshopBrowseParserTest {
                           "preview_url": "https://example.com/skip.png",
                           "title": "Skip The Spire",
                           "short_description": "A fun mod",
-                          "file_size": "123456"
+                          "file_size": "123456",
+                          "vote_data": { "score": 0.72 }
                         }
                       ]
                     }
@@ -157,5 +161,7 @@ class WorkshopBrowseParserTest {
         assertEquals("apricity", page.items.single().authorName)
         assertEquals("A fun mod", page.items.single().description)
         assertEquals(123456L, page.items.single().fileSizeBytes)
+        assertEquals(4, page.items.single().rating?.score)
+        assertEquals(5, page.items.single().rating?.maxScore)
     }
 }

@@ -130,7 +130,6 @@ private enum class SteamCloudConflictResolutionChoice {
     USE_CLOUD,
 }
 
-private const val GAME_PAGE_CARD_ENTRANCE_DURATION_MS = 320
 private const val MODS_CONTENT_MOUNT_DELAY_MS = 80L
 
 @Composable
@@ -140,6 +139,7 @@ private fun LauncherGamePage(
     actions: MainScreenActions,
     feedbackUnreadCount: Int,
     onOpenFeedbackUpdates: () -> Unit,
+    onOpenFeedbackSubscriptions: () -> Unit,
     onEnabledModsClick: () -> Unit,
     onSteamCloudClick: () -> Unit,
     onLaunch: () -> Unit,
@@ -157,22 +157,8 @@ private fun LauncherGamePage(
     val gameHeaderHazeState = rememberHazeState()
     val density = LocalDensity.current
     val scrollState = rememberScrollState()
-    var showGamePageCards by remember { mutableStateOf(false) }
-    val gamePageCardsEntrance by animateFloatAsState(
-        targetValue = if (showGamePageCards) 1f else 0f,
-        animationSpec = tween(durationMillis = GAME_PAGE_CARD_ENTRANCE_DURATION_MS),
-        label = "gamePageCardsEntrance"
-    )
-    var gameHeaderHeightPx by remember { mutableIntStateOf(0) }
     val gameHeaderCollapsed = scrollState.value > with(density) { 24.dp.roundToPx() }
-    val measuredGameHeaderHeight = with(density) { gameHeaderHeightPx.toDp() }
-    val gameHeaderContentTopInset =
-        (if (gameHeaderHeightPx == 0) 88.dp else measuredGameHeaderHeight) + 16.dp
-    val gamePageCardEntranceOffsetPx = with(density) { 14.dp.toPx() }
-
-    LaunchedEffect(Unit) {
-        showGamePageCards = true
-    }
+    val gameHeaderContentTopInset = 104.dp
 
     Box(
         modifier = modifier
@@ -208,9 +194,6 @@ private fun LauncherGamePage(
             }
 
             Column(
-                modifier = Modifier.graphicsLayer {
-                    translationY = gamePageCardEntranceOffsetPx * (1f - gamePageCardsEntrance)
-                },
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 GameStatusHeroCard(
@@ -221,6 +204,13 @@ private fun LauncherGamePage(
                     hasStorageIssue = uiState.storageIssue != null,
                     onEnabledModsClick = onEnabledModsClick,
                 )
+
+                if (feedbackUnreadCount > 0) {
+                    FeedbackReplyUpdateCard(
+                        unreadCount = feedbackUnreadCount,
+                        onView = onOpenFeedbackSubscriptions,
+                    )
+                }
 
                 SteamCloudOverviewCard(
                     indicator = steamCloudIndicator,
@@ -246,11 +236,6 @@ private fun LauncherGamePage(
             collapsed = gameHeaderCollapsed,
             shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
             contentPadding = PaddingValues(0.dp),
-            onHeightChanged = {
-                if (!gameHeaderCollapsed) {
-                    gameHeaderHeightPx = maxOf(gameHeaderHeightPx, it)
-                }
-            },
             pinnedContent = {
                 GameHeader(
                     steamCloudIndicator = steamCloudIndicator,
@@ -551,13 +536,13 @@ private fun ModsHeaderExpandedContent(
 ) {
     val canEditFolders = folderControlsEnabled && hostAvailable
 
-    if (!canEditFolders) {
-        Text(
-            text = stringResource(R.string.main_mod_folder_controls_unavailable),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
+//    if (!canEditFolders) {
+//        Text(
+//            text = stringResource(R.string.main_mod_folder_controls_unavailable),
+//            style = MaterialTheme.typography.bodySmall,
+//            color = MaterialTheme.colorScheme.onSurfaceVariant,
+//        )
+//    }
 
     Row(
         modifier = Modifier
@@ -692,6 +677,69 @@ private fun GameMetricCard(
 }
 
 @Composable
+private fun FeedbackReplyUpdateCard(
+    unreadCount: Int,
+    onView: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.72f),
+            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.16f),
+                    contentColor = MaterialTheme.colorScheme.tertiary,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_feedback_updates),
+                        contentDescription = null,
+                        modifier = Modifier.padding(10.dp),
+                    )
+                }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.main_feedback_reply_card_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = if (unreadCount == 1) {
+                            stringResource(R.string.main_feedback_reply_card_single)
+                        } else {
+                            stringResource(R.string.main_feedback_reply_card_multiple, unreadCount)
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.82f),
+                    )
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                Button(onClick = onView) {
+                    Text(text = stringResource(R.string.main_feedback_reply_card_action))
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun SteamCloudOverviewCard(
     indicator: MainScreenViewModel.SteamCloudIndicatorUi,
     onClick: () -> Unit,
@@ -792,6 +840,7 @@ fun LauncherMainScreen(
     onOpenWorkshop: () -> Unit = {},
     feedbackUnreadCount: Int = 0,
     onOpenFeedbackUpdates: () -> Unit = {},
+    onOpenFeedbackSubscriptions: () -> Unit = {},
 ) {
     LauncherMainRoute(
         modifier = modifier,
@@ -805,6 +854,7 @@ fun LauncherMainScreen(
             onOpenFeedback = onOpenFeedback,
             feedbackUnreadCount = feedbackUnreadCount,
             onOpenFeedbackUpdates = onOpenFeedbackUpdates,
+            onOpenFeedbackSubscriptions = onOpenFeedbackSubscriptions,
         )
     }
 }
@@ -1141,6 +1191,8 @@ private fun LauncherMainScreenPreview() {
             )
         ),
         actions = MainScreenActions(isHostAvailable = true),
+        feedbackUnreadCount = 2,
+        onOpenFeedbackSubscriptions = {},
     )
 }
 
@@ -1152,6 +1204,7 @@ internal fun LauncherGameScreenContent(
     onOpenFeedback: () -> Unit = {},
     feedbackUnreadCount: Int = 0,
     onOpenFeedbackUpdates: () -> Unit = {},
+    onOpenFeedbackSubscriptions: () -> Unit = {},
 ) {
     LauncherMainScreenContent(
         modifier = modifier,
@@ -1161,6 +1214,7 @@ internal fun LauncherGameScreenContent(
         onOpenFeedback = onOpenFeedback,
         feedbackUnreadCount = feedbackUnreadCount,
         onOpenFeedbackUpdates = onOpenFeedbackUpdates,
+        onOpenFeedbackSubscriptions = onOpenFeedbackSubscriptions,
     )
 }
 
@@ -1203,6 +1257,7 @@ private fun LauncherMainScreenContent(
     onOpenWorkshop: () -> Unit = {},
     feedbackUnreadCount: Int = 0,
     onOpenFeedbackUpdates: () -> Unit = {},
+    onOpenFeedbackSubscriptions: () -> Unit = {},
     workshopUpdateCheckState: WorkshopUpdateCheckUiState = WorkshopUpdateCheckUiState(),
     onBatchSelectionModeChange: (Boolean) -> Unit = {},
     onCheckWorkshopUpdates: () -> Unit = {},
@@ -1323,6 +1378,7 @@ private fun LauncherMainScreenContent(
                             actions = actions,
                             feedbackUnreadCount = feedbackUnreadCount,
                             onOpenFeedbackUpdates = onOpenFeedbackUpdates,
+                            onOpenFeedbackSubscriptions = onOpenFeedbackSubscriptions,
                             onEnabledModsClick = { showEnabledModsDialog = true },
                             onSteamCloudClick = {
                                 if (steamCloudIndicator.visible) {

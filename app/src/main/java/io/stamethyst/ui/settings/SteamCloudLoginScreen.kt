@@ -77,7 +77,9 @@ fun LauncherSteamCloudLoginScreen(
                 onLoginCompleted()
             } else {
                 if (!navigator.popTo(Route.FirstRunSetup)) {
-                    navigator.popTo(Route.Settings)
+                    if (!navigator.popTo(Route.SettingsMarketCloud)) {
+                        navigator.popTo(Route.Settings)
+                    }
                 }
             }
         }

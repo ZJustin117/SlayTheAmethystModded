@@ -148,9 +148,10 @@ fun LauncherFirstRunSetupScreen(
     var currentStepIndex by rememberSaveable { mutableIntStateOf(0) }
     val currentStep = steps[currentStepIndex]
     val blockingInteractionLocked = uiState.busyOperation.usesBlockingOverlay()
+    val previousRoute = navigator.backStack.getOrNull(navigator.backStack.lastIndex - 1)
     val canExitToPreviousRoute =
         navigator.backStack.lastIndex > 0 &&
-            navigator.backStack[navigator.backStack.lastIndex - 1] == Route.Settings
+            (previousRoute == Route.Settings || previousRoute == Route.SettingsLauncher)
 
     LaunchedEffect(activity) {
         viewModel.bind(activity)

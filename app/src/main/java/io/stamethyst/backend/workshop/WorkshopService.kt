@@ -156,6 +156,7 @@ internal class WorkshopService(
                 fileSizeBytes = detail.fileSize ?: 0L,
                 updatedAtMillis = (detail.timeUpdated ?: 0L) * 1000L,
                 downloadCount = detail.subscriptions ?: 0L,
+                rating = normalizedWorkshopRating(detail.voteData?.score),
             )
             val dependencyIds = (
                 detail.children.mapNotNull { child -> child.publishedFileId.toULongOrNull() } +
@@ -170,6 +171,7 @@ internal class WorkshopService(
                 hcontentFile = detail.hcontentFile?.takeIf { it > 0L }?.toULong(),
                 depotId = detail.consumerAppId?.takeIf { it > 0 }?.toUInt(),
                 jsonMetadata = payload,
+                changeNotesUrl = buildWorkshopChangeNotesUrl(publishedFileId, languagePreference.requestValue),
                 dependencies = dependencyIds.map { dependencyId ->
                     dependencyDetailsById[dependencyId]?.toSummary(appId, dependencyId)
                         ?: WorkshopItemSummary(
@@ -187,6 +189,20 @@ internal class WorkshopService(
                 hasNextCommentPage = localizedDetail?.commentCount?.let { count -> count > COMMENT_PAGE_SIZE } == true,
             )
         }
+    }
+
+    suspend fun getChangeNotes(publishedFileId: ULong): WorkshopChangeNotes = withContext(Dispatchers.IO) {
+        val languagePreference = steamLanguagePreference
+        val blocks = loadChangeNotesMarkdownBlocks(
+            publishedFileId = publishedFileId,
+            languageRequestValue = languagePreference.requestValue,
+        )
+        WorkshopChangeNotes(
+            publishedFileId = publishedFileId,
+            markdown = blocks.joinToString("\n\n"),
+            latestMarkdown = blocks.firstOrNull().orEmpty(),
+            url = buildWorkshopChangeNotesUrl(publishedFileId, languagePreference.requestValue),
+        )
     }
 
     suspend fun getCommentsPage(
@@ -250,6 +266,22 @@ internal class WorkshopService(
                 commentThreadContext = extractCommentThreadContext(payload),
                 commentCount = extractCommentCount(payload),
             )
+        }
+    }
+
+    private fun loadChangeNotesMarkdownBlocks(
+        publishedFileId: ULong,
+        languageRequestValue: String,
+    ): List<String> {
+        val request = Request.Builder()
+            .url(buildWorkshopChangeNotesUrl(publishedFileId, languageRequestValue))
+            .header("Accept-Language", languagePreferenceFor(languageRequestValue).acceptLanguageValue)
+            .header("User-Agent", USER_AGENT)
+            .build()
+
+        return workshopClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) error("Steam workshop changelog failed: ${response.code}")
+            extractChangeNotesMarkdownBlocks(response.body.string())
         }
     }
 
@@ -707,6 +739,40 @@ internal class WorkshopService(
             .distinctBy(WorkshopComment::id)
             .toList()
 
+    private fun extractChangeNotesMarkdownBlocks(payload: String): List<String> =
+        changeLogBlockOpeningRegex.findAll(payload)
+            .mapNotNull { openingMatch ->
+                val block = extractDivBlock(
+                    payload = payload,
+                    openingTagStart = openingMatch.range.first,
+                    openingTagLength = openingMatch.value.length,
+                ) ?: return@mapNotNull null
+                val headline = changeLogHeadlineRegex.find(block)
+                    ?.groupValues
+                    ?.getOrNull(1)
+                    ?.let(WorkshopServiceHtmlDecoder::stripTagsAndDecode)
+                    .orEmpty()
+                val body = changeLogBodyRegex.findAll(block)
+                    .mapNotNull { match ->
+                        match.groupValues
+                            .getOrNull(1)
+                            ?.let(WorkshopServiceHtmlDecoder::decodeWorkshopChangeNotes)
+                            ?.takeIf(String::isNotBlank)
+                    }
+                    .joinToString("\n\n")
+                buildString {
+                    if (headline.isNotBlank()) {
+                        append("### ")
+                        append(headline)
+                        append("\n\n")
+                    }
+                    if (body.isNotBlank()) {
+                        append(body)
+                    }
+                }.trim().takeIf(String::isNotBlank)
+            }
+            .toList()
+
     private fun extractCommentAuthor(block: String): Pair<String, String> =
         commentAuthorLinkRegex.findAll(block)
             .map { match ->
@@ -736,6 +802,11 @@ internal class WorkshopService(
             append(resolveSteamCommentsPage(page))
         }
     }
+
+    private fun buildWorkshopChangeNotesUrl(
+        publishedFileId: ULong,
+        languageRequestValue: String,
+    ): String = "https://steamcommunity.com/sharedfiles/filedetails/changelog/$publishedFileId?l=$languageRequestValue"
 
     private fun resolveSteamCommentsPage(appCommentPage: Int): Int =
         (((appCommentPage - 1) * COMMENT_PAGE_SIZE) / STEAM_COMMENTS_PAGE_SIZE) + 1
@@ -812,6 +883,18 @@ internal class WorkshopService(
             """<div\b[^>]*class="[^"]*\bcommentthread_comment_text\b[^"]*"[^>]*>(.*?)</div>""",
             setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
         )
+        val changeLogBlockOpeningRegex = Regex(
+            """<div\b[^>]*class="[^"]*\bchangeLogCtn\b[^"]*"[^>]*>""",
+            RegexOption.IGNORE_CASE,
+        )
+        val changeLogHeadlineRegex = Regex(
+            """<div\b[^>]*class="[^"]*\bheadline\b[^"]*"[^>]*>(.*?)</div>""",
+            setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
+        )
+        val changeLogBodyRegex = Regex(
+            """<p\b[^>]*>(.*?)</p>""",
+            setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
+        )
         val requiredItemsContainerOpeningRegex = Regex(
             """<div\b[^>]*\bid="RequiredItems"[^>]*>""",
             RegexOption.IGNORE_CASE,
@@ -878,7 +961,13 @@ private data class PublishedFileDetailsDto(
     @SerialName("time_updated") val timeUpdated: Long? = null,
     @SerialName("preview_url") val previewUrl: String? = null,
     val subscriptions: Long? = null,
+    @SerialName("vote_data") val voteData: PublishedFileVoteDataDto? = null,
     val children: List<PublishedFileChildDto> = emptyList(),
+)
+
+@Serializable
+private data class PublishedFileVoteDataDto(
+    val score: Float? = null,
 )
 
 @Serializable
@@ -896,6 +985,7 @@ private fun PublishedFileDetailsDto.toSummary(appId: UInt, fallbackPublishedFile
     fileSizeBytes = fileSize ?: 0L,
     updatedAtMillis = (timeUpdated ?: 0L) * 1000L,
     downloadCount = subscriptions ?: 0L,
+    rating = normalizedWorkshopRating(voteData?.score),
 )
 
 private fun SteamPublishedFileQueryResult.toBrowseParseResult(page: Int, pageSize: Int): WorkshopBrowseParseResult =
@@ -911,6 +1001,7 @@ private fun SteamPublishedFileQueryResult.toBrowseParseResult(page: Int, pageSiz
                 fileSizeBytes = item.fileSizeBytes,
                 updatedAtMillis = item.timeUpdatedEpochSeconds * 1000L,
                 downloadCount = item.subscriptions.toLong(),
+                rating = normalizedWorkshopRating(item.ratingScore),
             )
         },
         page = page,
@@ -1015,6 +1106,21 @@ private object WorkshopServiceHtmlDecoder {
                 .replace(Regex("""(?i)<br\s*/?>"""), "\n")
                 .replace(Regex("""(?i)<li[^>]*>"""), "- ")
                 .replace(Regex("""(?i)</li\s*>"""), "\n")
+                .replace(Regex("""(?i)</p\s*>"""), "\n\n")
+                .replace(Regex("""(?i)</div\s*>"""), "\n")
+                .replace(htmlTagRegex, " "),
+        )
+    }
+
+    fun decodeWorkshopChangeNotes(value: String): String {
+        if (value.isBlank()) return ""
+        return decodePreservingLineBreaks(
+            value
+                .replace(Regex("""(?i)<br\s*/?>"""), "\n")
+                .replace(Regex("""(?i)<li[^>]*>"""), "- ")
+                .replace(Regex("""(?i)</li\s*>"""), "\n")
+                .replace(Regex("""(?i)<(?:ul|ol)[^>]*>"""), "\n")
+                .replace(Regex("""(?i)</(?:ul|ol)\s*>"""), "\n")
                 .replace(Regex("""(?i)</p\s*>"""), "\n\n")
                 .replace(Regex("""(?i)</div\s*>"""), "\n")
                 .replace(htmlTagRegex, " "),

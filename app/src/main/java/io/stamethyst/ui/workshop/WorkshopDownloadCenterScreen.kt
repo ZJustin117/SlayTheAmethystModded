@@ -29,7 +29,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -64,6 +63,8 @@ import io.stamethyst.R
 import io.stamethyst.backend.workshop.WorkshopDownloadLogService
 import io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus
 import io.stamethyst.backend.workshop.isActiveDownload
+import io.stamethyst.ui.Icons
+import io.stamethyst.ui.icon.ArrowBack
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -118,7 +119,14 @@ internal fun WorkshopDownloadCenterScreen(
                         )
                     }
                 },
-                navigationIcon = { TextButton(onClick = onBack) { Text(stringResource(R.string.settings_first_run_action_back)) } },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.ArrowBack,
+                            contentDescription = stringResource(R.string.common_content_desc_back),
+                        )
+                    }
+                },
             )
         },
     ) { padding ->
@@ -201,22 +209,15 @@ private fun DownloadTaskCard(
                     contentDescription = stringResource(R.string.workshop_preview_content_description, task.title),
                 )
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.Top,
-                    ) {
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Text(task.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text(
-                                text = task.progressSummary(),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                        AssistChip(onClick = onClick, label = { Text(task.status.downloadLabel()) })
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(task.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            text = task.progressSummary(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
                     DownloadProgressIndicator(task = task)
                     Text(
@@ -251,7 +252,7 @@ private fun DownloadTaskActions(
 ) {
     if (task.status == WorkshopDownloadTaskStatus.Completed) return
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = if (compact) Modifier.fillMaxWidth() else Modifier,
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -391,12 +392,10 @@ private fun DownloadTaskDetailDialog(
                         contentDescription = stringResource(R.string.workshop_preview_content_description, task.title),
                     )
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        AssistChip(onClick = {}, label = { Text(task.status.downloadLabel()) })
                         Text(task.progressSummary(), style = MaterialTheme.typography.bodyMedium)
                     }
                 }
                 DownloadProgressIndicator(task = task)
-                DetailRow(label = stringResource(R.string.workshop_detail_status), value = task.message.ifBlank { task.status.defaultMessage() })
                 if (task.status == WorkshopDownloadTaskStatus.Paused) {
                     Text(
                         text = stringResource(R.string.workshop_resume_restart_warning),
@@ -434,11 +433,7 @@ private fun DownloadTaskDetailDialog(
                     onRetry = onRetry,
                     compact = false,
                 )
-                DownloadDetailIconButton(
-                    iconResId = R.drawable.ic_close,
-                    contentDescription = stringResource(R.string.common_action_close),
-                    onClick = onDismiss,
-                )
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_action_confirm)) }
             }
         },
     )
@@ -543,19 +538,6 @@ private object WorkshopDownloadPreviewImageLoader {
     }
 
     private const val CACHE_SIZE_BYTES = 16 * 1024 * 1024
-}
-
-@Composable
-private fun WorkshopDownloadTaskStatus.downloadLabel(): String = when (this) {
-    WorkshopDownloadTaskStatus.Queued -> stringResource(R.string.workshop_download_task_status_waiting)
-    WorkshopDownloadTaskStatus.Resolving -> stringResource(R.string.workshop_download_task_status_resolving)
-    WorkshopDownloadTaskStatus.Downloading -> stringResource(R.string.workshop_download_task_status_downloading)
-    WorkshopDownloadTaskStatus.Pausing -> stringResource(R.string.workshop_download_task_status_pausing)
-    WorkshopDownloadTaskStatus.Cancelling -> stringResource(R.string.workshop_download_task_status_cancelling)
-    WorkshopDownloadTaskStatus.Paused -> stringResource(R.string.workshop_download_task_status_paused)
-    WorkshopDownloadTaskStatus.Completed -> stringResource(R.string.workshop_download_task_status_completed)
-    WorkshopDownloadTaskStatus.Failed -> stringResource(R.string.workshop_download_task_status_failed)
-    WorkshopDownloadTaskStatus.Cancelled -> stringResource(R.string.workshop_download_task_status_cancelled)
 }
 
 @Composable

@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import io.stamethyst.backend.mods.CompatibilitySettings
+import io.stamethyst.backend.mods.RuntimeTextureAtlasDownscaleQuality
 
 @Stable
 class CompatibilityScreenViewModel : ViewModel() {
@@ -32,7 +33,8 @@ class CompatibilityScreenViewModel : ViewModel() {
         val fboIdleReclaimCompatEnabled: Boolean = false,
         val fboPressureDownscaleCompatEnabled: Boolean = false,
         val runtimeDownscaleOrdinaryTexturesEnabled: Boolean = true,
-        val runtimeDownscaleTextureAtlasPagesEnabled: Boolean = false,
+        val runtimeDownscaleTextureAtlasPagesQuality: RuntimeTextureAtlasDownscaleQuality =
+            RuntimeTextureAtlasDownscaleQuality.P1080,
         val runtimeDownscaleSpineTexturesEnabled: Boolean = false,
         val runtimeDownscaleOffscreenFrameBuffersEnabled: Boolean = true,
         val importDownscaleSpineAtlasPagesEnabled: Boolean = true,
@@ -68,7 +70,7 @@ class CompatibilityScreenViewModel : ViewModel() {
             fboIdleReclaimCompatEnabled = CompatibilitySettings.isFboIdleReclaimCompatEnabled(host),
             fboPressureDownscaleCompatEnabled = CompatibilitySettings.isFboPressureDownscaleCompatEnabled(host),
             runtimeDownscaleOrdinaryTexturesEnabled = runtimeDownscalePolicy.ordinaryTextures,
-            runtimeDownscaleTextureAtlasPagesEnabled = runtimeDownscalePolicy.textureAtlasPages,
+            runtimeDownscaleTextureAtlasPagesQuality = runtimeDownscalePolicy.textureAtlasPages,
             runtimeDownscaleSpineTexturesEnabled = runtimeDownscalePolicy.spineTextures,
             runtimeDownscaleOffscreenFrameBuffersEnabled = runtimeDownscalePolicy.offscreenFrameBuffers,
             importDownscaleSpineAtlasPagesEnabled = importDownscalePolicy.spineAtlasPages,
@@ -211,10 +213,13 @@ class CompatibilityScreenViewModel : ViewModel() {
         uiState = uiState.copy(runtimeDownscaleOrdinaryTexturesEnabled = enabled)
     }
 
-    fun onRuntimeDownscaleTextureAtlasPagesToggled(host: Context, enabled: Boolean) {
+    fun onRuntimeDownscaleTextureAtlasPagesQualityChanged(
+        host: Context,
+        quality: RuntimeTextureAtlasDownscaleQuality
+    ) {
         if (uiState.busy) return
-        CompatibilitySettings.setRuntimeDownscaleTextureAtlasPagesEnabled(host, enabled)
-        uiState = uiState.copy(runtimeDownscaleTextureAtlasPagesEnabled = enabled)
+        CompatibilitySettings.setRuntimeDownscaleTextureAtlasPagesEnabled(host, quality)
+        uiState = uiState.copy(runtimeDownscaleTextureAtlasPagesQuality = quality)
     }
 
     fun onRuntimeDownscaleSpineTexturesToggled(host: Context, enabled: Boolean) {

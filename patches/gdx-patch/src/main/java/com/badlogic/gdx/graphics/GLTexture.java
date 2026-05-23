@@ -136,6 +136,24 @@ public abstract class GLTexture implements Disposable {
 		"amethyst.gdx.texture_pressure_downscale_max_edge";
 	private static final int TEXTURE_PRESSURE_DOWNSCALE_MAX_EDGE =
 		readIntSystemProperty(TEXTURE_PRESSURE_DOWNSCALE_MAX_EDGE_PROP, 1920, 1, Integer.MAX_VALUE);
+	private static final String TEXTURE_PRESSURE_DOWNSCALE_TEXTURE_ATLAS_MAX_PIXELS_PROP =
+		"amethyst.gdx.texture_pressure_downscale.texture_atlas_max_pixels";
+	private static final long TEXTURE_PRESSURE_DOWNSCALE_TEXTURE_ATLAS_MAX_PIXELS =
+		readLongSystemProperty(
+			TEXTURE_PRESSURE_DOWNSCALE_TEXTURE_ATLAS_MAX_PIXELS_PROP,
+			TEXTURE_PRESSURE_DOWNSCALE_MAX_PIXELS,
+			1L,
+			Long.MAX_VALUE
+		);
+	private static final String TEXTURE_PRESSURE_DOWNSCALE_TEXTURE_ATLAS_MAX_EDGE_PROP =
+		"amethyst.gdx.texture_pressure_downscale.texture_atlas_max_edge";
+	private static final int TEXTURE_PRESSURE_DOWNSCALE_TEXTURE_ATLAS_MAX_EDGE =
+		readIntSystemProperty(
+			TEXTURE_PRESSURE_DOWNSCALE_TEXTURE_ATLAS_MAX_EDGE_PROP,
+			TEXTURE_PRESSURE_DOWNSCALE_MAX_EDGE,
+			1,
+			Integer.MAX_VALUE
+		);
 	private static final boolean TEXTURE_PRESSURE_DOWNSCALE_ALLOW_ORDINARY_TEXTURES =
 		readBooleanSystemProperty("amethyst.gdx.texture_pressure_downscale.allow_ordinary_textures", true);
 	private static final boolean TEXTURE_PRESSURE_DOWNSCALE_ALLOW_TEXTURE_ATLAS_PAGES =
@@ -1683,7 +1701,11 @@ public abstract class GLTexture implements Disposable {
 		if (estimatedBytes < minimumBytes) return pixmap;
 		String reason = resolveTexturePressureDownscaleReason(mode, stackKey, normalizedSourcePath);
 
-		int[] scaledSize = calculateTexturePressureDownscaleSize(width, height);
+		int[] scaledSize = calculateTexturePressureDownscaleSize(
+			width,
+			height,
+			isTextureAtlasTextureSource(stackKey)
+		);
 		int scaledWidth = scaledSize[0];
 		int scaledHeight = scaledSize[1];
 		if (scaledWidth == width && scaledHeight == height) return pixmap;
@@ -1719,17 +1741,21 @@ public abstract class GLTexture implements Disposable {
 		return scaledPixmap;
 	}
 
-	private static int[] calculateTexturePressureDownscaleSize (int width, int height) {
+	private static int[] calculateTexturePressureDownscaleSize (int width, int height, boolean atlasLike) {
 		int divisorWidth = Math.max(1, (width + TEXTURE_PRESSURE_DOWNSCALE_DIVISOR - 1) / TEXTURE_PRESSURE_DOWNSCALE_DIVISOR);
 		int divisorHeight = Math.max(1, (height + TEXTURE_PRESSURE_DOWNSCALE_DIVISOR - 1) / TEXTURE_PRESSURE_DOWNSCALE_DIVISOR);
 		double scale = Math.min(1.0, (double)divisorWidth / (double)width);
 		scale = Math.min(scale, (double)divisorHeight / (double)height);
-		int maxEdge = Math.max(1, TEXTURE_PRESSURE_DOWNSCALE_MAX_EDGE);
+		int maxEdge = Math.max(1, atlasLike
+			? TEXTURE_PRESSURE_DOWNSCALE_TEXTURE_ATLAS_MAX_EDGE
+			: TEXTURE_PRESSURE_DOWNSCALE_MAX_EDGE);
 		int sourceMaxEdge = Math.max(width, height);
 		if (sourceMaxEdge > maxEdge) {
 			scale = Math.min(scale, (double)maxEdge / (double)sourceMaxEdge);
 		}
-		long maxPixels = Math.max(1L, TEXTURE_PRESSURE_DOWNSCALE_MAX_PIXELS);
+		long maxPixels = Math.max(1L, atlasLike
+			? TEXTURE_PRESSURE_DOWNSCALE_TEXTURE_ATLAS_MAX_PIXELS
+			: TEXTURE_PRESSURE_DOWNSCALE_MAX_PIXELS);
 		long sourcePixels = ((long)width) * ((long)height);
 		if (sourcePixels > maxPixels) {
 			scale = Math.min(scale, Math.sqrt((double)maxPixels / (double)sourcePixels));

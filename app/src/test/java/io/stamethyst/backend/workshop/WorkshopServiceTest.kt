@@ -293,6 +293,39 @@ class WorkshopServiceTest {
     }
 
     @Test
+    fun getChangeNotesParsesSteamChangelogBlocks() {
+        browseServer.enqueue(
+            MockResponse.Builder()
+                .code(200)
+                .body(
+                    """
+                    <div class="changeLogCtn">
+                      <div class="headline">May 10 @ 9:30am</div>
+                      <p>Fixed crash<br><ul><li>Added action</li></ul></p>
+                    </div>
+                    <div class="changeLogCtn">
+                      <div class="headline">May 1 @ 2:00pm</div>
+                      <p>Initial workshop release</p>
+                    </div>
+                    """.trimIndent(),
+                )
+                .build(),
+        )
+
+        val service = newService()
+        val changeNotes = runBlocking { service.getChangeNotes(123456uL) }
+
+        assertEquals(123456uL, changeNotes.publishedFileId)
+        assertTrue(changeNotes.latestMarkdown.contains("### May 10 @ 9:30am"))
+        assertTrue(changeNotes.latestMarkdown.contains("Fixed crash"))
+        assertTrue(changeNotes.latestMarkdown.contains("- Added action"))
+        assertTrue(changeNotes.markdown.contains("### May 1 @ 2:00pm"))
+        val request = browseServer.takeRequest()
+        assertEquals("/sharedfiles/filedetails/changelog/123456", request.url.encodedPath)
+        assertEquals("schinese", request.url.queryParameter("l"))
+    }
+
+    @Test
     fun getDetailsParsesRequiredItemsWhenApiChildrenAreMissing() {
         detailsServer.enqueue(
             MockResponse.Builder()

@@ -12,6 +12,7 @@ import android.view.HapticFeedbackConstants
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
@@ -34,6 +35,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -56,14 +58,11 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -82,7 +81,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
@@ -160,21 +158,151 @@ fun LauncherSettingsScreen(
         uiState = uiState,
         onGoBack = navigator::goBack,
         showBackButton = showBackButton,
-        onImportJar = viewModel::onImportJar,
-        onImportMods = viewModel::onImportMods,
-        onExportMods = viewModel::onExportMods,
-        onImportSaves = viewModel::onImportSaves,
-        onExportSaves = viewModel::onExportSaves,
-        onExportLogs = { viewModel.onExportLogs(activity) },
-        onExportLogsToFile = viewModel::onExportLogsToFile,
+        onOpenLauncherSettings = { navigator.push(Route.SettingsLauncher) },
+        onOpenGameSettings = { navigator.push(Route.SettingsGame) },
+        onOpenMarketCloudSettings = { navigator.push(Route.SettingsMarketCloud) },
+        onOpenDeveloperSettings = { navigator.push(Route.DeveloperSettings) },
+        onOpenFeedbackSettings = { navigator.push(Route.SettingsFeedback) },
+        onOpenNativeLibraryMarket = { navigator.push(Route.NativeLibraryMarket) },
+        onOpenAboutSettings = { navigator.push(Route.SettingsAbout) },
+        feedbackSubmissionNotice = feedbackSubmissionNotice,
+        onDismissFeedbackSubmissionNotice = onDismissFeedbackSubmissionNotice,
+    )
+}
+
+@Composable
+fun LauncherSettingsLauncherScreen(
+    viewModel: SettingsScreenViewModel,
+    modifier: Modifier = Modifier,
+) {
+    val activity = requireNotNull(LocalActivity.current)
+    val context = LocalContext.current
+    val navigator = currentNavigator
+    val uiState = viewModel.uiState
+
+    LaunchedEffect(activity) {
+        viewModel.bind(activity)
+    }
+
+    LauncherSettingsLauncherScreenContent(
+        modifier = modifier,
+        uiState = uiState,
+        onGoBack = navigator::goBack,
+        onOpenBasicTutorial = { openBasicTutorial(context) },
+        onThemeModeChanged = { themeMode ->
+            viewModel.onThemeModeChanged(activity, themeMode)
+        },
+        onThemeColorChanged = { themeColor ->
+            viewModel.onThemeColorChanged(activity, themeColor)
+        },
+        onAutoCheckUpdatesChanged = { enabled ->
+            viewModel.onAutoCheckUpdatesChanged(activity, enabled)
+        },
+        onPreferredUpdateMirrorChanged = { source ->
+            viewModel.onPreferredUpdateMirrorChanged(activity, source)
+        },
+        onManualCheckUpdates = { viewModel.onManualCheckUpdates(activity) },
+        onOpenReleaseHistory = { viewModel.onOpenReleaseHistory(activity) },
+        onDismissReleaseHistoryDialog = viewModel::dismissReleaseHistoryDialog,
+        onOpenFirstRunSetup = { navigator.push(Route.FirstRunSetup) },
+    )
+}
+
+@Composable
+fun LauncherSettingsGameScreen(
+    viewModel: SettingsScreenViewModel,
+    modifier: Modifier = Modifier,
+) {
+    val activity = requireNotNull(LocalActivity.current)
+    val navigator = currentNavigator
+    val uiState = viewModel.uiState
+
+    LaunchedEffect(activity) {
+        viewModel.bind(activity)
+    }
+
+    LauncherSettingsGameScreenContent(
+        modifier = modifier,
+        uiState = uiState,
+        onGoBack = navigator::goBack,
+        onRenderScaleSelected = { value -> viewModel.onRenderScaleSelected(activity, value) },
+        onTargetFpsSelected = { fps -> viewModel.onTargetFpsSelected(activity, fps) },
+        onVirtualResolutionModeChanged = { mode ->
+            viewModel.onVirtualResolutionModeChanged(activity, mode)
+        },
+        onGpuResourceGuardianModeChanged = { mode ->
+            viewModel.onGpuResourceGuardianModeChanged(activity, mode)
+        },
+        onGpuResourceGuardianPressureDownscaleChanged = { enabled ->
+            viewModel.onGpuResourceGuardianPressureDownscaleChanged(activity, enabled)
+        },
+        onDisplayCutoutAvoidanceChanged = { enabled ->
+            viewModel.onDisplayCutoutAvoidanceChanged(activity, enabled)
+        },
+        onScreenBottomCropChanged = { enabled ->
+            viewModel.onScreenBottomCropChanged(activity, enabled)
+        },
+        onGameplayFontScaleChanged = { value ->
+            viewModel.onGameplayFontScaleChanged(activity, value)
+        },
+        onGameplayLargerUiChanged = { enabled ->
+            viewModel.onGameplayLargerUiChanged(activity, enabled)
+        },
+        onPlayerNameChanged = { name -> viewModel.onPlayerNameChanged(activity, name) },
+        onBackBehaviorChanged = { behavior -> viewModel.onBackBehaviorChanged(activity, behavior) },
+        onTouchscreenInputModeChanged = { mode ->
+            viewModel.onTouchscreenInputModeChanged(activity, mode)
+        },
+        onShowFloatingMouseWindowChanged = { enabled ->
+            viewModel.onShowFloatingMouseWindowChanged(activity, enabled)
+        },
+        onTouchMouseInteractionModeChanged = { mode ->
+            viewModel.onTouchMouseInteractionModeChanged(activity, mode)
+        },
+        onTouchDoubleClickAsRightClickChanged = { enabled ->
+            viewModel.onTouchDoubleClickAsRightClickChanged(activity, enabled)
+        },
+        onBuiltInSoftKeyboardChanged = { enabled ->
+            viewModel.onBuiltInSoftKeyboardChanged(activity, enabled)
+        },
+        onHapticFeedbackChanged = { enabled ->
+            viewModel.onHapticFeedbackChanged(activity, enabled)
+        },
+        onAutoSwitchLeftAfterRightClickChanged = { enabled ->
+            viewModel.onAutoSwitchLeftAfterRightClickChanged(activity, enabled)
+        },
+        onShowModFileNameChanged = { enabled ->
+            viewModel.onShowModFileNameChanged(activity, enabled)
+        },
+        onGamePerformanceOverlayChanged = { enabled ->
+            viewModel.onGamePerformanceOverlayChanged(activity, enabled)
+        },
+    )
+}
+
+@Composable
+fun LauncherSettingsMarketCloudScreen(
+    viewModel: SettingsScreenViewModel,
+    modifier: Modifier = Modifier,
+) {
+    val activity = requireNotNull(LocalActivity.current)
+    val navigator = currentNavigator
+    val uiState = viewModel.uiState
+
+    LaunchedEffect(activity) {
+        viewModel.bind(activity)
+    }
+
+    LauncherSettingsMarketCloudScreenContent(
+        modifier = modifier,
+        uiState = uiState,
+        onGoBack = navigator::goBack,
         onOpenSteamCloudLogin = { navigator.push(Route.SteamCloudLogin) },
         onSteamCloudWattAccelerationChanged = { enabled ->
             viewModel.onSteamCloudWattAccelerationChanged(activity, enabled)
         },
         onOpenSteamCloudSaveSettings = { navigator.push(Route.SteamCloudSaveSettings) },
         onClearSteamCloudCredentials = { viewModel.onClearSteamCloudCredentials(activity) },
-        onOpenNativeLibraryMarket = { navigator.push(Route.NativeLibraryMarket) },
-        onOpenBaiduTranslationCredentials = { navigator.push(Route.BaiduTranslationCredentials()) },
         onWorkshopMaxConcurrentDownloadsChanged = { value ->
             viewModel.onWorkshopMaxConcurrentDownloadsChanged(activity, value)
         },
@@ -191,100 +319,62 @@ fun LauncherSettingsScreen(
             viewModel.onWorkshopAutoImportChanged(activity, enabled)
         },
         onClearWorkshopPreviewCache = { viewModel.onClearWorkshopPreviewCache(activity) },
-        onRenderScaleSelected = { value -> viewModel.onRenderScaleSelected(activity, value) },
-        onTargetFpsSelected = { fps -> viewModel.onTargetFpsSelected(activity, fps) },
-        onVirtualResolutionModeChanged = { mode ->
-            viewModel.onVirtualResolutionModeChanged(activity, mode)
-        },
-        onGpuResourceGuardianModeChanged = { mode ->
-            viewModel.onGpuResourceGuardianModeChanged(activity, mode)
-        },
-        onGpuResourceGuardianPressureDownscaleChanged = { enabled ->
-            viewModel.onGpuResourceGuardianPressureDownscaleChanged(activity, enabled)
-        },
-        onRendererSelectionModeChanged = { mode ->
-            viewModel.onRendererSelectionModeChanged(activity, mode)
-        },
-        onManualRendererBackendChanged = { backend ->
-            viewModel.onManualRendererBackendChanged(activity, backend)
-        },
-        onRenderSurfaceBackendChanged = { backend ->
-            viewModel.onRenderSurfaceBackendChanged(activity, backend)
-        },
-        onThemeModeChanged = { themeMode ->
-            viewModel.onThemeModeChanged(activity, themeMode)
-        },
-        onThemeColorChanged = { themeColor ->
-            viewModel.onThemeColorChanged(activity, themeColor)
-        },
-        onJvmHeapMaxSelected = { value -> viewModel.onJvmHeapMaxSelected(activity, value) },
-        onJvmCompressedPointersChanged = { enabled ->
-            viewModel.onJvmCompressedPointersChanged(activity, enabled)
-        },
-        onJvmStringDeduplicationChanged = { enabled ->
-            viewModel.onJvmStringDeduplicationChanged(activity, enabled)
-        },
-        onPlayerNameChanged = { name -> viewModel.onPlayerNameChanged(activity, name) },
-        onBackBehaviorChanged = { behavior -> viewModel.onBackBehaviorChanged(activity, behavior) },
-        onShowFloatingMouseWindowChanged = { enabled -> viewModel.onShowFloatingMouseWindowChanged(activity, enabled) },
-        onTouchMouseInteractionModeChanged = { mode ->
-            viewModel.onTouchMouseInteractionModeChanged(activity, mode)
-        },
-        onTouchDoubleClickAsRightClickChanged = { enabled ->
-            viewModel.onTouchDoubleClickAsRightClickChanged(activity, enabled)
-        },
-        onBuiltInSoftKeyboardChanged = { enabled ->
-            viewModel.onBuiltInSoftKeyboardChanged(activity, enabled)
-        },
-        onHapticFeedbackChanged = { enabled ->
-            viewModel.onHapticFeedbackChanged(activity, enabled)
-        },
-        onAutoSwitchLeftAfterRightClickChanged = { enabled -> viewModel.onAutoSwitchLeftAfterRightClickChanged(activity, enabled) },
-        onShowModFileNameChanged = { enabled -> viewModel.onShowModFileNameChanged(activity, enabled) },
-        onDisplayCutoutAvoidanceChanged = { enabled ->
-            viewModel.onDisplayCutoutAvoidanceChanged(activity, enabled)
-        },
-        onScreenBottomCropChanged = { enabled ->
-            viewModel.onScreenBottomCropChanged(activity, enabled)
-        },
-        onGamePerformanceOverlayChanged = { enabled ->
-            viewModel.onGamePerformanceOverlayChanged(activity, enabled)
-        },
-        onLwjglDebugChanged = { enabled -> viewModel.onLwjglDebugChanged(activity, enabled) },
-        onPreloadAllJreLibrariesChanged = {
-            enabled -> viewModel.onPreloadAllJreLibrariesChanged(activity, enabled)
-        },
-        onLogcatCaptureChanged = { enabled -> viewModel.onLogcatCaptureChanged(activity, enabled) },
-        onLauncherLogcatCaptureChanged = { enabled ->
-            viewModel.onLauncherLogcatCaptureChanged(activity, enabled)
-        },
-        onJvmLogcatMirrorChanged = { enabled -> viewModel.onJvmLogcatMirrorChanged(activity, enabled) },
-        onGpuResourceDiagChanged = { enabled -> viewModel.onGpuResourceDiagChanged(activity, enabled) },
-        onGdxPadCursorDebugChanged = { enabled -> viewModel.onGdxPadCursorDebugChanged(activity, enabled) },
-        onGlBridgeSwapHeartbeatDebugChanged = { enabled -> viewModel.onGlBridgeSwapHeartbeatDebugChanged(activity, enabled) },
-        onTouchscreenInputModeChanged = { mode -> viewModel.onTouchscreenInputModeChanged(activity, mode) },
-        onGameplayFontScaleChanged = { value -> viewModel.onGameplayFontScaleChanged(activity, value) },
-        onGameplayLargerUiChanged = { enabled -> viewModel.onGameplayLargerUiChanged(activity, enabled) },
-        onAutoCheckUpdatesChanged = { enabled ->
-            viewModel.onAutoCheckUpdatesChanged(activity, enabled)
-        },
-        onPreferredUpdateMirrorChanged = { source ->
-            viewModel.onPreferredUpdateMirrorChanged(activity, source)
-        },
-        onManualCheckUpdates = { viewModel.onManualCheckUpdates(activity) },
-        onOpenReleaseHistory = { viewModel.onOpenReleaseHistory(activity) },
-        onDismissReleaseHistoryDialog = viewModel::dismissReleaseHistoryDialog,
-        onOpenFirstRunSetup = { navigator.push(Route.FirstRunSetup) },
-        onOpenCompatibility = viewModel::onOpenCompatibility,
-        onOpenMobileGluesSettings = viewModel::onOpenMobileGluesSettings,
-        onOpenDeveloperSettings = { navigator.push(Route.DeveloperSettings) },
-        onOpenFeedback = viewModel::onOpenFeedback,
+        onOpenBaiduTranslationCredentials = { navigator.push(Route.BaiduTranslationCredentials()) },
+    )
+}
+
+@Composable
+fun LauncherSettingsFeedbackScreen(
+    viewModel: SettingsScreenViewModel,
+    modifier: Modifier = Modifier,
+    feedbackSubmissionNotice: FeedbackSubmissionNotice? = null,
+    onDismissFeedbackSubmissionNotice: () -> Unit = {},
+) {
+    val activity = requireNotNull(LocalActivity.current)
+    val navigator = currentNavigator
+    val uiState = viewModel.uiState
+
+    LaunchedEffect(activity) {
+        viewModel.bind(activity)
+    }
+
+    LauncherSettingsFeedbackScreenContent(
+        modifier = modifier,
+        uiState = uiState,
+        onGoBack = navigator::goBack,
+        onOpenFeedback = { navigator.push(Route.Feedback) },
         onOpenFeedbackSubscriptions = { navigator.push(Route.FeedbackSubscriptions) },
         onOpenFeedbackIssueBrowser = { navigator.push(Route.FeedbackIssueBrowser) },
+        onImportJar = viewModel::onImportJar,
+        onImportMods = viewModel::onImportMods,
+        onExportMods = viewModel::onExportMods,
+        onImportSaves = viewModel::onImportSaves,
+        onExportSaves = viewModel::onExportSaves,
+        onExportLogs = { viewModel.onExportLogs(activity) },
+        onExportLogsToFile = viewModel::onExportLogsToFile,
         feedbackSubmissionNotice = feedbackSubmissionNotice,
         onDismissFeedbackSubmissionNotice = onDismissFeedbackSubmissionNotice,
     )
-    SettingsEffectsHandler(viewModel = viewModel)
+}
+
+@Composable
+fun LauncherSettingsAboutScreen(
+    viewModel: SettingsScreenViewModel,
+    modifier: Modifier = Modifier,
+) {
+    val activity = requireNotNull(LocalActivity.current)
+    val navigator = currentNavigator
+    val uiState = viewModel.uiState
+
+    LaunchedEffect(activity) {
+        viewModel.bind(activity)
+    }
+
+    LauncherSettingsAboutScreenContent(
+        modifier = modifier,
+        uiState = uiState,
+        onGoBack = navigator::goBack,
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -431,40 +521,181 @@ private fun LauncherSettingsScreenContent(
     uiState: SettingsScreenViewModel.UiState,
     onGoBack: () -> Unit = {},
     showBackButton: Boolean = true,
-    onImportJar: () -> Unit = {},
-    onImportMods: () -> Unit = {},
-    onExportMods: () -> Unit = {},
-    onImportSaves: () -> Unit = {},
-    onExportSaves: () -> Unit = {},
-    onExportLogs: () -> Unit = {},
-    onExportLogsToFile: () -> Unit = {},
-    onOpenSteamCloudLogin: () -> Unit = {},
-    onSteamCloudWattAccelerationChanged: (Boolean) -> Unit = {},
-    onOpenSteamCloudSaveSettings: () -> Unit = {},
-    onClearSteamCloudCredentials: () -> Unit = {},
+    onOpenLauncherSettings: () -> Unit = {},
+    onOpenGameSettings: () -> Unit = {},
+    onOpenMarketCloudSettings: () -> Unit = {},
+    onOpenDeveloperSettings: () -> Unit = {},
+    onOpenFeedbackSettings: () -> Unit = {},
     onOpenNativeLibraryMarket: () -> Unit = {},
-    onOpenBaiduTranslationCredentials: () -> Unit = {},
-    onWorkshopMaxConcurrentDownloadsChanged: (Int) -> Unit = {},
-    onWorkshopDownloadThreadsChanged: (Int) -> Unit = {},
-    onWorkshopWattAccelerationChanged: (Boolean) -> Unit = {},
-    onWorkshopSteamLanguageChanged: (SteamLanguagePreference) -> Unit = {},
-    onWorkshopAutoImportChanged: (Boolean) -> Unit = {},
-    onClearWorkshopPreviewCache: () -> Unit = {},
+    onOpenAboutSettings: () -> Unit = {},
+    feedbackSubmissionNotice: FeedbackSubmissionNotice? = null,
+    onDismissFeedbackSubmissionNotice: () -> Unit = {},
+) {
+    val blockingInteractionLocked = uiState.busyOperation.usesBlockingOverlay()
+    SettingsRouteScaffold(
+        modifier = modifier,
+        uiState = uiState,
+        title = stringResource(R.string.settings_title),
+        subtitle = stringResource(R.string.settings_home_subtitle),
+        iconResId = R.drawable.ic_dock_settings,
+        showBackButton = showBackButton,
+        onGoBack = onGoBack,
+    ) {
+        item {
+            SettingsCategoryCard(
+                iconResId = R.drawable.ic_settings_launcher,
+                title = stringResource(R.string.settings_category_launcher_title),
+                subtitle = stringResource(R.string.settings_category_launcher_subtitle),
+                enabled = !blockingInteractionLocked,
+                onClick = onOpenLauncherSettings,
+            )
+        }
+        item {
+            SettingsCategoryCard(
+                iconResId = R.drawable.ic_dock_game,
+                title = stringResource(R.string.settings_category_game_title),
+                subtitle = stringResource(R.string.settings_category_game_subtitle),
+                enabled = !blockingInteractionLocked,
+                onClick = onOpenGameSettings,
+            )
+        }
+        item {
+            SettingsCategoryCard(
+                iconResId = R.drawable.ic_cloud_sync,
+                title = stringResource(R.string.settings_category_market_cloud_title),
+                subtitle = stringResource(R.string.settings_category_market_cloud_subtitle),
+                enabled = !blockingInteractionLocked,
+                onClick = onOpenMarketCloudSettings,
+            )
+        }
+        item {
+            SettingsCategoryCard(
+                iconResId = R.drawable.ic_settings_native_library,
+                title = stringResource(R.string.settings_native_library_market_title),
+                subtitle = stringResource(R.string.settings_native_library_market_desc),
+                enabled = !blockingInteractionLocked,
+                onClick = onOpenNativeLibraryMarket,
+            )
+        }
+        item {
+            SettingsCategoryCard(
+                iconResId = R.drawable.ic_build,
+                title = stringResource(R.string.settings_developer_title),
+                subtitle = stringResource(R.string.settings_developer_summary),
+                enabled = !blockingInteractionLocked,
+                onClick = onOpenDeveloperSettings,
+            )
+        }
+        item {
+            SettingsCategoryCard(
+                iconResId = R.drawable.ic_feedback_updates,
+                title = stringResource(R.string.settings_feedback_logs_title),
+                subtitle = stringResource(R.string.settings_feedback_logs_subtitle),
+                enabled = !blockingInteractionLocked,
+                onClick = onOpenFeedbackSettings,
+            )
+        }
+        item {
+            SettingsCategoryCard(
+                iconResId = R.drawable.ic_info_outline,
+                title = stringResource(R.string.settings_category_about_title),
+                subtitle = stringResource(R.string.settings_category_about_subtitle),
+                enabled = !blockingInteractionLocked,
+                onClick = onOpenAboutSettings,
+            )
+        }
+    }
+
+    SettingsFeedbackSubmissionNoticeDialog(
+        notice = feedbackSubmissionNotice,
+        onDismiss = onDismissFeedbackSubmissionNotice,
+    )
+}
+
+@Composable
+private fun LauncherSettingsLauncherScreenContent(
+    modifier: Modifier = Modifier,
+    uiState: SettingsScreenViewModel.UiState,
+    onGoBack: () -> Unit = {},
+    onOpenBasicTutorial: () -> Unit = {},
+    onThemeModeChanged: (LauncherThemeMode) -> Unit = {},
+    onThemeColorChanged: (LauncherThemeColor) -> Unit = {},
+    onAutoCheckUpdatesChanged: (Boolean) -> Unit = {},
+    onPreferredUpdateMirrorChanged: (UpdateSource) -> Unit = {},
+    onManualCheckUpdates: () -> Unit = {},
+    onOpenReleaseHistory: () -> Unit = {},
+    onDismissReleaseHistoryDialog: () -> Unit = {},
+    onOpenFirstRunSetup: () -> Unit = {},
+) {
+    SettingsRouteScaffold(
+        modifier = modifier,
+        uiState = uiState,
+        title = stringResource(R.string.settings_category_launcher_title),
+        subtitle = stringResource(R.string.settings_category_launcher_subtitle),
+        iconResId = R.drawable.ic_settings_launcher,
+        onGoBack = onGoBack,
+    ) {
+        item {
+            SettingsSectionCard(title = stringResource(R.string.settings_basic_tutorial_title)) {
+                SettingsActionListItem(
+                    title = stringResource(R.string.settings_basic_tutorial_action),
+                    supportingText = stringResource(R.string.settings_basic_tutorial_desc),
+                    enabled = !uiState.busy,
+                    onClick = onOpenBasicTutorial,
+                )
+            }
+        }
+        item {
+            SettingsSectionCard(title = stringResource(R.string.settings_appearance_section_title)) {
+                SettingsAppearanceSection(
+                    uiState = uiState,
+                    onThemeModeChanged = onThemeModeChanged,
+                    onThemeColorChanged = onThemeColorChanged,
+                )
+            }
+        }
+        item {
+            SettingsSectionCard(title = stringResource(R.string.update_section_title)) {
+                SettingsUpdateSection(
+                    uiState = uiState,
+                    onAutoCheckUpdatesChanged = onAutoCheckUpdatesChanged,
+                    onPreferredUpdateMirrorChanged = onPreferredUpdateMirrorChanged,
+                    onManualCheckUpdates = onManualCheckUpdates,
+                    onOpenReleaseHistory = onOpenReleaseHistory,
+                    onDismissReleaseHistoryDialog = onDismissReleaseHistoryDialog,
+                )
+            }
+        }
+        item {
+            SettingsSectionCard(title = stringResource(R.string.settings_first_run_title)) {
+                SettingsActionListItem(
+                    title = stringResource(R.string.settings_first_run_reopen_action),
+                    supportingText = stringResource(R.string.settings_first_run_reopen_desc),
+                    enabled = !uiState.busy,
+                    onClick = onOpenFirstRunSetup,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LauncherSettingsGameScreenContent(
+    modifier: Modifier = Modifier,
+    uiState: SettingsScreenViewModel.UiState,
+    onGoBack: () -> Unit = {},
     onRenderScaleSelected: (Float) -> Unit = {},
     onTargetFpsSelected: (Int) -> Unit = {},
     onVirtualResolutionModeChanged: (VirtualResolutionMode) -> Unit = {},
     onGpuResourceGuardianModeChanged: (GpuResourceGuardianMode) -> Unit = {},
     onGpuResourceGuardianPressureDownscaleChanged: (Boolean) -> Unit = {},
-    onRendererSelectionModeChanged: (RendererSelectionMode) -> Unit = {},
-    onManualRendererBackendChanged: (RendererBackend) -> Unit = {},
-    onRenderSurfaceBackendChanged: (RenderSurfaceBackend) -> Unit = {},
-    onThemeModeChanged: (LauncherThemeMode) -> Unit = {},
-    onThemeColorChanged: (LauncherThemeColor) -> Unit = {},
-    onJvmHeapMaxSelected: (Int) -> Unit = {},
-    onJvmCompressedPointersChanged: (Boolean) -> Unit = {},
-    onJvmStringDeduplicationChanged: (Boolean) -> Unit = {},
+    onDisplayCutoutAvoidanceChanged: (Boolean) -> Unit = {},
+    onScreenBottomCropChanged: (Boolean) -> Unit = {},
+    onGameplayFontScaleChanged: (Float) -> Unit = {},
+    onGameplayLargerUiChanged: (Boolean) -> Unit = {},
     onPlayerNameChanged: (String) -> Boolean = { true },
     onBackBehaviorChanged: (BackBehavior) -> Unit = {},
+    onTouchscreenInputModeChanged: (TouchscreenInputMode) -> Unit = {},
     onShowFloatingMouseWindowChanged: (Boolean) -> Unit = {},
     onTouchMouseInteractionModeChanged: (TouchMouseInteractionMode) -> Unit = {},
     onTouchDoubleClickAsRightClickChanged: (Boolean) -> Unit = {},
@@ -472,50 +703,218 @@ private fun LauncherSettingsScreenContent(
     onHapticFeedbackChanged: (Boolean) -> Unit = {},
     onAutoSwitchLeftAfterRightClickChanged: (Boolean) -> Unit = {},
     onShowModFileNameChanged: (Boolean) -> Unit = {},
-    onDisplayCutoutAvoidanceChanged: (Boolean) -> Unit = {},
-    onScreenBottomCropChanged: (Boolean) -> Unit = {},
     onGamePerformanceOverlayChanged: (Boolean) -> Unit = {},
-    onLwjglDebugChanged: (Boolean) -> Unit = {},
-    onPreloadAllJreLibrariesChanged: (Boolean) -> Unit = {},
-    onLogcatCaptureChanged: (Boolean) -> Unit = {},
-    onLauncherLogcatCaptureChanged: (Boolean) -> Unit = {},
-    onJvmLogcatMirrorChanged: (Boolean) -> Unit = {},
-    onGpuResourceDiagChanged: (Boolean) -> Unit = {},
-    onGdxPadCursorDebugChanged: (Boolean) -> Unit = {},
-    onGlBridgeSwapHeartbeatDebugChanged: (Boolean) -> Unit = {},
-    onTouchscreenInputModeChanged: (TouchscreenInputMode) -> Unit = {},
-    onGameplayFontScaleChanged: (Float) -> Unit = {},
-    onGameplayLargerUiChanged: (Boolean) -> Unit = {},
-    onAutoCheckUpdatesChanged: (Boolean) -> Unit = {},
-    onPreferredUpdateMirrorChanged: (UpdateSource) -> Unit = {},
-    onManualCheckUpdates: () -> Unit = {},
-    onOpenReleaseHistory: () -> Unit = {},
-    onDismissReleaseHistoryDialog: () -> Unit = {},
-    onOpenFirstRunSetup: () -> Unit = {},
-    onOpenCompatibility: () -> Unit = {},
-    onOpenMobileGluesSettings: () -> Unit = {},
-    onOpenDeveloperSettings: () -> Unit = {},
+) {
+    SettingsRouteScaffold(
+        modifier = modifier,
+        uiState = uiState,
+        title = stringResource(R.string.settings_category_game_title),
+        subtitle = stringResource(R.string.settings_category_game_subtitle),
+        iconResId = R.drawable.ic_dock_game,
+        onGoBack = onGoBack,
+    ) {
+        item {
+            SettingsSectionCard(title = stringResource(R.string.settings_section_render)) {
+                SettingsPerformanceSection(
+                    uiState = uiState,
+                    onRenderScaleSelected = onRenderScaleSelected,
+                    onTargetFpsSelected = onTargetFpsSelected,
+                    onVirtualResolutionModeChanged = onVirtualResolutionModeChanged,
+                    onGpuResourceGuardianModeChanged = onGpuResourceGuardianModeChanged,
+                    onGpuResourceGuardianPressureDownscaleChanged =
+                        onGpuResourceGuardianPressureDownscaleChanged,
+                    onDisplayCutoutAvoidanceChanged = onDisplayCutoutAvoidanceChanged,
+                    onScreenBottomCropChanged = onScreenBottomCropChanged,
+                    onGameplayFontScaleChanged = onGameplayFontScaleChanged,
+                    onGameplayLargerUiChanged = onGameplayLargerUiChanged,
+                )
+            }
+        }
+        item {
+            SettingsSectionCard(title = stringResource(R.string.settings_section_input)) {
+                SettingsInputSection(
+                    uiState = uiState,
+                    onPlayerNameChanged = onPlayerNameChanged,
+                    onBackBehaviorChanged = onBackBehaviorChanged,
+                    onTouchscreenInputModeChanged = onTouchscreenInputModeChanged,
+                    onShowFloatingMouseWindowChanged = onShowFloatingMouseWindowChanged,
+                    onTouchMouseInteractionModeChanged = onTouchMouseInteractionModeChanged,
+                    onTouchDoubleClickAsRightClickChanged = onTouchDoubleClickAsRightClickChanged,
+                    onBuiltInSoftKeyboardChanged = onBuiltInSoftKeyboardChanged,
+                    onHapticFeedbackChanged = onHapticFeedbackChanged,
+                    onAutoSwitchLeftAfterRightClickChanged = onAutoSwitchLeftAfterRightClickChanged,
+                    onShowModFileNameChanged = onShowModFileNameChanged,
+                    onGamePerformanceOverlayChanged = onGamePerformanceOverlayChanged,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LauncherSettingsMarketCloudScreenContent(
+    modifier: Modifier = Modifier,
+    uiState: SettingsScreenViewModel.UiState,
+    onGoBack: () -> Unit = {},
+    onOpenSteamCloudLogin: () -> Unit = {},
+    onSteamCloudWattAccelerationChanged: (Boolean) -> Unit = {},
+    onOpenSteamCloudSaveSettings: () -> Unit = {},
+    onClearSteamCloudCredentials: () -> Unit = {},
+    onWorkshopMaxConcurrentDownloadsChanged: (Int) -> Unit = {},
+    onWorkshopDownloadThreadsChanged: (Int) -> Unit = {},
+    onWorkshopWattAccelerationChanged: (Boolean) -> Unit = {},
+    onWorkshopSteamLanguageChanged: (SteamLanguagePreference) -> Unit = {},
+    onWorkshopAutoImportChanged: (Boolean) -> Unit = {},
+    onClearWorkshopPreviewCache: () -> Unit = {},
+    onOpenBaiduTranslationCredentials: () -> Unit = {},
+) {
+    SettingsRouteScaffold(
+        modifier = modifier,
+        uiState = uiState,
+        title = stringResource(R.string.settings_category_market_cloud_title),
+        subtitle = stringResource(R.string.settings_category_market_cloud_subtitle),
+        iconResId = R.drawable.ic_cloud_sync,
+        onGoBack = onGoBack,
+    ) {
+        item {
+            SettingsSectionCard(title = stringResource(R.string.settings_steam_cloud_title)) {
+                SettingsSteamCloudSection(
+                    uiState = uiState,
+                    onOpenSteamCloudLogin = onOpenSteamCloudLogin,
+                    onSteamCloudWattAccelerationChanged = onSteamCloudWattAccelerationChanged,
+                    onOpenSteamCloudSaveSettings = onOpenSteamCloudSaveSettings,
+                    onClearSteamCloudCredentials = onClearSteamCloudCredentials,
+                )
+            }
+        }
+        item {
+            SettingsSectionCard(title = stringResource(R.string.settings_market_section_title)) {
+                SettingsMarketSection(
+                    uiState = uiState,
+                    onWorkshopMaxConcurrentDownloadsChanged = onWorkshopMaxConcurrentDownloadsChanged,
+                    onWorkshopDownloadThreadsChanged = onWorkshopDownloadThreadsChanged,
+                    onWorkshopWattAccelerationChanged = onWorkshopWattAccelerationChanged,
+                    onWorkshopSteamLanguageChanged = onWorkshopSteamLanguageChanged,
+                    onWorkshopAutoImportChanged = onWorkshopAutoImportChanged,
+                    onClearWorkshopPreviewCache = onClearWorkshopPreviewCache,
+                    onOpenBaiduTranslationCredentials = onOpenBaiduTranslationCredentials,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LauncherSettingsFeedbackScreenContent(
+    modifier: Modifier = Modifier,
+    uiState: SettingsScreenViewModel.UiState,
+    onGoBack: () -> Unit = {},
     onOpenFeedback: () -> Unit = {},
     onOpenFeedbackSubscriptions: () -> Unit = {},
     onOpenFeedbackIssueBrowser: () -> Unit = {},
+    onImportJar: () -> Unit = {},
+    onImportMods: () -> Unit = {},
+    onExportMods: () -> Unit = {},
+    onImportSaves: () -> Unit = {},
+    onExportSaves: () -> Unit = {},
+    onExportLogs: () -> Unit = {},
+    onExportLogsToFile: () -> Unit = {},
     feedbackSubmissionNotice: FeedbackSubmissionNotice? = null,
     onDismissFeedbackSubmissionNotice: () -> Unit = {},
 ) {
+    SettingsRouteScaffold(
+        modifier = modifier,
+        uiState = uiState,
+        title = stringResource(R.string.settings_feedback_logs_title),
+        subtitle = stringResource(R.string.settings_feedback_logs_subtitle),
+        iconResId = R.drawable.ic_feedback_updates,
+        onGoBack = onGoBack,
+    ) {
+        item {
+            SettingsFeedbackEntryCard(
+                busy = uiState.busy,
+                onOpenFeedback = onOpenFeedback,
+                onOpenFeedbackSubscriptions = onOpenFeedbackSubscriptions,
+                onOpenFeedbackIssueBrowser = onOpenFeedbackIssueBrowser,
+            )
+        }
+        item {
+            SettingsSectionCard(title = stringResource(R.string.settings_section_resources_files)) {
+                SettingsImportSection(
+                    busy = uiState.busy,
+                    onImportJar = onImportJar,
+                    onImportMods = onImportMods,
+                    onExportMods = onExportMods,
+                    onImportSaves = onImportSaves,
+                    onExportSaves = onExportSaves,
+                    onExportLogs = onExportLogs,
+                    onExportLogsToFile = onExportLogsToFile,
+                )
+            }
+        }
+    }
+
+    SettingsFeedbackSubmissionNoticeDialog(
+        notice = feedbackSubmissionNotice,
+        onDismiss = onDismissFeedbackSubmissionNotice,
+    )
+}
+
+@Composable
+private fun LauncherSettingsAboutScreenContent(
+    modifier: Modifier = Modifier,
+    uiState: SettingsScreenViewModel.UiState,
+    onGoBack: () -> Unit = {},
+) {
+    SettingsRouteScaffold(
+        modifier = modifier,
+        uiState = uiState,
+        title = stringResource(R.string.settings_category_about_title),
+        subtitle = stringResource(R.string.settings_category_about_subtitle),
+        iconResId = R.drawable.ic_info_outline,
+        onGoBack = onGoBack,
+    ) {
+        item {
+            SettingsSectionCard(title = stringResource(R.string.settings_author_info_title)) {
+                SettingsAuthorInfoSection()
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsRouteScaffold(
+    modifier: Modifier = Modifier,
+    uiState: SettingsScreenViewModel.UiState,
+    title: String,
+    subtitle: String,
+    @DrawableRes iconResId: Int,
+    showBackButton: Boolean = true,
+    onGoBack: () -> Unit = {},
+    content: LazyListScope.() -> Unit,
+) {
     val blockingInteractionLocked = uiState.busyOperation.usesBlockingOverlay()
-    val context = LocalContext.current
-    val uriHandler = LocalUriHandler.current
-    val density = LocalDensity.current
     val headerHazeState = rememberHazeState()
-    var headerHeightPx by remember { mutableIntStateOf(0) }
-    val measuredHeaderHeight = with(density) { headerHeightPx.toDp() }
-    val headerContentTopInset = (if (headerHeightPx == 0) 88.dp else measuredHeaderHeight) + 16.dp
-    Box(modifier = modifier.fillMaxSize()) {
+    val headerContentTopInset = 88.dp + 16.dp
+    val bottomContentInset = if (showBackButton) 32.dp else 132.dp
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
                 .hazeSource(state = headerHazeState),
-            contentPadding = PaddingValues(start = 16.dp, top = 18.dp, end = 16.dp, bottom = 132.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                top = 18.dp,
+                end = 16.dp,
+                bottom = bottomContentInset,
+            ),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
                 Spacer(modifier = Modifier.height(headerContentTopInset))
@@ -523,158 +922,7 @@ private fun LauncherSettingsScreenContent(
             item {
                 SettingsBusyIndicator(uiState = uiState)
             }
-
-            item {
-                SettingsSectionCard(title = stringResource(R.string.settings_basic_tutorial_title)) {
-                    SettingsActionListItem(
-                        title = stringResource(R.string.settings_basic_tutorial_action),
-                        supportingText = stringResource(R.string.settings_basic_tutorial_desc),
-                        enabled = !uiState.busy,
-                        onClick = {
-                            openBasicTutorial(context)
-                        }
-                    )
-                }
-            }
-
-            item {
-                SettingsFeedbackEntryCard(
-                    busy = uiState.busy,
-                    onOpenFeedback = onOpenFeedback,
-                    onOpenFeedbackSubscriptions = onOpenFeedbackSubscriptions,
-                    onOpenFeedbackIssueBrowser = onOpenFeedbackIssueBrowser
-                )
-            }
-
-            item {
-                SettingsSectionCard(title = stringResource(R.string.settings_steam_cloud_title)) {
-                    SettingsSteamCloudSection(
-                        uiState = uiState,
-                        onOpenSteamCloudLogin = onOpenSteamCloudLogin,
-                        onSteamCloudWattAccelerationChanged =
-                            onSteamCloudWattAccelerationChanged,
-                        onOpenSteamCloudSaveSettings = onOpenSteamCloudSaveSettings,
-                        onClearSteamCloudCredentials = onClearSteamCloudCredentials,
-                    )
-                }
-            }
-
-            item {
-                SettingsSectionCard(title = stringResource(R.string.settings_appearance_section_title)) {
-                    SettingsAppearanceSection(
-                        uiState = uiState,
-                        onThemeModeChanged = onThemeModeChanged,
-                        onThemeColorChanged = onThemeColorChanged,
-                    )
-                }
-            }
-
-            item {
-                SettingsSectionCard(title = stringResource(R.string.settings_first_run_title)) {
-                    SettingsActionListItem(
-                        title = stringResource(R.string.settings_first_run_reopen_action),
-                        supportingText = stringResource(R.string.settings_first_run_reopen_desc),
-                        enabled = !uiState.busy,
-                        onClick = onOpenFirstRunSetup
-                    )
-                }
-            }
-
-            item {
-                SettingsSectionCard(title = stringResource(R.string.settings_section_resources_files)) {
-                    SettingsImportSection(
-                        busy = uiState.busy,
-                        onImportJar = onImportJar,
-                        onImportMods = onImportMods,
-                        onExportMods = onExportMods,
-                        onImportSaves = onImportSaves,
-                        onExportSaves = onExportSaves,
-                        onExportLogs = onExportLogs,
-                        onExportLogsToFile = onExportLogsToFile,
-                        onOpenNativeLibraryMarket = onOpenNativeLibraryMarket
-                    )
-                }
-            }
-
-            item {
-                SettingsSectionCard(title = stringResource(R.string.settings_market_section_title)) {
-                    SettingsMarketSection(
-                        uiState = uiState,
-                        onWorkshopMaxConcurrentDownloadsChanged = onWorkshopMaxConcurrentDownloadsChanged,
-                        onWorkshopDownloadThreadsChanged = onWorkshopDownloadThreadsChanged,
-                        onWorkshopWattAccelerationChanged = onWorkshopWattAccelerationChanged,
-                        onWorkshopSteamLanguageChanged = onWorkshopSteamLanguageChanged,
-                        onWorkshopAutoImportChanged = onWorkshopAutoImportChanged,
-                        onClearWorkshopPreviewCache = onClearWorkshopPreviewCache,
-                        onOpenBaiduTranslationCredentials = onOpenBaiduTranslationCredentials,
-                    )
-                }
-            }
-
-            item {
-                SettingsSectionCard(title = stringResource(R.string.settings_section_render)) {
-                    SettingsPerformanceSection(
-                        uiState = uiState,
-                        onRenderScaleSelected = onRenderScaleSelected,
-                        onTargetFpsSelected = onTargetFpsSelected,
-                        onVirtualResolutionModeChanged = onVirtualResolutionModeChanged,
-                        onGpuResourceGuardianModeChanged = onGpuResourceGuardianModeChanged,
-                        onGpuResourceGuardianPressureDownscaleChanged =
-                            onGpuResourceGuardianPressureDownscaleChanged,
-                        onDisplayCutoutAvoidanceChanged = onDisplayCutoutAvoidanceChanged,
-                        onScreenBottomCropChanged = onScreenBottomCropChanged,
-                        onGameplayFontScaleChanged = onGameplayFontScaleChanged,
-                        onGameplayLargerUiChanged = onGameplayLargerUiChanged,
-                    )
-                }
-            }
-
-            item {
-                SettingsSectionCard(title = stringResource(R.string.settings_section_input)) {
-                    SettingsInputSection(
-                        uiState = uiState,
-                        onPlayerNameChanged = onPlayerNameChanged,
-                        onBackBehaviorChanged = onBackBehaviorChanged,
-                        onTouchscreenInputModeChanged = onTouchscreenInputModeChanged,
-                        onShowFloatingMouseWindowChanged = onShowFloatingMouseWindowChanged,
-                        onTouchMouseInteractionModeChanged = onTouchMouseInteractionModeChanged,
-                        onTouchDoubleClickAsRightClickChanged = onTouchDoubleClickAsRightClickChanged,
-                        onBuiltInSoftKeyboardChanged = onBuiltInSoftKeyboardChanged,
-                        onHapticFeedbackChanged = onHapticFeedbackChanged,
-                        onAutoSwitchLeftAfterRightClickChanged = onAutoSwitchLeftAfterRightClickChanged,
-                        onShowModFileNameChanged = onShowModFileNameChanged,
-                        onGamePerformanceOverlayChanged = onGamePerformanceOverlayChanged,
-                    )
-                }
-            }
-
-            item {
-                SettingsSectionCard(title = stringResource(R.string.update_section_title)) {
-                    SettingsUpdateSection(
-                        uiState = uiState,
-                        onAutoCheckUpdatesChanged = onAutoCheckUpdatesChanged,
-                        onPreferredUpdateMirrorChanged = onPreferredUpdateMirrorChanged,
-                        onManualCheckUpdates = onManualCheckUpdates,
-                        onOpenReleaseHistory = onOpenReleaseHistory,
-                        onDismissReleaseHistoryDialog = onDismissReleaseHistoryDialog
-                    )
-                }
-            }
-
-            item {
-                SettingsSectionCard(title = stringResource(R.string.settings_developer_title)) {
-                    SettingsDeveloperEntrySection(
-                        busy = uiState.busy,
-                        onOpenDeveloperSettings = onOpenDeveloperSettings
-                    )
-                }
-            }
-
-            item {
-                SettingsSectionCard(title = stringResource(R.string.settings_author_info_title)) {
-                    SettingsAuthorInfoSection()
-                }
-            }
+            content()
         }
 
         FloatingGlassHeader(
@@ -684,46 +932,121 @@ private fun LauncherSettingsScreenContent(
             hazeState = headerHazeState,
             shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
             contentPadding = PaddingValues(0.dp),
-            onHeightChanged = { headerHeightPx = maxOf(headerHeightPx, it) },
         ) {
             SettingsHeaderPinnedContent(
+                title = title,
+                subtitle = subtitle,
+                iconResId = iconResId,
                 showBackButton = showBackButton,
                 enabled = !blockingInteractionLocked,
                 onGoBack = onGoBack,
             )
         }
     }
+}
 
-    feedbackSubmissionNotice?.let { notice ->
-        AlertDialog(
-            onDismissRequest = onDismissFeedbackSubmissionNotice,
-            title = { Text(notice.title) },
-            text = { Text(notice.message) },
-            confirmButton = {
-                if (!notice.issueUrl.isNullOrBlank()) {
-                    TextButton(
-                        onClick = {
-                            onDismissFeedbackSubmissionNotice()
-                            uriHandler.openUri(notice.issueUrl)
-                        }
-                    ) {
-                        Text(stringResource(R.string.common_action_open_issue))
-                    }
-                } else {
-                    TextButton(onClick = onDismissFeedbackSubmissionNotice) {
-                        Text(stringResource(R.string.common_action_acknowledge))
-                    }
-                }
-            },
-            dismissButton = {
-                if (!notice.issueUrl.isNullOrBlank()) {
-                    TextButton(onClick = onDismissFeedbackSubmissionNotice) {
-                        Text(stringResource(R.string.common_action_acknowledge))
-                    }
+@Composable
+private fun SettingsCategoryCard(
+    @DrawableRes iconResId: Int,
+    title: String,
+    subtitle: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(22.dp))
+            .hapticClickable(enabled = enabled, onClick = onClick),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Surface(
+                modifier = Modifier.size(50.dp),
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.primary,
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        painter = painterResource(iconResId),
+                        contentDescription = null,
+                        modifier = Modifier.size(28.dp),
+                    )
                 }
             }
-        )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Icon(
+                painter = painterResource(R.drawable.ic_chevron_right),
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
+}
+
+@Composable
+private fun SettingsFeedbackSubmissionNoticeDialog(
+    notice: FeedbackSubmissionNotice?,
+    onDismiss: () -> Unit,
+) {
+    val uriHandler = LocalUriHandler.current
+    val visibleNotice = notice ?: return
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(visibleNotice.title) },
+        text = { Text(visibleNotice.message) },
+        confirmButton = {
+            if (!visibleNotice.issueUrl.isNullOrBlank()) {
+                TextButton(
+                    onClick = {
+                        onDismiss()
+                        uriHandler.openUri(visibleNotice.issueUrl)
+                    }
+                ) {
+                    Text(stringResource(R.string.common_action_open_issue))
+                }
+            } else {
+                TextButton(onClick = onDismiss) {
+                    Text(stringResource(R.string.common_action_acknowledge))
+                }
+            }
+        },
+        dismissButton = {
+            if (!visibleNotice.issueUrl.isNullOrBlank()) {
+                TextButton(onClick = onDismiss) {
+                    Text(stringResource(R.string.common_action_acknowledge))
+                }
+            }
+        },
+    )
 }
 
 @Composable
@@ -1020,6 +1343,9 @@ internal fun SteamCloudAccountCard(
 
 @Composable
 private fun SettingsHeaderPinnedContent(
+    title: String,
+    subtitle: String,
+    @DrawableRes iconResId: Int,
     showBackButton: Boolean,
     enabled: Boolean,
     onGoBack: () -> Unit,
@@ -1032,38 +1358,6 @@ private fun SettingsHeaderPinnedContent(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Surface(
-            modifier = Modifier.size(52.dp),
-            shape = RoundedCornerShape(18.dp),
-            color = MaterialTheme.colorScheme.secondaryContainer,
-            contentColor = MaterialTheme.colorScheme.primary,
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_dock_settings),
-                    contentDescription = null,
-                    modifier = Modifier.size(28.dp),
-                )
-            }
-        }
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Text(
-                text = stringResource(R.string.settings_title),
-                style = MaterialTheme.typography.headlineSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = stringResource(R.string.settings_input_basic_title),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
         if (showBackButton) {
             HapticIconButton(
                 onClick = onGoBack,
@@ -1074,6 +1368,38 @@ private fun SettingsHeaderPinnedContent(
                     contentDescription = stringResource(R.string.common_content_desc_back),
                 )
             }
+        }
+        Surface(
+            modifier = Modifier.size(52.dp),
+            shape = RoundedCornerShape(18.dp),
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.primary,
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    painter = painterResource(iconResId),
+                    contentDescription = null,
+                    modifier = Modifier.size(28.dp),
+                )
+            }
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.headlineSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -1746,7 +2072,6 @@ private fun SettingsImportSection(
     onExportSaves: () -> Unit,
     onExportLogs: () -> Unit,
     onExportLogsToFile: () -> Unit,
-    onOpenNativeLibraryMarket: () -> Unit,
 ) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
@@ -1807,12 +2132,6 @@ private fun SettingsImportSection(
             supportingText = stringResource(R.string.settings_reimport_sts_jar_desc),
             enabled = !busy,
             onClick = onImportJar
-        )
-        SettingsActionListItem(
-            title = stringResource(R.string.settings_native_library_market_title),
-            supportingText = stringResource(R.string.settings_native_library_market_desc),
-            enabled = !busy,
-            onClick = onOpenNativeLibraryMarket
         )
     }
 }
@@ -1995,124 +2314,83 @@ private fun LauncherDeveloperSettingsScreenContent(
     onGlBridgeSwapHeartbeatDebugChanged: (Boolean) -> Unit = {},
     onResetLauncherSettingsToDefaults: () -> Unit = {},
 ) {
-    val blockingInteractionLocked = uiState.busyOperation.usesBlockingOverlay()
-    val headerHazeState = rememberHazeState()
-    Scaffold(
-        topBar = {
-            FloatingGlassHeader(
-                modifier = Modifier
-                    .statusBarsPadding()
-                    .padding(start = 16.dp, top = 18.dp, end = 16.dp),
-                hazeState = headerHazeState,
-                contentPadding = PaddingValues(0.dp),
-            ) {
-                TopAppBar(
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color.Transparent,
-                        scrolledContainerColor = Color.Transparent,
-                        titleContentColor = MaterialTheme.colorScheme.onSurface,
-                        actionIconContentColor = MaterialTheme.colorScheme.onSurface,
-                        navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
-                    ),
-                    windowInsets = TopAppBarDefaults.windowInsets,
-                    title = { Text(stringResource(R.string.settings_developer_title)) },
-                    navigationIcon = {
-                        HapticIconButton(
-                            onClick = onGoBack,
-                            enabled = !blockingInteractionLocked
-                        ) {
-                            Icon(
-                                imageVector = Icons.ArrowBack,
-                                contentDescription = stringResource(R.string.common_content_desc_back),
-                            )
-                        }
-                    },
+    SettingsRouteScaffold(
+        modifier = modifier,
+        uiState = uiState,
+        title = stringResource(R.string.settings_developer_title),
+        subtitle = stringResource(R.string.settings_developer_summary),
+        iconResId = R.drawable.ic_build,
+        onGoBack = onGoBack,
+    ) {
+        item {
+            SettingsSectionCard(title = stringResource(R.string.settings_developer_runtime_title)) {
+                SettingsDeveloperRuntimeSection(
+                    uiState = uiState,
+                    onManualDismissBootOverlayChanged = onManualDismissBootOverlayChanged,
+                    onSustainedPerformanceModeChanged = onSustainedPerformanceModeChanged,
+                    onCompendiumUpgradeTouchFixEnabledChanged =
+                        onCompendiumUpgradeTouchFixEnabledChanged,
                 )
             }
-        },
-    ) { paddingValues ->
-        LazyColumn(
-            modifier = modifier
-                .fillMaxSize()
-                .hazeSource(state = headerHazeState)
-                .padding(paddingValues),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            item {
-                SettingsBusyIndicator(uiState = uiState)
-            }
+        }
 
-            item {
-                SettingsSectionCard(title = stringResource(R.string.settings_developer_runtime_title)) {
-                    SettingsDeveloperRuntimeSection(
-                        uiState = uiState,
-                        onManualDismissBootOverlayChanged = onManualDismissBootOverlayChanged,
-                        onSustainedPerformanceModeChanged = onSustainedPerformanceModeChanged,
-                        onCompendiumUpgradeTouchFixEnabledChanged =
-                            onCompendiumUpgradeTouchFixEnabledChanged,
-                    )
-                }
+        item {
+            SettingsSectionCard(title = stringResource(R.string.settings_steam_cloud_phase0_title)) {
+                SettingsSteamCloudPhase0Section(
+                    uiState = uiState,
+                    onSaveCredentials = onSaveSteamCloudPhase0Credentials,
+                    onRunProbe = onRunSteamCloudPhase0Probe,
+                    onClearCredentials = onClearSteamCloudPhase0Credentials,
+                )
             }
+        }
 
-            item {
-                SettingsSectionCard(title = stringResource(R.string.settings_steam_cloud_phase0_title)) {
-                    SettingsSteamCloudPhase0Section(
-                        uiState = uiState,
-                        onSaveCredentials = onSaveSteamCloudPhase0Credentials,
-                        onRunProbe = onRunSteamCloudPhase0Probe,
-                        onClearCredentials = onClearSteamCloudPhase0Credentials,
-                    )
-                }
+        item {
+            SettingsSectionCard(title = stringResource(R.string.settings_developer_render_title)) {
+                SettingsAdvancedRenderSection(
+                    uiState = uiState,
+                    onRendererSelectionModeChanged = onRendererSelectionModeChanged,
+                    onManualRendererBackendChanged = onManualRendererBackendChanged,
+                    onOpenMobileGluesSettings = onOpenMobileGluesSettings,
+                    onRenderSurfaceBackendChanged = onRenderSurfaceBackendChanged,
+                    onJvmHeapMaxSelected = onJvmHeapMaxSelected,
+                    onJvmCompressedPointersChanged = onJvmCompressedPointersChanged,
+                    onJvmStringDeduplicationChanged = onJvmStringDeduplicationChanged,
+                )
             }
+        }
 
-            item {
-                SettingsSectionCard(title = stringResource(R.string.settings_developer_render_title)) {
-                    SettingsAdvancedRenderSection(
-                        uiState = uiState,
-                        onRendererSelectionModeChanged = onRendererSelectionModeChanged,
-                        onManualRendererBackendChanged = onManualRendererBackendChanged,
-                        onOpenMobileGluesSettings = onOpenMobileGluesSettings,
-                        onRenderSurfaceBackendChanged = onRenderSurfaceBackendChanged,
-                        onJvmHeapMaxSelected = onJvmHeapMaxSelected,
-                        onJvmCompressedPointersChanged = onJvmCompressedPointersChanged,
-                        onJvmStringDeduplicationChanged = onJvmStringDeduplicationChanged,
-                    )
-                }
+        item {
+            SettingsSectionCard(title = stringResource(R.string.compat_settings_title)) {
+                SettingsCompatibilitySection(
+                    busy = uiState.busy,
+                    onOpenCompatibility = onOpenCompatibility,
+                )
             }
+        }
 
-            item {
-                SettingsSectionCard(title = stringResource(R.string.compat_settings_title)) {
-                    SettingsCompatibilitySection(
-                        busy = uiState.busy,
-                        onOpenCompatibility = onOpenCompatibility,
-                    )
-                }
+        item {
+            SettingsSectionCard(title = stringResource(R.string.settings_section_status_logs)) {
+                SettingsStatusSection(
+                    uiState = uiState,
+                    onLwjglDebugChanged = onLwjglDebugChanged,
+                    onPreloadAllJreLibrariesChanged = onPreloadAllJreLibrariesChanged,
+                    onLogcatCaptureChanged = onLogcatCaptureChanged,
+                    onLauncherLogcatCaptureChanged = onLauncherLogcatCaptureChanged,
+                    onJvmLogcatMirrorChanged = onJvmLogcatMirrorChanged,
+                    onGpuResourceDiagChanged = onGpuResourceDiagChanged,
+                    onGdxPadCursorDebugChanged = onGdxPadCursorDebugChanged,
+                    onGlBridgeSwapHeartbeatDebugChanged = onGlBridgeSwapHeartbeatDebugChanged
+                )
             }
+        }
 
-            item {
-                SettingsSectionCard(title = stringResource(R.string.settings_section_status_logs)) {
-                    SettingsStatusSection(
-                        uiState = uiState,
-                        onLwjglDebugChanged = onLwjglDebugChanged,
-                        onPreloadAllJreLibrariesChanged = onPreloadAllJreLibrariesChanged,
-                        onLogcatCaptureChanged = onLogcatCaptureChanged,
-                        onLauncherLogcatCaptureChanged = onLauncherLogcatCaptureChanged,
-                        onJvmLogcatMirrorChanged = onJvmLogcatMirrorChanged,
-                        onGpuResourceDiagChanged = onGpuResourceDiagChanged,
-                        onGdxPadCursorDebugChanged = onGdxPadCursorDebugChanged,
-                        onGlBridgeSwapHeartbeatDebugChanged = onGlBridgeSwapHeartbeatDebugChanged
-                    )
-                }
-            }
-
-            item {
-                SettingsSectionCard(title = stringResource(R.string.settings_reset_defaults_section_title)) {
-                    SettingsResetDefaultsSection(
-                        busy = uiState.busy,
-                        onResetLauncherSettingsToDefaults = onResetLauncherSettingsToDefaults
-                    )
-                }
+        item {
+            SettingsSectionCard(title = stringResource(R.string.settings_reset_defaults_section_title)) {
+                SettingsResetDefaultsSection(
+                    busy = uiState.busy,
+                    onResetLauncherSettingsToDefaults = onResetLauncherSettingsToDefaults
+                )
             }
         }
     }

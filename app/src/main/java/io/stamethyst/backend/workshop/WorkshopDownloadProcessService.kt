@@ -19,6 +19,7 @@ import io.stamethyst.ui.preferences.LauncherPreferences
 import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter
+import java.nio.charset.StandardCharsets
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.concurrent.thread
 import kotlinx.coroutines.runBlocking
@@ -64,6 +65,9 @@ class WorkshopDownloadProcessService : Service() {
         const val RESULT_CANCELLED = 5
         private const val CHANNEL_ID = "workshop_download"
         private const val NOTIFICATION_ID = 646570
+        private const val ACTIVE_MARKER_STALE_MS = 30_000L
+        private const val ACTIVE_MARKER_HEARTBEAT_MS = 5_000L
+        private const val ACTIVE_MARKER_DIR = "workshop/active_downloads"
 
         @Volatile
         private var activeDownloadKeySnapshot: Set<String> = emptySet()
@@ -71,6 +75,16 @@ class WorkshopDownloadProcessService : Service() {
         fun isActiveDownload(publishedFileId: ULong): Boolean {
             return activeDownloadKeySnapshot.any { it.substringAfter(':') == publishedFileId.toString() }
         }
+
+        fun isActiveDownload(context: Context, publishedFileId: ULong): Boolean {
+            if (isActiveDownload(publishedFileId)) return true
+            val markerFile = activeDownloadMarkerFile(context, publishedFileId)
+            if (!markerFile.isFile) return false
+            return System.currentTimeMillis() - markerFile.lastModified() <= ACTIVE_MARKER_STALE_MS
+        }
+
+        private fun activeDownloadMarkerFile(context: Context, publishedFileId: ULong): File =
+            File(context.applicationContext.filesDir, "$ACTIVE_MARKER_DIR/$publishedFileId.active")
 
         fun start(context: Context, details: WorkshopItemDetails, receiver: ResultReceiver? = null) {
             val appContext = context.applicationContext
@@ -196,6 +210,7 @@ class WorkshopDownloadProcessService : Service() {
         startingTaskStore.appendLog(startingDetails.summary.publishedFileId, "服务已启动，准备解析下载内容")
         val activeDownloadKey = requireNotNull(requestedDownloadKey)
         requestedStops.remove(activeDownloadKey)
+        touchActiveDownloadMarker(startingDetails.summary.publishedFileId)
         val thread = Thread({ runDownload(startId, safeIntent, receiver) }, "STS-WorkshopDownload-$activeDownloadKey")
         workerThreads[activeDownloadKey] = thread
         activeDownloadKeySnapshot = workerThreads.keys.toSet()
@@ -226,6 +241,7 @@ class WorkshopDownloadProcessService : Service() {
         val taskStore = WorkshopDownloadTaskStore(applicationContext)
         val service = WorkshopService(applicationContext)
         val downloadKey = requireNotNull(intent.downloadKeyOrNull())
+        val activeDownloadHeartbeat = startActiveDownloadHeartbeat(details.summary.publishedFileId, downloadKey)
         var existingRecord: WorkshopInstalledModRecord? = null
         try {
             val previousRecord = metadataStore.findByPublishedFileId(
@@ -496,6 +512,8 @@ class WorkshopDownloadProcessService : Service() {
                 }
             }
         } finally {
+            activeDownloadHeartbeat.interrupt()
+            clearActiveDownloadMarker(details.summary.publishedFileId)
             workerThreads.remove(downloadKey)
             requestedStops.remove(downloadKey)
             activeDownloadKeySnapshot = workerThreads.keys.toSet()
@@ -505,6 +523,32 @@ class WorkshopDownloadProcessService : Service() {
             }
             startNextQueued(applicationContext)
         }
+    }
+
+    private fun startActiveDownloadHeartbeat(publishedFileId: ULong, downloadKey: String): Thread {
+        touchActiveDownloadMarker(publishedFileId)
+        return thread(name = "STS-WorkshopDownloadHeartbeat-$downloadKey", isDaemon = true) {
+            while (!Thread.currentThread().isInterrupted) {
+                try {
+                    Thread.sleep(ACTIVE_MARKER_HEARTBEAT_MS)
+                    touchActiveDownloadMarker(publishedFileId)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                }
+            }
+        }
+    }
+
+    private fun touchActiveDownloadMarker(publishedFileId: ULong) {
+        runCatching {
+            val markerFile = activeDownloadMarkerFile(applicationContext, publishedFileId)
+            markerFile.parentFile?.mkdirs()
+            markerFile.writeText(System.currentTimeMillis().toString(), StandardCharsets.UTF_8)
+        }
+    }
+
+    private fun clearActiveDownloadMarker(publishedFileId: ULong) {
+        runCatching { activeDownloadMarkerFile(applicationContext, publishedFileId).delete() }
     }
 
     private fun extractDetails(intent: Intent): WorkshopItemDetails {

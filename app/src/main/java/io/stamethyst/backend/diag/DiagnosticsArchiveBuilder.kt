@@ -9,6 +9,9 @@ import io.stamethyst.backend.crash.SignalCrashDumpReader
 import io.stamethyst.backend.launch.JvmLogRotationManager
 import io.stamethyst.backend.steamcloud.SteamCloudDiagnosticsStore
 import io.stamethyst.backend.steamcloud.SteamCloudManifestStore
+import io.stamethyst.backend.workshop.WorkshopDownloadLogService
+import io.stamethyst.backend.workshop.WorkshopDownloadTaskRecord
+import io.stamethyst.backend.workshop.WorkshopDownloadTaskStore
 import io.stamethyst.config.RuntimePaths
 import java.io.File
 import java.io.FileInputStream
@@ -153,6 +156,11 @@ internal object DiagnosticsArchiveBuilder {
                 SteamCloudDiagnosticsStore.failureHistoryDir(context),
                 "sts/steam_cloud/phase1/login-failures"
             )
+            exportedCount += writeOptionalDirectoryFiles(
+                zipOutput,
+                SteamCloudDiagnosticsStore.loginHistoryDir(context),
+                "sts/steam_cloud/phase1/login-history"
+            )
             val phase0Dir = File(RuntimePaths.storageRoot(context), "steam-cloud-phase0")
             exportedCount += writeOptionalFile(
                 zipOutput,
@@ -220,6 +228,8 @@ internal object DiagnosticsArchiveBuilder {
                     "sts/logcat/${logcatFile.name}"
                 )
             }
+
+            exportedCount += writeWorkshopDownloadDiagnostics(zipOutput, context)
 
             val histogramFiles = collectHistogramFiles(context)
             writeTextEntry(
@@ -352,6 +362,86 @@ internal object DiagnosticsArchiveBuilder {
                 )
             )
         }
+    }
+
+    @Throws(IOException::class)
+    private fun writeWorkshopDownloadDiagnostics(
+        zipOutput: ZipOutputStream,
+        context: Context
+    ): Int {
+        val tasks = try {
+            WorkshopDownloadTaskStore(context).list()
+        } catch (error: Throwable) {
+            writeTextEntry(
+                zipOutput,
+                "sts/workshop/download_tasks/read_error.txt",
+                buildString {
+                    append("Failed to read workshop download task logs.\n")
+                    append(error.javaClass.name)
+                    error.message?.trim()?.takeIf { it.isNotEmpty() }?.let { message ->
+                        append(": ").append(message)
+                    }
+                    append('\n')
+                }
+            )
+            return 1
+        }
+        if (tasks.isEmpty()) {
+            return 0
+        }
+
+        val sortedTasks = tasks.sortedByDescending { it.updatedAtMillis }
+        writeTextEntry(
+            zipOutput,
+            "sts/workshop/download_tasks/index.txt",
+            buildWorkshopDownloadTaskIndex(sortedTasks)
+        )
+
+        var exportedCount = 0
+        sortedTasks.forEach { task ->
+            val archiveFileName = WorkshopDownloadLogService.fileName(task)
+            writeTextEntry(
+                zipOutput,
+                "sts/workshop/download_tasks/$archiveFileName",
+                WorkshopDownloadLogService.buildLogText(task)
+            )
+            exportedCount++
+
+            exportedCount += writeOptionalFile(
+                zipOutput,
+                rawWorkshopDownloadLogFile(context, task),
+                "sts/workshop/raw_download_logs/${rawWorkshopDownloadLogArchiveName(task)}"
+            )
+        }
+        return exportedCount
+    }
+
+    private fun buildWorkshopDownloadTaskIndex(tasks: List<WorkshopDownloadTaskRecord>): String = buildString {
+        append("Workshop download task logs\n")
+        append("Task count: ").append(tasks.size).append('\n')
+        append('\n')
+        tasks.forEach { task ->
+            append("- ").append(task.publishedFileId).append('\n')
+            append("  Title: ").append(task.title.ifBlank { "<empty>" }).append('\n')
+            append("  Status: ").append(task.status.name).append('\n')
+            append("  Message: ").append(task.message.ifBlank { "<empty>" }).append('\n')
+            append("  Updated At Ms: ").append(task.updatedAtMillis).append('\n')
+            append("  Log Entry: sts/workshop/download_tasks/")
+                .append(WorkshopDownloadLogService.fileName(task))
+                .append('\n')
+            append('\n')
+        }
+    }
+
+    private fun rawWorkshopDownloadLogFile(context: Context, task: WorkshopDownloadTaskRecord): File {
+        return File(
+            context.filesDir,
+            "workshop/${task.details.summary.appId}/${task.publishedFileId}/download.log"
+        )
+    }
+
+    private fun rawWorkshopDownloadLogArchiveName(task: WorkshopDownloadTaskRecord): String {
+        return "workshop-download-${task.publishedFileId}-raw-download.log"
     }
 
     @Throws(IOException::class)

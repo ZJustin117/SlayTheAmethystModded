@@ -31,6 +31,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.stamethyst.R
+import io.stamethyst.backend.mods.RuntimeTextureAtlasDownscaleQuality
 import io.stamethyst.navigation.currentNavigator
 import io.stamethyst.ui.Icons
 import io.stamethyst.ui.icon.ArrowBack
@@ -94,8 +95,8 @@ fun LauncherCompatibilityScreen(
         onRuntimeDownscaleOrdinaryTexturesToggled = { enabled ->
             viewModel.onRuntimeDownscaleOrdinaryTexturesToggled(context, enabled)
         },
-        onRuntimeDownscaleTextureAtlasPagesToggled = { enabled ->
-            viewModel.onRuntimeDownscaleTextureAtlasPagesToggled(context, enabled)
+        onRuntimeDownscaleTextureAtlasPagesQualityChanged = { quality ->
+            viewModel.onRuntimeDownscaleTextureAtlasPagesQualityChanged(context, quality)
         },
         onRuntimeDownscaleSpineTexturesToggled = { enabled ->
             viewModel.onRuntimeDownscaleSpineTexturesToggled(context, enabled)
@@ -164,7 +165,7 @@ private fun LauncherCompatibilityScreenContent(
     onFboIdleReclaimCompatToggled: (Boolean) -> Unit = {},
     onFboPressureDownscaleCompatToggled: (Boolean) -> Unit = {},
     onRuntimeDownscaleOrdinaryTexturesToggled: (Boolean) -> Unit = {},
-    onRuntimeDownscaleTextureAtlasPagesToggled: (Boolean) -> Unit = {},
+    onRuntimeDownscaleTextureAtlasPagesQualityChanged: (RuntimeTextureAtlasDownscaleQuality) -> Unit = {},
     onRuntimeDownscaleSpineTexturesToggled: (Boolean) -> Unit = {},
     onRuntimeDownscaleOffscreenFrameBuffersToggled: (Boolean) -> Unit = {},
     onImportDownscaleSpineAtlasPagesToggled: (Boolean) -> Unit = {},
@@ -330,12 +331,22 @@ private fun LauncherCompatibilityScreenContent(
                     enabled = !uiState.busy,
                     onCheckedChange = onRuntimeDownscaleOrdinaryTexturesToggled
                 )
-                CompatibilitySwitchRow(
-                    title = stringResource(R.string.compat_runtime_downscale_texture_atlas_title),
-                    description = stringResource(R.string.compat_runtime_downscale_texture_atlas_desc),
-                    checked = uiState.runtimeDownscaleTextureAtlasPagesEnabled,
+                SettingsDropdownField(
+                    label = stringResource(R.string.compat_runtime_downscale_texture_atlas_title),
+                    valueText = runtimeTextureAtlasDownscaleQualityLabel(
+                        context,
+                        uiState.runtimeDownscaleTextureAtlasPagesQuality
+                    ),
                     enabled = !uiState.busy,
-                    onCheckedChange = onRuntimeDownscaleTextureAtlasPagesToggled
+                    supportingText = stringResource(R.string.compat_runtime_downscale_texture_atlas_desc),
+                    options = RuntimeTextureAtlasDownscaleQuality.entries.toList(),
+                    optionLabel = { quality ->
+                        runtimeTextureAtlasDownscaleQualityLabel(context, quality)
+                    },
+                    optionDescription = { quality ->
+                        runtimeTextureAtlasDownscaleQualityDescription(context, quality)
+                    },
+                    onOptionSelected = onRuntimeDownscaleTextureAtlasPagesQualityChanged
                 )
                 CompatibilitySwitchRow(
                     title = stringResource(R.string.compat_runtime_downscale_spine_title),
@@ -503,4 +514,36 @@ private fun texturePressureDownscaleDivisorOptionDescription(
         scaledSize,
         scaledSize
     )
+}
+
+private fun runtimeTextureAtlasDownscaleQualityLabel(
+    context: Context,
+    quality: RuntimeTextureAtlasDownscaleQuality
+): String {
+    return when (quality) {
+        RuntimeTextureAtlasDownscaleQuality.P720 ->
+            context.getString(R.string.compat_runtime_downscale_texture_atlas_quality_720p)
+        RuntimeTextureAtlasDownscaleQuality.P1080 ->
+            context.getString(R.string.compat_runtime_downscale_texture_atlas_quality_1080p)
+        RuntimeTextureAtlasDownscaleQuality.P2K ->
+            context.getString(R.string.compat_runtime_downscale_texture_atlas_quality_2k)
+        RuntimeTextureAtlasDownscaleQuality.NATIVE ->
+            context.getString(R.string.compat_runtime_downscale_texture_atlas_quality_native)
+    }
+}
+
+private fun runtimeTextureAtlasDownscaleQualityDescription(
+    context: Context,
+    quality: RuntimeTextureAtlasDownscaleQuality
+): String {
+    return when (quality) {
+        RuntimeTextureAtlasDownscaleQuality.P720 ->
+            context.getString(R.string.compat_runtime_downscale_texture_atlas_quality_720p_desc)
+        RuntimeTextureAtlasDownscaleQuality.P1080 ->
+            context.getString(R.string.compat_runtime_downscale_texture_atlas_quality_1080p_desc)
+        RuntimeTextureAtlasDownscaleQuality.P2K ->
+            context.getString(R.string.compat_runtime_downscale_texture_atlas_quality_2k_desc)
+        RuntimeTextureAtlasDownscaleQuality.NATIVE ->
+            context.getString(R.string.compat_runtime_downscale_texture_atlas_quality_native_desc)
+    }
 }
