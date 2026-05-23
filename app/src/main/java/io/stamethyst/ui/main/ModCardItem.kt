@@ -88,7 +88,7 @@ private sealed interface WorkshopUpdateChangeNotesState {
     data object Idle : WorkshopUpdateChangeNotesState
     data object Loading : WorkshopUpdateChangeNotesState
     data class Loaded(val latestMarkdown: String) : WorkshopUpdateChangeNotesState
-    data class Failed(val message: String) : WorkshopUpdateChangeNotesState
+    data class Failed(val errorDetail: String) : WorkshopUpdateChangeNotesState
 }
 
 @Stable
@@ -271,12 +271,7 @@ internal fun ModCard(
         }.fold(
             onSuccess = { markdown -> WorkshopUpdateChangeNotesState.Loaded(markdown) },
             onFailure = { error ->
-                WorkshopUpdateChangeNotesState.Failed(
-                    context.getString(
-                        R.string.workshop_change_notes_load_failed,
-                        error.message ?: error.javaClass.simpleName,
-                    )
-                )
+                WorkshopUpdateChangeNotesState.Failed(error.message ?: error.javaClass.simpleName)
             },
         )
     }
@@ -608,7 +603,10 @@ internal fun ModCard(
                         }
                         is WorkshopUpdateChangeNotesState.Failed -> {
                             Text(
-                                text = changeNotesState.message,
+                                text = stringResource(
+                                    R.string.workshop_change_notes_load_failed,
+                                    changeNotesState.errorDetail,
+                                ),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.error,
                             )
