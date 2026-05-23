@@ -172,6 +172,7 @@ internal class MainModManagementController(
         prunePendingSelectionToInstalled()
         profileState = profileStore.load(host, pendingEnabledOptionalModIds)
         profileState = profileStore.sanitizeSelections(host, profileState, collectInstalledOptionalModKeys())
+        MainFolderAssignmentHandoffStore.consumePendingAssignments(host, folderStateStore)
         sanitizeFolderAssignments(optionalMods)
         persistFolderState(host)
     }
@@ -1602,7 +1603,16 @@ internal class MainModManagementController(
     private fun loadWorkshopCardItems(host: Activity, installedMods: List<ModItemUi>): List<ModItemUi> {
         val installedPaths = installedMods.map { it.storagePath }.toSet()
         val downloadTasksByPublishedFileId = loadDownloadCenterTaskRecords(host)
-        return WorkshopMetadataStore(host).list()
+        val recordsByPublishedFileId = LinkedHashMap<ULong, WorkshopInstalledModRecord>()
+        WorkshopMetadataStore(host).list().forEach { record ->
+            recordsByPublishedFileId[record.publishedFileId] = record
+        }
+        downloadTasksByPublishedFileId.values
+            .filter { task -> task.status.isActiveDownload() }
+            .forEach { task ->
+                recordsByPublishedFileId.putIfAbsent(task.publishedFileId, task.toDownloadingWorkshopRecord(host))
+            }
+        return recordsByPublishedFileId.values
             .filter { record ->
                 val absoluteJarPath = resolveWorkshopJarPath(host, record)
                 absoluteJarPath.isBlank() || !installedPaths.contains(absoluteJarPath)
@@ -1613,6 +1623,24 @@ internal class MainModManagementController(
                     task = downloadTasksByPublishedFileId[record.publishedFileId],
                 )
             }
+    }
+
+    private fun WorkshopDownloadTaskRecord.toDownloadingWorkshopRecord(host: Activity): WorkshopInstalledModRecord {
+        val summary = details.summary
+        return WorkshopInstalledModRecord(
+            appId = summary.appId,
+            publishedFileId = publishedFileId,
+            title = title.ifBlank { summary.title },
+            description = description.ifBlank { summary.description },
+            previewUrl = previewUrl.ifBlank { summary.previewUrl },
+            versionText = summary.updatedAtMillis.toString(),
+            updatedAtMillis = summary.updatedAtMillis,
+            installedAtMillis = updatedAtMillis,
+            localJarPath = "",
+            cardState = WorkshopModCardState.Downloading,
+            statusText = message.ifBlank { host.getString(R.string.workshop_download_task_message_waiting) },
+            dependencies = details.dependencies,
+        )
     }
 
     private fun loadDownloadCenterTaskRecords(host: Activity): Map<ULong, WorkshopDownloadTaskRecord> {

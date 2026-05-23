@@ -266,8 +266,7 @@ internal class ModImportSessionViewModel : ViewModel() {
     }
 
     private fun buildFolderOptions(context: Context): List<ModImportFolderOptionUi> {
-        val activity = context as? android.app.Activity ?: return emptyList()
-        val store = MainFolderStateStore().apply { ensureLoaded(activity) }
+        val store = MainFolderStateStore().apply { ensureLoaded(context) }
         val foldersById = store.folders.associateBy { it.id }
         return store.buildFolderOrderTokens().mapNotNull { token ->
             if (token == UNASSIGNED_FOLDER_ID) {

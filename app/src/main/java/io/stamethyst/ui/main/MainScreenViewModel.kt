@@ -63,6 +63,7 @@ import io.stamethyst.config.RuntimePaths
 import io.stamethyst.config.SteamCloudSaveMode
 import io.stamethyst.config.StsExternalStorageAccess
 import io.stamethyst.model.ModItemUi
+import io.stamethyst.model.WorkshopModState
 import io.stamethyst.ui.LauncherTransientNoticeDuration
 import io.stamethyst.ui.UiText
 import io.stamethyst.ui.UiBusyOperation
@@ -805,21 +806,27 @@ class MainScreenViewModel : ViewModel() {
         }
         val taskStore = WorkshopDownloadTaskStore(host)
         val existingTask = taskStore.find(record.publishedFileId)
+        val preservePartialDownload = when (workshop.state) {
+            WorkshopModState.DownloadPaused,
+            WorkshopModState.DownloadFailed -> true
+            else -> false
+        }
         if (existingTask == null || existingTask.status == WorkshopDownloadTaskStatus.Completed) {
-            taskStore.upsert(record.toWorkshopDownloadTaskRecord())
+            taskStore.upsert(record.toWorkshopDownloadTaskRecord().copy(preservePartialDownload = preservePartialDownload))
         } else {
             taskStore.update(record.publishedFileId) { task ->
                 task.copy(
                     status = WorkshopDownloadTaskStatus.Queued,
                     message = "等待下载",
                     updatedAtMillis = System.currentTimeMillis(),
-                    progressPercent = null,
-                    downloadedBytes = 0L,
-                    completedFiles = null,
-                    completedChunks = null,
+                    progressPercent = if (preservePartialDownload) task.progressPercent else null,
+                    downloadedBytes = if (preservePartialDownload) task.downloadedBytes else 0L,
+                    completedFiles = if (preservePartialDownload) task.completedFiles else null,
+                    completedChunks = if (preservePartialDownload) task.completedChunks else null,
                     errorClass = "",
                     errorMessage = "",
                     errorStackTrace = "",
+                    preservePartialDownload = preservePartialDownload,
                 )
             }
         }

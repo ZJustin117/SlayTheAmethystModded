@@ -1,8 +1,11 @@
 package io.stamethyst.ui.main
 
-import android.app.Activity
+import android.content.Context
 import android.content.SharedPreferences
+import io.stamethyst.backend.mods.ModManager
 import io.stamethyst.model.ModItemUi
+import java.io.File
+import java.nio.charset.StandardCharsets
 import java.util.LinkedHashMap
 import org.json.JSONArray
 import org.json.JSONObject
@@ -50,7 +53,7 @@ internal class MainFolderStateStore {
             unassignedFolderOrder = value.coerceIn(0, modFolders.size)
         }
 
-    fun ensureLoaded(host: Activity) {
+    fun ensureLoaded(host: Context) {
         if (loaded) {
             return
         }
@@ -58,12 +61,12 @@ internal class MainFolderStateStore {
         loaded = true
     }
 
-    fun reload(host: Activity) {
+    fun reload(host: Context) {
         load(host)
         loaded = true
     }
 
-    fun persist(host: Activity) {
+    fun persist(host: Context, synchronous: Boolean = false) {
         val foldersArray = JSONArray()
         modFolders.forEach { folder ->
             val item = JSONObject()
@@ -82,7 +85,7 @@ internal class MainFolderStateStore {
             collapsedObject.put(folderId, collapsed)
         }
 
-        prefs(host).edit()
+        val editor = prefs(host).edit()
             .putString(KEY_FOLDERS, foldersArray.toString())
             .putString(KEY_ASSIGNMENTS, assignmentsObject.toString())
             .putString(KEY_COLLAPSED, collapsedObject.toString())
@@ -91,7 +94,11 @@ internal class MainFolderStateStore {
             .putBoolean(KEY_DRAG_LOCKED, dragLocked)
             .putString(KEY_UNASSIGNED_NAME, unassignedFolderName)
             .putInt(KEY_UNASSIGNED_ORDER, unassignedFolderOrder.coerceIn(0, modFolders.size))
-            .apply()
+        if (synchronous) {
+            editor.commit()
+        } else {
+            editor.apply()
+        }
     }
 
     fun sanitize(optionalMods: List<ModItemUi>) {
@@ -135,7 +142,7 @@ internal class MainFolderStateStore {
             .coerceIn(0, modFolders.size)
     }
 
-    fun moveFolderToken(host: Activity, folderId: String, offset: Int): Boolean {
+    fun moveFolderToken(host: Context, folderId: String, offset: Int): Boolean {
         ensureLoaded(host)
         val tokens = buildFolderOrderTokens().toMutableList()
         val fromIndex = tokens.indexOf(folderId)
@@ -152,11 +159,15 @@ internal class MainFolderStateStore {
         return true
     }
 
-    private fun prefs(host: Activity): SharedPreferences {
-        return host.getSharedPreferences(PREFS_MAIN_MOD_FOLDERS, Activity.MODE_PRIVATE)
+    @Suppress("DEPRECATION")
+    private fun prefs(host: Context): SharedPreferences {
+        return host.getSharedPreferences(
+            PREFS_MAIN_MOD_FOLDERS,
+            Context.MODE_PRIVATE or Context.MODE_MULTI_PROCESS
+        )
     }
 
-    private fun load(host: Activity) {
+    private fun load(host: Context) {
         val preferences = prefs(host)
         modFolders.clear()
         folderAssignments.clear()
@@ -232,5 +243,209 @@ internal class MainFolderStateStore {
         private const val KEY_UNASSIGNED_NAME = "unassigned_name"
         private const val KEY_UNASSIGNED_ORDER = "unassigned_order"
         private const val DEFAULT_UNASSIGNED_FOLDER_NAME = "未分类"
+    }
+}
+
+internal object MainFolderAssignmentHandoffStore {
+    private data class PendingAssignment(
+        val targetStoragePath: String,
+        val folderId: String,
+        val sourceStoragePaths: List<String>,
+        val normalizedModId: String
+    )
+
+    private const val FILE_NAME = "pending_mod_folder_assignments.json"
+    private const val KEY_ENTRIES = "entries"
+    private const val KEY_TARGET_STORAGE_PATH = "targetStoragePath"
+    private const val KEY_FOLDER_ID = "folderId"
+    private const val KEY_SOURCE_STORAGE_PATHS = "sourceStoragePaths"
+    private const val KEY_NORMALIZED_MOD_ID = "normalizedModId"
+    private val lock = Any()
+
+    fun enqueueDuplicateFolderReuse(
+        context: Context,
+        targetStoragePath: String,
+        folderId: String,
+        sourceStoragePaths: Collection<String>,
+        normalizedModId: String
+    ) {
+        val targetPath = targetStoragePath.trim()
+        val targetFolderId = folderId.trim()
+        if (targetPath.isEmpty()) {
+            return
+        }
+        synchronized(lock) {
+            val entries = readEntries(context)
+                .filterNot { it.targetStoragePath == targetPath }
+                .toMutableList()
+            entries.add(
+                PendingAssignment(
+                    targetStoragePath = targetPath,
+                    folderId = targetFolderId,
+                    sourceStoragePaths = sourceStoragePaths
+                        .map { it.trim() }
+                        .filter { it.isNotEmpty() }
+                        .distinct(),
+                    normalizedModId = ModManager.normalizeModId(normalizedModId)
+                )
+            )
+            writeEntries(context, entries)
+        }
+    }
+
+    fun consumePendingAssignments(
+        context: Context,
+        folderStateStore: MainFolderStateStore
+    ): Boolean {
+        synchronized(lock) {
+            val entries = readEntries(context)
+            if (entries.isEmpty()) {
+                return false
+            }
+            pendingFile(context).delete()
+
+            val validFolderIds = folderStateStore.folders.map { it.id }.toHashSet()
+            var changed = false
+            entries.forEach { entry ->
+                val targetFolderId = resolvePendingAssignmentFolderId(
+                    entry = entry,
+                    folderAssignments = folderStateStore.assignments,
+                    validFolderIds = validFolderIds
+                )
+                if (entry.targetStoragePath.isBlank() || targetFolderId.isNullOrBlank()) {
+                    return@forEach
+                }
+                entry.sourceStoragePaths.forEach { sourcePath ->
+                    resolveModStoragePathCandidates(sourcePath).forEach { candidate ->
+                        if (folderStateStore.assignments.remove(candidate) != null) {
+                            changed = true
+                        }
+                    }
+                }
+                val normalizedKey = ModManager.normalizeModId(entry.normalizedModId)
+                if (normalizedKey.isNotEmpty() && folderStateStore.assignments.remove(normalizedKey) != null) {
+                    changed = true
+                }
+                if (folderStateStore.assignments[entry.targetStoragePath] != targetFolderId) {
+                    folderStateStore.assignments[entry.targetStoragePath] = targetFolderId
+                    changed = true
+                }
+            }
+            return changed
+        }
+    }
+
+    private fun resolvePendingAssignmentFolderId(
+        entry: PendingAssignment,
+        folderAssignments: Map<String, String>,
+        validFolderIds: Set<String>
+    ): String? {
+        val directFolderId = entry.folderId.trim()
+        if (directFolderId.isNotEmpty() && validFolderIds.contains(directFolderId)) {
+            return directFolderId
+        }
+        entry.sourceStoragePaths.forEach { sourcePath ->
+            resolveModStoragePathCandidates(sourcePath).forEach { candidate ->
+                val folderId = folderAssignments[candidate]
+                if (!folderId.isNullOrBlank() && validFolderIds.contains(folderId)) {
+                    return folderId
+                }
+            }
+        }
+        val normalizedKey = ModManager.normalizeModId(entry.normalizedModId)
+        if (normalizedKey.isNotEmpty()) {
+            val folderId = folderAssignments[normalizedKey]
+            if (!folderId.isNullOrBlank() && validFolderIds.contains(folderId)) {
+                return folderId
+            }
+        }
+        return null
+    }
+
+    private fun readEntries(context: Context): List<PendingAssignment> {
+        val file = pendingFile(context)
+        if (!file.isFile) {
+            return emptyList()
+        }
+        return try {
+            val root = JSONObject(file.readText(StandardCharsets.UTF_8))
+            val array = root.optJSONArray(KEY_ENTRIES) ?: return emptyList()
+            buildList {
+                for (index in 0 until array.length()) {
+                    val item = array.optJSONObject(index) ?: continue
+                    val targetPath = item.optString(KEY_TARGET_STORAGE_PATH).trim()
+                    val folderId = item.optString(KEY_FOLDER_ID).trim()
+                    if (targetPath.isEmpty()) {
+                        continue
+                    }
+                    val sourcePaths = ArrayList<String>()
+                    val sourceArray = item.optJSONArray(KEY_SOURCE_STORAGE_PATHS)
+                    if (sourceArray != null) {
+                        for (sourceIndex in 0 until sourceArray.length()) {
+                            val sourcePath = sourceArray.optString(sourceIndex).trim()
+                            if (sourcePath.isNotEmpty()) {
+                                sourcePaths.add(sourcePath)
+                            }
+                        }
+                    }
+                    add(
+                        PendingAssignment(
+                            targetStoragePath = targetPath,
+                            folderId = folderId,
+                            sourceStoragePaths = sourcePaths.distinct(),
+                            normalizedModId = item.optString(KEY_NORMALIZED_MOD_ID).trim()
+                        )
+                    )
+                }
+            }
+        } catch (_: Throwable) {
+            emptyList()
+        }
+    }
+
+    private fun writeEntries(context: Context, entries: List<PendingAssignment>) {
+        val file = pendingFile(context)
+        if (entries.isEmpty()) {
+            file.delete()
+            return
+        }
+        val parent = file.parentFile ?: return
+        if (!parent.exists() && !parent.mkdirs()) {
+            return
+        }
+        val root = JSONObject().put(
+            KEY_ENTRIES,
+            JSONArray().apply {
+                entries.forEach { entry ->
+                    put(
+                        JSONObject()
+                            .put(KEY_TARGET_STORAGE_PATH, entry.targetStoragePath)
+                            .put(KEY_FOLDER_ID, entry.folderId)
+                            .put(
+                                KEY_SOURCE_STORAGE_PATHS,
+                                JSONArray().apply { entry.sourceStoragePaths.forEach(::put) }
+                            )
+                            .put(KEY_NORMALIZED_MOD_ID, entry.normalizedModId)
+                    )
+                }
+            }
+        )
+        val tempFile = File(parent, ".${file.name}.${System.nanoTime()}.tmp")
+        runCatching {
+            tempFile.writeText(root.toString(), StandardCharsets.UTF_8)
+            if (file.exists() && !file.delete()) {
+                tempFile.delete()
+                return
+            }
+            if (!tempFile.renameTo(file)) {
+                tempFile.delete()
+            }
+        }.onFailure {
+            tempFile.delete()
+        }
+    }
+
+    private fun pendingFile(context: Context): File {
+        return File(context.filesDir, FILE_NAME)
     }
 }

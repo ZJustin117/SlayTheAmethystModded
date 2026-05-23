@@ -606,12 +606,22 @@ internal class WorkshopViewModel : ViewModel() {
         val details = task.details
         if (task.status.isRunningDownload()) {
             WorkshopDownloadCenterStore.update(task.publishedFileId) {
-                it.copy(status = WorkshopDownloadTaskStatus.Pausing, message = context.getString(R.string.workshop_status_pausing), updatedAtMillis = System.currentTimeMillis())
+                it.copy(
+                    status = WorkshopDownloadTaskStatus.Pausing,
+                    message = context.getString(R.string.workshop_status_pausing),
+                    updatedAtMillis = System.currentTimeMillis(),
+                    preservePartialDownload = true,
+                )
             }
             WorkshopDownloadProcessService.pause(context, details.summary.appId, details.summary.publishedFileId, createDownloadResultReceiver(context.applicationContext, details.summary))
         } else {
             WorkshopDownloadCenterStore.update(task.publishedFileId) {
-                it.copy(status = WorkshopDownloadTaskStatus.Paused, message = context.getString(R.string.workshop_status_paused), updatedAtMillis = System.currentTimeMillis())
+                it.copy(
+                    status = WorkshopDownloadTaskStatus.Paused,
+                    message = context.getString(R.string.workshop_status_paused),
+                    updatedAtMillis = System.currentTimeMillis(),
+                    preservePartialDownload = true,
+                )
             }
             metadataStore?.updateState(details.summary.appId, details.summary.publishedFileId, WorkshopModCardState.DownloadPaused, context.getString(R.string.workshop_status_paused))
         }
@@ -619,11 +629,21 @@ internal class WorkshopViewModel : ViewModel() {
     }
 
     fun resumeDownload(context: Context, task: WorkshopDownloadTaskUi) {
-        restartDownload(context, task, context.getString(R.string.main_mod_workshop_action_continue_download))
+        restartDownload(
+            context = context,
+            task = task,
+            message = context.getString(R.string.main_mod_workshop_action_continue_download),
+            preservePartialDownload = true,
+        )
     }
 
     fun retryDownload(context: Context, task: WorkshopDownloadTaskUi) {
-        restartDownload(context, task, context.getString(R.string.main_mod_workshop_action_redownload))
+        restartDownload(
+            context = context,
+            task = task,
+            message = context.getString(R.string.main_mod_workshop_action_redownload),
+            preservePartialDownload = task.preservePartialDownload || task.downloadedBytes > 0L,
+        )
     }
 
     fun cancelDownload(context: Context, task: WorkshopDownloadTaskUi) {
@@ -672,7 +692,7 @@ internal class WorkshopViewModel : ViewModel() {
             }.onSuccess { details ->
                 detailsCache[details.cacheKey()] = details
                 uiState = uiState.copy(selected = details)
-                startDownloadAfterDependencyCheck(context, item, details)
+                startDownloadAfterDependencyCheck(context, details.summary, details)
             }.onFailure { error ->
                 uiState = uiState.copy(downloadStatus = context.getString(R.string.workshop_status_dependency_check_failed, error.message ?: error.javaClass.simpleName))
             }
@@ -769,20 +789,30 @@ internal class WorkshopViewModel : ViewModel() {
     }
 
     private fun restartDownload(context: Context, task: WorkshopDownloadTaskUi, message: String) {
+        restartDownload(context, task, message, preservePartialDownload = false)
+    }
+
+    private fun restartDownload(
+        context: Context,
+        task: WorkshopDownloadTaskUi,
+        message: String,
+        preservePartialDownload: Boolean,
+    ) {
         val details = task.details
         WorkshopDownloadCenterStore.upsert(
             task.copy(
                 status = WorkshopDownloadTaskStatus.Queued,
                 message = if (WorkshopDownloadCenterStore.hasRunningTask()) context.getString(R.string.workshop_status_added_to_queue) else message,
                 updatedAtMillis = System.currentTimeMillis(),
-                progressPercent = null,
-                downloadedBytes = 0L,
-                completedFiles = null,
-                completedChunks = null,
+                progressPercent = if (preservePartialDownload) task.progressPercent else null,
+                downloadedBytes = if (preservePartialDownload) task.downloadedBytes else 0L,
+                completedFiles = if (preservePartialDownload) task.completedFiles else null,
+                completedChunks = if (preservePartialDownload) task.completedChunks else null,
                 errorClass = "",
                 errorMessage = "",
                 errorStackTrace = "",
-                downloadLog = "",
+                downloadLog = if (preservePartialDownload) task.downloadLog else "",
+                preservePartialDownload = preservePartialDownload,
             )
         )
         metadataStore?.updateState(details.summary.appId, details.summary.publishedFileId, WorkshopModCardState.Downloading, context.getString(R.string.workshop_download_task_message_waiting))

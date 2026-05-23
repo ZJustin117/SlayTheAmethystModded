@@ -242,6 +242,8 @@ class WorkshopDownloadProcessService : Service() {
         val service = WorkshopService(applicationContext)
         val downloadKey = requireNotNull(intent.downloadKeyOrNull())
         val activeDownloadHeartbeat = startActiveDownloadHeartbeat(details.summary.publishedFileId, downloadKey)
+        val initialTask = taskStore.find(details.summary.publishedFileId)
+        val preservePartialDownload = initialTask?.shouldPreservePartialDownload() == true
         var existingRecord: WorkshopInstalledModRecord? = null
         try {
             val previousRecord = metadataStore.findByPublishedFileId(
@@ -272,7 +274,19 @@ class WorkshopDownloadProcessService : Service() {
                 )
             )
             taskStore.update(details.summary.publishedFileId) {
-                it.copy(status = WorkshopDownloadTaskStatus.Queued, message = queuedMessage, updatedAtMillis = System.currentTimeMillis())
+                it.copy(
+                    status = WorkshopDownloadTaskStatus.Queued,
+                    message = queuedMessage,
+                    updatedAtMillis = System.currentTimeMillis(),
+                    progressPercent = if (preservePartialDownload) it.progressPercent else null,
+                    downloadedBytes = if (preservePartialDownload) it.downloadedBytes else 0L,
+                    completedFiles = if (preservePartialDownload) it.completedFiles else null,
+                    completedChunks = if (preservePartialDownload) it.completedChunks else null,
+                    errorClass = "",
+                    errorMessage = "",
+                    errorStackTrace = "",
+                    preservePartialDownload = preservePartialDownload,
+                )
             }
             taskStore.appendLog(details.summary.publishedFileId, queuedMessage)
             sendProgress(receiver, queuedMessage, "Queued")
@@ -292,7 +306,11 @@ class WorkshopDownloadProcessService : Service() {
                 }
                 downloadPreviewImageInBackground(service, metadataStore, details)
                 val outputDir = File(applicationContext.filesDir, "workshop/${details.summary.appId}/${details.summary.publishedFileId}")
-                cleanDownloadedContent(outputDir)
+                if (preservePartialDownload) {
+                    taskStore.appendLog(details.summary.publishedFileId, "保留部分下载文件，尝试断点续传")
+                } else {
+                    cleanDownloadedContent(outputDir)
+                }
                 taskStore.appendLog(details.summary.publishedFileId, "输出目录：${outputDir.absolutePath}")
                 service.download(WorkshopDownloadRequest(details, outputDir)).collect { event ->
                     when (event) {
@@ -374,12 +392,13 @@ class WorkshopDownloadProcessService : Service() {
                                 }
                                 taskStore.update(details.summary.publishedFileId) {
                                     it.copy(
-                                        status = WorkshopDownloadTaskStatus.Completed,
+                                        status = WorkshopDownloadTaskStatus.Downloading,
                                         message = "下载完成，正在处理导入修补",
                                         progressPercent = 100,
                                         downloadedBytes = (it.totalBytes ?: it.downloadedBytes).coerceAtLeast(it.downloadedBytes),
                                         completedFiles = it.totalFiles ?: it.completedFiles,
                                         updatedAtMillis = System.currentTimeMillis(),
+                                        preservePartialDownload = false,
                                     )
                                 }
                                 taskStore.appendLog(details.summary.publishedFileId, "下载文件已落盘，进入导入修补阶段")
@@ -432,6 +451,7 @@ class WorkshopDownloadProcessService : Service() {
                                     message = message,
                                     progressPercent = 100,
                                     updatedAtMillis = System.currentTimeMillis(),
+                                    preservePartialDownload = false,
                                 )
                             }
                             taskStore.appendLog(details.summary.publishedFileId, message)
@@ -459,7 +479,12 @@ class WorkshopDownloadProcessService : Service() {
             when (requestedStops[downloadKey]) {
                 StopReason.Pause -> {
                     taskStore.update(details.summary.publishedFileId) {
-                        it.copy(status = WorkshopDownloadTaskStatus.Paused, message = "下载已暂停", updatedAtMillis = System.currentTimeMillis())
+                        it.copy(
+                            status = WorkshopDownloadTaskStatus.Paused,
+                            message = "下载已暂停",
+                            updatedAtMillis = System.currentTimeMillis(),
+                            preservePartialDownload = true,
+                        )
                     }
                     taskStore.appendLog(details.summary.publishedFileId, "下载已暂停")
                     restoreExistingRecordOrUpdateState(
@@ -477,7 +502,12 @@ class WorkshopDownloadProcessService : Service() {
                 StopReason.Cancel -> {
                     cleanOutput(details)
                     taskStore.update(details.summary.publishedFileId) {
-                        it.copy(status = WorkshopDownloadTaskStatus.Cancelled, message = "下载已取消", updatedAtMillis = System.currentTimeMillis())
+                        it.copy(
+                            status = WorkshopDownloadTaskStatus.Cancelled,
+                            message = "下载已取消",
+                            updatedAtMillis = System.currentTimeMillis(),
+                            preservePartialDownload = false,
+                        )
                     }
                     taskStore.appendLog(details.summary.publishedFileId, "下载已取消，已清理输出目录")
                     metadataStore.remove(details.summary.appId, details.summary.publishedFileId)
@@ -487,7 +517,6 @@ class WorkshopDownloadProcessService : Service() {
                     })
                 }
                 null -> {
-                    cleanOutput(details)
                     val error = throwable.message ?: throwable.javaClass.simpleName
                     taskStore.update(details.summary.publishedFileId) {
                         it.copy(
@@ -497,6 +526,7 @@ class WorkshopDownloadProcessService : Service() {
                             errorMessage = error,
                             errorStackTrace = throwable.stackTraceToString(),
                             updatedAtMillis = System.currentTimeMillis(),
+                            preservePartialDownload = true,
                         )
                     }
                     taskStore.appendLog(details.summary.publishedFileId, "下载失败：$error")
@@ -703,12 +733,13 @@ class WorkshopDownloadProcessService : Service() {
         metadataStore.upsert(service.createInstalledRecord(details, jarArtifact))
         taskStore.update(details.summary.publishedFileId) {
             it.copy(
-                status = WorkshopDownloadTaskStatus.Completed,
+                status = WorkshopDownloadTaskStatus.Downloading,
                 message = "下载完成，正在处理导入修补",
                 progressPercent = 100,
                 downloadedBytes = (it.totalBytes ?: it.downloadedBytes).coerceAtLeast(it.downloadedBytes),
                 completedFiles = it.totalFiles ?: it.completedFiles,
                 updatedAtMillis = System.currentTimeMillis(),
+                preservePartialDownload = false,
             )
         }
         taskStore.appendLog(details.summary.publishedFileId, "下载文件已落盘，进入导入修补阶段")
@@ -744,6 +775,12 @@ class WorkshopDownloadProcessService : Service() {
                 null
             }
         }
+    }
+
+    private fun WorkshopDownloadTaskRecord.shouldPreservePartialDownload(): Boolean {
+        if (preservePartialDownload) return true
+        if (status == WorkshopDownloadTaskStatus.Paused) return true
+        return status == WorkshopDownloadTaskStatus.Failed && downloadedBytes > 0L
     }
 
     private fun cleanDownloadedContent(outputDir: File) {

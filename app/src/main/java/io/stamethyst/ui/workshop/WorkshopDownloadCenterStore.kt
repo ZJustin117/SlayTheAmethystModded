@@ -135,6 +135,7 @@ internal data class WorkshopDownloadTaskUi(
     val errorMessage: String = "",
     val errorStackTrace: String = "",
     val downloadLog: String = "",
+    val preservePartialDownload: Boolean = false,
 )
 
 private fun WorkshopDownloadTaskRecord.toUi(context: Context?): WorkshopDownloadTaskUi {
@@ -174,6 +175,7 @@ private fun WorkshopDownloadTaskRecord.toUi(context: Context?): WorkshopDownload
         errorMessage = errorMessage,
         errorStackTrace = errorStackTrace,
         downloadLog = downloadLog,
+        preservePartialDownload = preservePartialDownload,
     )
 }
 
@@ -199,4 +201,5 @@ internal fun WorkshopDownloadTaskUi.toRecord(): WorkshopDownloadTaskRecord = Wor
     errorMessage = errorMessage,
     errorStackTrace = errorStackTrace,
     downloadLog = downloadLog,
+    preservePartialDownload = preservePartialDownload,
 )

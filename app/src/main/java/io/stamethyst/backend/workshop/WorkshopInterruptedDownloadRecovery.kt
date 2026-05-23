@@ -104,7 +104,7 @@ internal object WorkshopInterruptedDownloadRecovery {
         val completed = completedFiles
         val total = totalFiles
         if (completed != null && total != null && total > 0 && completed >= total) return true
-        if (!details.fileUrl.isNullOrBlank() && (progressPercent ?: 0) >= 100) return true
+        if ((progressPercent ?: 0) >= 100) return true
         val totalDownloadedBytes = totalBytes
         return !details.fileUrl.isNullOrBlank() &&
             totalDownloadedBytes != null &&

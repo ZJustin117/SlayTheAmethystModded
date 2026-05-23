@@ -1957,6 +1957,12 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="workshop_action_login_steam">Sign in to Steam</string>
     <string name="workshop_search_placeholder">Search mods</string>
     <string name="workshop_search_action">Search</string>
+    <string name="workshop_download_by_id_action">Download by ID</string>
+    <string name="workshop_download_by_id_title">Download Workshop mod by ID</string>
+    <string name="workshop_download_by_id_label">Workshop ID</string>
+    <string name="workshop_download_by_id_placeholder">For example: 1605060445</string>
+    <string name="workshop_download_by_id_invalid">Enter a valid Workshop ID.</string>
+    <string name="workshop_download_by_id_confirm">Open details</string>
     <string name="workshop_preview_content_description">%1$s preview image</string>
     <string name="workshop_open_detail_hint">Tap to view details</string>
     <string name="workshop_rating_score_format">%1$d/%2$d</string>

@@ -417,9 +417,8 @@ internal object ModImportPlanner {
 
     private fun buildExistingDuplicateSources(context: Context): Map<String, List<ExistingDuplicateImportSource>> {
         val result = LinkedHashMap<String, MutableList<ExistingDuplicateImportSource>>()
-        val activity = context as? android.app.Activity
-        val folderStateStore = activity?.let { MainFolderStateStore().apply { ensureLoaded(it) } }
-        val validFolderIds = folderStateStore?.folders?.map { it.id }?.toHashSet().orEmpty()
+        val folderStateStore = MainFolderStateStore().apply { ensureLoaded(context) }
+        val validFolderIds = folderStateStore.folders.map { it.id }.toHashSet()
         ModManager.listInstalledMods(context).forEach { mod ->
             if (mod.required || !mod.jarFile.isFile) {
                 return@forEach
@@ -430,15 +429,11 @@ internal object ModImportPlanner {
             if (modId.isEmpty()) {
                 return@forEach
             }
-            val assignedFolderId = if (folderStateStore != null) {
-                resolveAssignedFolderId(
-                    mod = mod.toModItemUi(mod.jarFile.absolutePath),
-                    folderAssignments = folderStateStore.assignments,
-                    validFolderIds = validFolderIds
-                )
-            } else {
-                null
-            }
+            val assignedFolderId = resolveAssignedFolderId(
+                mod = mod.toModItemUi(mod.jarFile.absolutePath),
+                folderAssignments = folderStateStore.assignments,
+                validFolderIds = validFolderIds
+            )
             result.getOrPut(modId) { ArrayList() }.add(
                 ExistingDuplicateImportSource(
                     storagePath = mod.jarFile.absolutePath,

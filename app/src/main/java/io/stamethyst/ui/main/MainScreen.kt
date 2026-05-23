@@ -1404,7 +1404,7 @@ private fun LauncherMainScreenContent(
                         var modsContentMountReady by remember { mutableStateOf(false) }
                         val measuredModsHeaderHeight = with(density) { modsHeaderHeightPx.toDp() }
                         val modsHeaderContentTopInset =
-                            (if (modsHeaderHeightPx == 0) 232.dp else measuredModsHeaderHeight) + 14.dp
+                            (if (modsHeaderHeightPx == 0) 232.dp else measuredModsHeaderHeight) - 20.dp
 
                         LaunchedEffect(Unit) {
                             delay(MODS_CONTENT_MOUNT_DELAY_MS)

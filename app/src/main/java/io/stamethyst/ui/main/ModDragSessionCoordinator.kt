@@ -136,12 +136,14 @@ internal class ModDragSessionCoordinator(
     private fun findExactFolderAt(position: Offset, ignoreFolderId: String? = null): String? {
         val viewport = interactionState.listViewportInWindow ?: return null
         val pointerY = position.y
-        return interactionState.listState.layoutInfo.visibleItemsInfo.firstNotNullOfOrNull { itemInfo ->
+        val layoutInfo = interactionState.listState.layoutInfo
+        val viewportStartOffset = layoutInfo.viewportStartOffset
+        return layoutInfo.visibleItemsInfo.firstNotNullOfOrNull { itemInfo ->
             val folderToken = resolveFolderTokenFromItemKey(itemInfo.key) ?: return@firstNotNullOfOrNull null
             if (folderToken == ignoreFolderId) {
                 return@firstNotNullOfOrNull null
             }
-            val top = viewport.top + itemInfo.offset
+            val top = viewport.top + itemInfo.offset - viewportStartOffset
             val bottom = top + itemInfo.size
             if (pointerY in top..bottom) folderToken else null
         }
@@ -154,13 +156,15 @@ internal class ModDragSessionCoordinator(
         }
         val viewport = interactionState.listViewportInWindow ?: return null
         val pointerY = position.y
+        val layoutInfo = interactionState.listState.layoutInfo
+        val viewportStartOffset = layoutInfo.viewportStartOffset
 
-        val candidates = interactionState.listState.layoutInfo.visibleItemsInfo.mapNotNull { itemInfo ->
+        val candidates = layoutInfo.visibleItemsInfo.mapNotNull { itemInfo ->
             val folderToken = resolveFolderTokenFromItemKey(itemInfo.key) ?: return@mapNotNull null
             if (folderToken == ignoreFolderId) {
                 return@mapNotNull null
             }
-            val top = viewport.top + itemInfo.offset
+            val top = viewport.top + itemInfo.offset - viewportStartOffset
             val bottom = top + itemInfo.size
             folderToken to ((top + bottom) / 2f)
         }

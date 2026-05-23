@@ -18,6 +18,7 @@ import io.stamethyst.backend.mods.importing.patches.ImportPatchRegistry
 import io.stamethyst.backend.mods.importing.patches.JacketNoAnoKoImportPatchModule
 import io.stamethyst.backend.mods.importing.patches.ManifestRootPatchModule
 import io.stamethyst.backend.mods.importing.patches.VupShionImportPatchModule
+import io.stamethyst.ui.main.MainFolderAssignmentHandoffStore
 import io.stamethyst.ui.main.MainFolderStateStore
 import io.stamethyst.ui.main.NewlyImportedModHighlightStore
 import io.stamethyst.ui.main.resolveModStoragePathCandidates
@@ -246,6 +247,14 @@ internal object ModImportExecutor {
             } else {
                 clearFolderDecision(context, targetPath)
             }
+            if (!hasExplicitFolderDecision && replaceExisting && decisions.reusePreviousFolderOnReplace) {
+                enqueueDuplicateFolderReuseHandoff(
+                    context = context,
+                    targetPath = targetPath,
+                    reuse = reuse,
+                    normalizedModId = item.normalizedModId
+                )
+            }
             progress.step(
                 item = item,
                 message = context.getString(R.string.mod_import_progress_write_metadata, item.source.displayName)
@@ -303,6 +312,24 @@ internal object ModImportExecutor {
                 message = error.message ?: error.javaClass.simpleName
             )
         }
+    }
+
+    private fun enqueueDuplicateFolderReuseHandoff(
+        context: Context,
+        targetPath: String,
+        reuse: DuplicateReusePlan,
+        normalizedModId: String
+    ) {
+        if (reuse.sourceStoragePaths.isEmpty() && reuse.assignedFolderId.isNullOrBlank()) {
+            return
+        }
+        MainFolderAssignmentHandoffStore.enqueueDuplicateFolderReuse(
+            context = context,
+            targetStoragePath = targetPath,
+            folderId = reuse.assignedFolderId.orEmpty(),
+            sourceStoragePaths = reuse.sourceStoragePaths,
+            normalizedModId = normalizedModId
+        )
     }
 
     private fun countItemSteps(
@@ -364,12 +391,11 @@ internal object ModImportExecutor {
         sourceStoragePaths: Collection<String> = emptyList(),
         normalizedModId: String = ""
     ) {
-        val activity = context as? android.app.Activity ?: return
         val normalizedFolderId = folderId?.trim().orEmpty()
         if (normalizedFolderId.isEmpty()) {
             return
         }
-        val store = MainFolderStateStore().apply { ensureLoaded(activity) }
+        val store = MainFolderStateStore().apply { ensureLoaded(context) }
         if (store.folders.none { it.id == normalizedFolderId }) {
             return
         }
@@ -383,12 +409,20 @@ internal object ModImportExecutor {
             store.assignments.remove(normalizedKey)
         }
         store.assignments[storagePath] = normalizedFolderId
-        store.persist(activity)
+        store.persist(context, synchronous = true)
+        if (sourceStoragePaths.isNotEmpty() || normalizedModId.isNotBlank()) {
+            MainFolderAssignmentHandoffStore.enqueueDuplicateFolderReuse(
+                context = context,
+                targetStoragePath = storagePath,
+                folderId = normalizedFolderId,
+                sourceStoragePaths = sourceStoragePaths,
+                normalizedModId = normalizedModId
+            )
+        }
     }
 
     private fun clearFolderDecision(context: Context, storagePath: String) {
-        val activity = context as? android.app.Activity ?: return
-        val store = MainFolderStateStore().apply { ensureLoaded(activity) }
+        val store = MainFolderStateStore().apply { ensureLoaded(context) }
         var changed = false
         resolveModStoragePathCandidates(storagePath).forEach { candidate ->
             if (store.assignments.remove(candidate) != null) {
@@ -397,7 +431,7 @@ internal object ModImportExecutor {
         }
         store.unassignedIsCollapsed = false
         if (changed) {
-            store.persist(activity)
+            store.persist(context, synchronous = true)
         }
     }
 

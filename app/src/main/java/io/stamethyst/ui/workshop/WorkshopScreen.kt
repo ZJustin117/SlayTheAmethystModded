@@ -3,6 +3,7 @@
 package io.stamethyst.ui.workshop
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -27,6 +28,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Surface
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
@@ -43,6 +45,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
@@ -76,6 +79,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -223,6 +227,9 @@ internal fun WorkshopScreen(
                             timeFilter = timeFilter,
                             onQueryChange = { query = it },
                             onSearch = ::searchWithPopularAllTime,
+                            onOpenDetailsById = { publishedFileId ->
+                                onOpenDetails(publishedFileId.toWorkshopItemSummary(context))
+                            },
                             onSortChange = { selectedSort ->
                                 sort = selectedSort
                                 viewModel.search(context.applicationContext, query, selectedSort, timeFilter)
@@ -369,6 +376,9 @@ internal fun WorkshopScreen(
                             timeFilter = timeFilter,
                             onQueryChange = { query = it },
                             onSearch = ::searchWithPopularAllTime,
+                            onOpenDetailsById = { publishedFileId ->
+                                onOpenDetails(publishedFileId.toWorkshopItemSummary(context))
+                            },
                             onSortChange = { selectedSort ->
                                 sort = selectedSort
                                 viewModel.search(context.applicationContext, query, selectedSort, timeFilter)
@@ -668,6 +678,7 @@ private fun SearchPanel(
     timeFilter: WorkshopBrowseTimeFilter,
     onQueryChange: (String) -> Unit,
     onSearch: () -> Unit,
+    onOpenDetailsById: (ULong) -> Unit,
     onSortChange: (WorkshopBrowseSort) -> Unit,
     onTimeFilterChange: (WorkshopBrowseTimeFilter) -> Unit,
     contained: Boolean = true,
@@ -675,9 +686,24 @@ private fun SearchPanel(
     val keyboardController = LocalSoftwareKeyboardController.current
     var sortMenuExpanded by remember { mutableStateOf(false) }
     var timeMenuExpanded by remember { mutableStateOf(false) }
+    var openDetailsByIdDialogVisible by rememberSaveable { mutableStateOf(false) }
+    var openDetailsByIdText by rememberSaveable { mutableStateOf("") }
+    var openDetailsByIdError by rememberSaveable { mutableStateOf<String?>(null) }
+    val invalidWorkshopIdMessage = stringResource(R.string.workshop_download_by_id_invalid)
     fun submitSearch() {
         keyboardController?.hide()
         onSearch()
+    }
+    fun submitOpenDetailsById() {
+        val publishedFileId = parseWorkshopPublishedFileId(openDetailsByIdText)
+        if (publishedFileId == null) {
+            openDetailsByIdError = invalidWorkshopIdMessage
+            return
+        }
+        keyboardController?.hide()
+        openDetailsByIdError = null
+        openDetailsByIdDialogVisible = false
+        onOpenDetailsById(publishedFileId)
     }
 
     if (contained) {
@@ -692,6 +718,7 @@ private fun SearchPanel(
                 timeMenuExpanded = timeMenuExpanded,
                 onQueryChange = onQueryChange,
                 onSearch = ::submitSearch,
+                onOpenDetailsByIdClick = { openDetailsByIdDialogVisible = true },
                 onSortMenuExpandedChange = { sortMenuExpanded = it },
                 onTimeMenuExpandedChange = { timeMenuExpanded = it },
                 onSortChange = onSortChange,
@@ -709,10 +736,27 @@ private fun SearchPanel(
             timeMenuExpanded = timeMenuExpanded,
             onQueryChange = onQueryChange,
             onSearch = ::submitSearch,
+            onOpenDetailsByIdClick = { openDetailsByIdDialogVisible = true },
             onSortMenuExpandedChange = { sortMenuExpanded = it },
             onTimeMenuExpandedChange = { timeMenuExpanded = it },
             onSortChange = onSortChange,
             onTimeFilterChange = onTimeFilterChange,
+        )
+    }
+
+    if (openDetailsByIdDialogVisible) {
+        WorkshopOpenDetailsByIdDialog(
+            workshopId = openDetailsByIdText,
+            errorMessage = openDetailsByIdError,
+            onWorkshopIdChange = {
+                openDetailsByIdText = it
+                openDetailsByIdError = null
+            },
+            onDismiss = {
+                openDetailsByIdDialogVisible = false
+                openDetailsByIdError = null
+            },
+            onConfirm = ::submitOpenDetailsById,
         )
     }
 }
@@ -728,6 +772,7 @@ private fun SearchPanelContent(
     timeMenuExpanded: Boolean,
     onQueryChange: (String) -> Unit,
     onSearch: () -> Unit,
+    onOpenDetailsByIdClick: () -> Unit,
     onSortMenuExpandedChange: (Boolean) -> Unit,
     onTimeMenuExpandedChange: (Boolean) -> Unit,
     onSortChange: (WorkshopBrowseSort) -> Unit,
@@ -811,8 +856,49 @@ private fun SearchPanelContent(
                     }
                 }
             }
+            TextButton(onClick = onOpenDetailsByIdClick) {
+                Text(stringResource(R.string.workshop_download_by_id_action))
+            }
         }
     }
+}
+
+@Composable
+private fun WorkshopOpenDetailsByIdDialog(
+    workshopId: String,
+    errorMessage: String?,
+    onWorkshopIdChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.workshop_download_by_id_title)) },
+        text = {
+            OutlinedTextField(
+                value = workshopId,
+                onValueChange = onWorkshopIdChange,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(stringResource(R.string.workshop_download_by_id_label)) },
+                placeholder = { Text(stringResource(R.string.workshop_download_by_id_placeholder)) },
+                singleLine = true,
+                isError = errorMessage != null,
+                supportingText = {
+                    if (errorMessage != null) {
+                        Text(errorMessage)
+                    }
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            )
+        },
+        confirmButton = {
+            Button(
+                enabled = workshopId.isNotBlank(),
+                onClick = onConfirm,
+            ) { Text(stringResource(R.string.workshop_download_by_id_confirm)) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.main_folder_dialog_cancel)) } },
+    )
 }
 
 @Composable
@@ -1133,6 +1219,26 @@ private fun LoadingPanel(
         }
     }
 }
+
+private fun parseWorkshopPublishedFileId(input: String): ULong? {
+    val trimmed = input.trim()
+    trimmed.toULongOrNull()?.takeIf { it > 0uL }?.let { return it }
+    return Regex("""(?:^|[?&])id=(\d+)""").find(trimmed)
+        ?.groupValues
+        ?.getOrNull(1)
+        ?.toULongOrNull()
+        ?.takeIf { it > 0uL }
+}
+
+private fun ULong.toWorkshopItemSummary(context: Context): WorkshopItemSummary = WorkshopItemSummary(
+    publishedFileId = this,
+    appId = SLAY_THE_SPIRE_WORKSHOP_APP_ID,
+    title = context.getString(R.string.workshop_dependency_fallback_title, toString()),
+    previewUrl = "",
+    description = "",
+)
+
+private val SLAY_THE_SPIRE_WORKSHOP_APP_ID = 646570u
 
 @Composable
 private fun SectionTitle(title: String, subtitle: String) {

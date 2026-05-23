@@ -283,6 +283,9 @@ fun LauncherContent(
             if (currentRoute == Route.Main) {
                 onMainScreenOpened()
             }
+            if (currentRoute == Route.Mods) {
+                mainViewModel.refresh(activity)
+            }
         }
         LaunchedEffect(activity, transientNoticeHostState) {
             LauncherTransientNoticeBus.requests.collect { request ->

@@ -43,6 +43,7 @@ data class WorkshopDownloadTaskRecord(
     val errorMessage: String = "",
     val errorStackTrace: String = "",
     val downloadLog: String = "",
+    val preservePartialDownload: Boolean = false,
 )
 
 class WorkshopDownloadTaskStore(context: Context) {
@@ -105,7 +106,11 @@ class WorkshopDownloadTaskStore(context: Context) {
         val recovered = ArrayList<WorkshopDownloadTaskRecord>()
         val tasks = load().map { task ->
             if ((task.status.isRunningDownload() || task.status.isStoppingDownload()) && shouldRecover(task)) {
-                task.copy(status = WorkshopDownloadTaskStatus.Paused, message = "下载已暂停，可继续").also(recovered::add)
+                task.copy(
+                    status = WorkshopDownloadTaskStatus.Paused,
+                    message = "下载已暂停，可继续",
+                    preservePartialDownload = true,
+                ).also(recovered::add)
             } else {
                 task
             }
@@ -189,6 +194,7 @@ private fun WorkshopDownloadTaskRecord.toJson(): JSONObject = JSONObject()
     .put("errorMessage", errorMessage)
     .put("errorStackTrace", errorStackTrace)
     .put("downloadLog", downloadLog)
+    .put("preservePartialDownload", preservePartialDownload)
     .put("appId", details.summary.appId.toString())
     .put("updatedAtMillisRemote", details.summary.updatedAtMillis)
     .put("downloadCount", details.summary.downloadCount)
@@ -241,6 +247,7 @@ private fun JSONObject.toTask(): WorkshopDownloadTaskRecord {
         errorMessage = optString("errorMessage"),
         errorStackTrace = optString("errorStackTrace"),
         downloadLog = optString("downloadLog"),
+        preservePartialDownload = optBoolean("preservePartialDownload", false),
     )
 }
 
