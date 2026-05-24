@@ -65,16 +65,60 @@ internal object ModImportPlanner {
         "application/x-zstd"
     )
 
-    fun plan(context: Context, uris: List<Uri>): ModImportPlan {
+    fun plan(
+        context: Context,
+        uris: List<Uri>,
+        options: ModImportPlanningOptions = ModImportPlanningOptions(),
+        onProgress: (ModImportPlanningProgress) -> Unit = {},
+    ): ModImportPlan {
         val session = createSession(context)
+        val progress = PlanningProgressReporter(
+            totalSteps = uris.size * (1 + PLANNING_INSPECTION_STEPS_PER_SOURCE) + 1,
+            onProgress = onProgress
+        )
         try {
             val preparedSources = uris.mapIndexed { index, uri ->
-                prepareSource(context, session, index, uri)
+                prepareSource(context, session, index, uri, progress)
             }
             val plannedItems = preparedSources.map { source ->
-                inspectSource(context, source)
+                inspectSource(context, session, source, options, progress)
             }
-            return applyDuplicateConflicts(context, session, plannedItems)
+            return progress.runStep("正在检查已安装模组冲突", "") {
+                applyDuplicateConflicts(context, session, plannedItems)
+            }
+        } catch (error: Throwable) {
+            cleanup(session)
+            throw error
+        }
+    }
+
+    fun planLocalFiles(
+        context: Context,
+        files: List<File>,
+        options: ModImportPlanningOptions = ModImportPlanningOptions(),
+        onProgress: (ModImportPlanningProgress) -> Unit = {},
+    ): ModImportPlan {
+        val session = createSession(context)
+        val progress = PlanningProgressReporter(
+            totalSteps = files.size * PLANNING_INSPECTION_STEPS_PER_SOURCE + 1,
+            onProgress = onProgress
+        )
+        try {
+            val preparedSources = files.mapIndexed { index, file ->
+                PreparedImportSource(
+                    index = index,
+                    uri = null,
+                    displayName = file.name.ifBlank { "unknown.jar" },
+                    mimeType = null,
+                    file = file
+                )
+            }
+            val plannedItems = preparedSources.map { source ->
+                inspectSource(context, session, source, options, progress)
+            }
+            return progress.runStep("正在检查已安装模组冲突", "") {
+                applyDuplicateConflicts(context, session, plannedItems)
+            }
         } catch (error: Throwable) {
             cleanup(session)
             throw error
@@ -102,17 +146,20 @@ internal object ModImportPlanner {
         context: Context,
         session: ModImportSession,
         index: Int,
-        uri: Uri
+        uri: Uri,
+        progress: PlanningProgressReporter
     ): PreparedImportSource {
         val displayName = resolveDisplayName(context, uri)
         val mimeType = context.contentResolver.getType(uri)?.trim()?.takeIf { it.isNotEmpty() }
         val target = File(session.sessionDir, "source-$index.jar")
-        context.contentResolver.openInputStream(uri).use { input ->
-            if (input == null) {
-                throw IOException("Unable to open selected file")
-            }
-            FileOutputStream(target, false).use { output ->
-                input.copyTo(output)
+        progress.runStep("正在复制导入文件", displayName) {
+            context.contentResolver.openInputStream(uri).use { input ->
+                if (input == null) {
+                    throw IOException("Unable to open selected file")
+                }
+                FileOutputStream(target, false).use { output ->
+                    input.copyTo(output)
+                }
             }
         }
         return PreparedImportSource(
@@ -124,7 +171,13 @@ internal object ModImportPlanner {
         )
     }
 
-    private fun inspectSource(context: Context, source: PreparedImportSource): ModImportItemPlan {
+    private fun inspectSource(
+        context: Context,
+        session: ModImportSession,
+        source: PreparedImportSource,
+        options: ModImportPlanningOptions,
+        progress: PlanningProgressReporter
+    ): ModImportItemPlan {
         val itemId = "item-${source.index}"
         if (!shouldAttemptJarInspection(source.displayName, source.file)) {
             if (isLikelyCompressedArchive(source)) {
@@ -132,39 +185,48 @@ internal object ModImportPlanner {
                     itemId = itemId,
                     source = source,
                     reason = ModImportBlockingReason.CompressedArchive,
-                    detail = context.getString(R.string.mod_import_block_archive_detail)
+                    detail = context.importString(R.string.mod_import_block_archive_detail)
                 )
             }
             return blockedItem(
                 itemId = itemId,
                 source = source,
                 reason = ModImportBlockingReason.UnsupportedFile,
-                detail = context.getString(R.string.mod_import_block_unsupported_detail)
+                detail = context.importString(R.string.mod_import_block_unsupported_detail)
             )
         }
-        val inspectionFile = File(source.file.parentFile, "inspect-${source.index}.jar")
+        val inspectionFile = File(session.sessionDir, "inspect-${source.index}.jar")
         var activeInspectionFile = inspectionFile
+        var preparedFileToKeep: File? = null
         return try {
-            copyFile(source.file, inspectionFile)
-            val normalizationResult = normalizeAndValidateInspectionJar(inspectionFile)
+            progress.runStepWithProgress("正在复制检查副本", source.displayName) { stepProgress ->
+                copyFile(source.file, inspectionFile, stepProgress)
+            }
+            val normalizationResult = progress.runStep("正在规范化 jar 结构", source.displayName) {
+                normalizeAndValidateInspectionJar(inspectionFile)
+            }
             if (normalizationResult.rewritten) {
-                activeInspectionFile = File(source.file.parentFile, "normalized-inspect-${source.index}.jar")
+                activeInspectionFile = File(session.sessionDir, "normalized-inspect-${source.index}.jar")
                 copyFile(inspectionFile, activeInspectionFile)
             }
             val duplicatePlan = buildDuplicateZipPlan(
                 context = context,
                 result = normalizationResult
             )
-            val manifestRootPlan = runManifestRootPlan(context, activeInspectionFile)
-            val manifest = try {
-                ModJarSupport.readModManifest(activeInspectionFile)
-            } catch (error: Throwable) {
+            val manifestRootPatch = progress.runStep("正在检查嵌套 manifest", source.displayName) {
+                runManifestRootPlan(context, activeInspectionFile)
+            }
+            val manifestRootPlan = manifestRootPatch?.plan
+            val manifestResult = progress.runStep("正在读取 ModTheSpire 清单", source.displayName) {
+                runCatching { ModJarSupport.readModManifest(activeInspectionFile) }
+            }
+            val manifest = manifestResult.getOrElse { error ->
                 if (isLikelyModTheSpireJar(activeInspectionFile)) {
                     return blockedItem(
                         itemId = itemId,
                         source = source,
                         reason = ModImportBlockingReason.ReservedCoreComponent,
-                        detail = context.getString(R.string.mod_import_block_modthespire_core_detail)
+                        detail = context.importString(R.string.mod_import_block_modthespire_core_detail)
                     )
                 }
                 if (isLikelyCompressedArchive(source)) {
@@ -172,14 +234,14 @@ internal object ModImportPlanner {
                         itemId = itemId,
                         source = source,
                         reason = ModImportBlockingReason.CompressedArchive,
-                        detail = context.getString(R.string.mod_import_block_archive_detail)
+                        detail = context.importString(R.string.mod_import_block_archive_detail)
                     )
                 }
                 return blockedItem(
                     itemId = itemId,
                     source = source,
                     reason = ModImportBlockingReason.MissingManifest,
-                    detail = error.message ?: context.getString(R.string.mod_import_block_manifest_read_failed)
+                    detail = error.message ?: context.importString(R.string.mod_import_block_manifest_read_failed)
                 )
             }
             val normalizedModId = ModManager.normalizeModId(manifest.normalizedModId)
@@ -188,7 +250,7 @@ internal object ModImportPlanner {
                     itemId = itemId,
                     source = source,
                     reason = ModImportBlockingReason.MissingModId,
-                    detail = context.getString(R.string.mod_import_block_missing_modid_detail)
+                    detail = context.importString(R.string.mod_import_block_missing_modid_detail)
                 )
             }
             val reservedComponent = resolveReservedComponent(normalizedModId)
@@ -197,14 +259,16 @@ internal object ModImportPlanner {
                     itemId = itemId,
                     source = source,
                     reason = ModImportBlockingReason.ReservedCoreComponent,
-                    detail = context.getString(R.string.mod_import_block_reserved_core_detail, reservedComponent),
+                    detail = context.importString(R.string.mod_import_block_reserved_core_detail, reservedComponent),
                     manifest = manifest,
                     normalizedModId = normalizedModId,
                     reservedComponent = reservedComponent
                 )
             }
 
-            val launchFailure = MtsLaunchManifestValidator.validateModJar(activeInspectionFile)
+            val launchFailure = progress.runStep("正在校验 ModTheSpire 启动清单", source.displayName) {
+                MtsLaunchManifestValidator.validateModJar(activeInspectionFile)
+            }
             if (launchFailure != null) {
                 return blockedItem(
                     itemId = itemId,
@@ -216,7 +280,15 @@ internal object ModImportPlanner {
                 )
             }
             val launchModId = MtsLaunchManifestValidator.resolveLaunchModId(activeInspectionFile).trim()
-            val atlasFilterPlan = runAtlasFilterPlan(context, activeInspectionFile)
+            val atlasFilterPatch = progress.runStep("正在预处理 atlas 过滤器兼容性", source.displayName) {
+                runAtlasFilterPlan(context, activeInspectionFile)
+            }
+            val atlasFilterPlan = atlasFilterPatch?.plan
+            val preparedPatchResults = listOfNotNull(
+                manifestRootPatch?.result,
+                atlasFilterPatch?.result,
+            )
+            val hasPreparedChanges = normalizationResult.rewritten || preparedPatchResults.any { it.applied }
             val baseItem = ModImportItemPlan(
                 id = itemId,
                 source = source,
@@ -225,22 +297,42 @@ internal object ModImportPlanner {
                 normalizedModId = normalizedModId,
                 launchModId = launchModId
             )
-            val patchPlans = buildPatchPlans(
-                context = context,
-                item = baseItem,
-                duplicatePlan = duplicatePlan,
-                manifestRootPlan = manifestRootPlan,
-                atlasFilterPlan = atlasFilterPlan,
-                inspectionFile = activeInspectionFile
+            val patchPlans = progress.runStep("正在生成导入补丁列表", source.displayName) {
+                buildPatchPlans(
+                    context = context,
+                    item = baseItem,
+                    duplicatePlan = duplicatePlan,
+                    manifestRootPlan = manifestRootPlan,
+                    atlasFilterPlan = atlasFilterPlan,
+                    inspectionFile = activeInspectionFile,
+                    options = options
+                )
+            }
+            val preparedImportFile = if (hasPreparedChanges) {
+                File(session.sessionDir, "prepared-${source.index}.jar").also { preparedFile ->
+                    if (preparedFile.exists() && !preparedFile.delete()) {
+                        throw IOException("Failed to clear stale prepared import file: ${preparedFile.absolutePath}")
+                    }
+                    if (!activeInspectionFile.renameTo(preparedFile)) {
+                        copyFile(activeInspectionFile, preparedFile)
+                    }
+                    preparedFileToKeep = preparedFile
+                }
+            } else {
+                null
+            }
+            baseItem.copy(
+                preparedImportFile = preparedImportFile,
+                preparedPatchResults = preparedPatchResults,
+                patchPlans = patchPlans,
             )
-            baseItem.copy(patchPlans = patchPlans)
         } catch (error: Throwable) {
             if (isLikelyCompressedArchive(source)) {
                 return blockedItem(
                     itemId = itemId,
                     source = source,
                     reason = ModImportBlockingReason.CompressedArchive,
-                    detail = context.getString(R.string.mod_import_block_archive_detail)
+                    detail = context.importString(R.string.mod_import_block_archive_detail)
                 )
             }
             blockedItem(
@@ -250,10 +342,10 @@ internal object ModImportPlanner {
                 detail = error.message ?: error.javaClass.simpleName
             )
         } finally {
-            if (inspectionFile.exists()) {
+            if (inspectionFile != preparedFileToKeep && inspectionFile.exists()) {
                 inspectionFile.delete()
             }
-            if (activeInspectionFile != inspectionFile && activeInspectionFile.exists()) {
+            if (activeInspectionFile != inspectionFile && activeInspectionFile != preparedFileToKeep && activeInspectionFile.exists()) {
                 activeInspectionFile.delete()
             }
         }
@@ -265,7 +357,8 @@ internal object ModImportPlanner {
         duplicatePlan: ImportPatchPlan?,
         manifestRootPlan: ImportPatchPlan?,
         atlasFilterPlan: ImportPatchPlan?,
-        inspectionFile: File
+        inspectionFile: File,
+        options: ModImportPlanningOptions
     ): List<ImportPatchPlan> {
         val plans = ArrayList<ImportPatchPlan>()
         duplicatePlan?.let { plans.add(it) }
@@ -277,6 +370,13 @@ internal object ModImportPlanner {
                 module.id == ManifestRootPatchModule.id ||
                 module.id == AtlasFilterPatchModule.id
             ) {
+                return@forEach
+            }
+            if (!options.includeUserConfigurablePatches && module.userConfigurable) {
+                return@forEach
+            }
+            if (options.deferUserConfigurablePatchInspection && module.userConfigurable) {
+                plans.add(module.basePlan(applicable = true))
                 return@forEach
             }
             val plan = module.plan(context, item, inspectionFile) ?: return@forEach
@@ -326,14 +426,14 @@ internal object ModImportPlanner {
         return DuplicateZipEntryPatchModule.basePlan(
             applicable = true,
             details = listOf(
-                context.getString(R.string.mod_import_patch_zip_entry_detail_total, result.totalEntries),
-                context.getString(R.string.mod_import_patch_zip_entry_detail_unique, result.uniqueEntries),
-                context.getString(R.string.mod_import_patch_zip_entry_detail_removed, result.duplicateEntriesRemoved)
+                context.importString(R.string.mod_import_patch_zip_entry_detail_total, result.totalEntries),
+                context.importString(R.string.mod_import_patch_zip_entry_detail_unique, result.uniqueEntries),
+                context.importString(R.string.mod_import_patch_zip_entry_detail_removed, result.duplicateEntriesRemoved)
             )
         )
     }
 
-    private fun runManifestRootPlan(context: Context, inspectionFile: File): ImportPatchPlan? {
+    private fun runManifestRootPlan(context: Context, inspectionFile: File): PreAppliedPatch? {
         if (!CompatibilitySettings.isModManifestRootCompatEnabled(context)) {
             return null
         }
@@ -341,16 +441,28 @@ internal object ModImportPlanner {
         if (!result.hasPatchedChanges) {
             return null
         }
-        return ManifestRootPatchModule.basePlan(
-            applicable = true,
-            details = listOf(
-                context.getString(R.string.mod_import_patch_manifest_root_detail_moved, result.patchedFileEntries),
-                context.getString(R.string.mod_import_patch_manifest_root_detail_prefix, result.sourceRootPrefix)
+        val details = listOf(
+            context.importString(R.string.mod_import_patch_manifest_root_detail_moved, result.patchedFileEntries),
+            context.importString(R.string.mod_import_patch_manifest_root_detail_prefix, result.sourceRootPrefix)
+        )
+        return PreAppliedPatch(
+            plan = ManifestRootPatchModule.basePlan(applicable = true, details = details),
+            result = ImportPatchResult(
+                moduleId = ManifestRootPatchModule.id,
+                moduleVersion = ManifestRootPatchModule.version,
+                displayNameResId = ManifestRootPatchModule.displayNameResId,
+                summaryResId = ManifestRootPatchModule.summaryResId,
+                displayName = context.importString(ManifestRootPatchModule.displayNameResId),
+                applied = true,
+                summary = context.importString(R.string.mod_import_patch_manifest_root_applied),
+                details = details,
+                metrics = mapOf("patchedFileEntries" to result.patchedFileEntries),
+                attributes = mapOf("sourceRootPrefix" to result.sourceRootPrefix)
             )
         )
     }
 
-    private fun runAtlasFilterPlan(context: Context, inspectionFile: File): ImportPatchPlan? {
+    private fun runAtlasFilterPlan(context: Context, inspectionFile: File): PreAppliedPatch? {
         if (!CompatibilitySettings.isGlobalAtlasFilterCompatEnabled(context)) {
             return null
         }
@@ -358,11 +470,25 @@ internal object ModImportPlanner {
         if (!result.hasPatchedChanges) {
             return null
         }
-        return AtlasFilterPatchModule.basePlan(
-            applicable = true,
-            details = listOf(
-                context.getString(R.string.mod_import_patch_atlas_filter_detail_files, result.patchedAtlasEntries),
-                context.getString(R.string.mod_import_patch_atlas_filter_detail_lines, result.patchedFilterLines)
+        val details = listOf(
+            context.importString(R.string.mod_import_patch_atlas_filter_detail_files, result.patchedAtlasEntries),
+            context.importString(R.string.mod_import_patch_atlas_filter_detail_lines, result.patchedFilterLines)
+        )
+        return PreAppliedPatch(
+            plan = AtlasFilterPatchModule.basePlan(applicable = true, details = details),
+            result = ImportPatchResult(
+                moduleId = AtlasFilterPatchModule.id,
+                moduleVersion = AtlasFilterPatchModule.version,
+                displayNameResId = AtlasFilterPatchModule.displayNameResId,
+                summaryResId = AtlasFilterPatchModule.summaryResId,
+                displayName = context.importString(AtlasFilterPatchModule.displayNameResId),
+                applied = true,
+                summary = context.importString(R.string.mod_import_patch_atlas_filter_applied),
+                details = details,
+                metrics = mapOf(
+                    "patchedAtlasEntries" to result.patchedAtlasEntries,
+                    "patchedFilterLines" to result.patchedFilterLines,
+                )
             )
         )
     }
@@ -540,11 +666,86 @@ internal object ModImportPlanner {
         }
     }
 
-    private fun copyFile(source: File, target: File) {
+    private fun copyFile(source: File, target: File, onProgressPercent: (Int) -> Unit = {}) {
+        val totalBytes = source.length().takeIf { it > 0L }
+        var copiedBytes = 0L
+        var lastEmittedPercent = -1
         source.inputStream().use { input ->
             FileOutputStream(target, false).use { output ->
-                input.copyTo(output)
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    output.write(buffer, 0, read)
+                    copiedBytes += read.toLong()
+                    val percent = totalBytes?.let { total ->
+                        ((copiedBytes.coerceAtMost(total) * 100L) / total).toInt().coerceIn(0, 100)
+                    } ?: continue
+                    if (percent == 100 || percent >= lastEmittedPercent + COPY_PROGRESS_PERCENT_STEP) {
+                        onProgressPercent(percent)
+                        lastEmittedPercent = percent
+                    }
+                }
             }
         }
     }
+
+    private class PlanningProgressReporter(
+        private val totalSteps: Int,
+        private val onProgress: (ModImportPlanningProgress) -> Unit,
+    ) {
+        private var completedSteps: Int = 0
+
+        fun runStep(message: String, currentFileName: String) {
+            runStep(message, currentFileName) { }
+        }
+
+        fun <T> runStep(message: String, currentFileName: String, block: () -> T): T {
+            emit(message, currentFileName, 0)
+            val result = block()
+            completedSteps = (completedSteps + 1).coerceAtMost(totalSteps)
+            emit(message, currentFileName, 100)
+            return result
+        }
+
+        fun <T> runStepWithProgress(
+            message: String,
+            currentFileName: String,
+            block: ((Int) -> Unit) -> T
+        ): T {
+            emit(message, currentFileName, 0)
+            val result = block { stepPercent -> emit(message, currentFileName, stepPercent) }
+            completedSteps = (completedSteps + 1).coerceAtMost(totalSteps)
+            emit(message, currentFileName, 100)
+            return result
+        }
+
+        private fun emit(message: String, currentFileName: String, stepPercent: Int) {
+            val percent = if (totalSteps <= 0) {
+                0
+            } else {
+                val rawProgress = (completedSteps * 100L) + stepPercent.coerceIn(0, 100)
+                ((rawProgress + totalSteps - 1) / totalSteps)
+                    .toInt()
+                    .coerceIn(0, 100)
+            }
+            onProgress(
+                ModImportPlanningProgress(
+                    currentStep = completedSteps,
+                    totalSteps = totalSteps,
+                    currentFileName = currentFileName,
+                    message = message,
+                    percent = percent,
+                )
+            )
+        }
+    }
+
+    private data class PreAppliedPatch(
+        val plan: ImportPatchPlan,
+        val result: ImportPatchResult,
+    )
+
+    private const val PLANNING_INSPECTION_STEPS_PER_SOURCE = 7
+    private const val COPY_PROGRESS_PERCENT_STEP = 1
 }

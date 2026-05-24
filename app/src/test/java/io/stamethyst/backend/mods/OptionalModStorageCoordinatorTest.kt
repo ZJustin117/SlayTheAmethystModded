@@ -102,7 +102,7 @@ class OptionalModStorageCoordinatorTest {
     }
 
     @Test
-    fun ensureOptionalModLibraryReady_removesInterruptedImportTargetAndMarker() {
+    fun ensureOptionalModLibraryReady_keepsCommittedImportTargetWhenMarkerStale() {
         val roots = TestRoots.create("optional-mod-storage-interrupted-import-test")
         val libraryDir = RuntimePaths.optionalModsLibraryDir(roots.context).apply { mkdirs() }
         val target = Files.write(libraryDir.toPath().resolve("HalfImported.jar"), byteArrayOf(1, 2, 3)).toFile()
@@ -112,7 +112,7 @@ class OptionalModStorageCoordinatorTest {
 
         OptionalModStorageCoordinator.ensureOptionalModLibraryReady(roots.context)
 
-        assertFalse(target.exists())
+        assertTrue(target.exists())
         assertFalse(marker.exists())
         assertFalse(scratch.exists())
     }

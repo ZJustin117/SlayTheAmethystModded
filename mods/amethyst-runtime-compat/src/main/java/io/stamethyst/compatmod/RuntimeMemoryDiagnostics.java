@@ -17,21 +17,19 @@ public final class RuntimeMemoryDiagnostics {
     private static final String MENU_TEXTURE_WINDOW_LABEL = "menu_cycle";
     private static final String MODDED_OPTIONS_TEXTURE_WINDOW_LABEL = "modded_options_build";
     private static final String CHARACTER_RECREATE_TEXTURE_WINDOW_PREFIX = "recreate_character";
-    private static final String MENU_DIAG_PROP = "amethyst.runtime_compat.menu_diag";
     private static final String MENU_DIAG_VERBOSE_PROP = "amethyst.runtime_compat.menu_diag_verbose";
     private static final String MENU_DIAG_HOTSPOTS_PROP = "amethyst.runtime_compat.menu_diag_hotspots";
     private static final String GPU_RESOURCE_DIAG_PROP = "amethyst.gdx.gpu_resource_diag";
     private static final String FBO_MANAGER_PROP = "amethyst.gdx.fbo_manager";
-    private static final boolean MENU_DIAG_ENABLED =
-        readBooleanSystemProperty(MENU_DIAG_PROP, true);
-    private static final boolean MENU_DIAG_VERBOSE_ENABLED =
-        readBooleanSystemProperty(MENU_DIAG_VERBOSE_PROP, false);
     private static final boolean GPU_RESOURCE_DIAG_ENABLED =
         readBooleanSystemProperty(GPU_RESOURCE_DIAG_PROP, false);
+    private static final boolean MENU_DIAG_ENABLED = GPU_RESOURCE_DIAG_ENABLED;
+    private static final boolean MENU_DIAG_VERBOSE_ENABLED =
+        GPU_RESOURCE_DIAG_ENABLED && readBooleanSystemProperty(MENU_DIAG_VERBOSE_PROP, false);
     private static final boolean FBO_MANAGER_ENABLED =
         readBooleanSystemProperty(FBO_MANAGER_PROP, true);
     private static final boolean MENU_DIAG_HOTSPOTS_ENABLED =
-        readBooleanSystemProperty(MENU_DIAG_HOTSPOTS_PROP, MENU_DIAG_ENABLED);
+        GPU_RESOURCE_DIAG_ENABLED && readBooleanSystemProperty(MENU_DIAG_HOTSPOTS_PROP, true);
     private static long mainMenuConstructorStartNs = -1L;
     private static long characterSelectInitializeStartNs = -1L;
     private static CardCrawlGame.GameMode lastMode;
@@ -62,6 +60,9 @@ public final class RuntimeMemoryDiagnostics {
     }
 
     public static void logStartupConfiguration() {
+        if (!GPU_RESOURCE_DIAG_ENABLED) {
+            return;
+        }
         synchronized (RuntimeMemoryDiagnostics.class) {
             if (startupConfigurationLogged) {
                 return;
@@ -436,6 +437,9 @@ public final class RuntimeMemoryDiagnostics {
     }
 
     private static void beginTextureDebugWindow(String label) {
+        if (!GPU_RESOURCE_DIAG_ENABLED) {
+            return;
+        }
         ensureGpuSummaryMethods();
         if (glTextureBeginDebugWindowMethod == null || label == null || label.length() == 0) {
             return;
@@ -452,6 +456,9 @@ public final class RuntimeMemoryDiagnostics {
     }
 
     private static String finishTextureDebugWindowSummary(String label) {
+        if (!GPU_RESOURCE_DIAG_ENABLED) {
+            return null;
+        }
         ensureGpuSummaryMethods();
         if (glTextureFinishDebugWindowMethod == null || label == null || label.length() == 0) {
             return null;
@@ -755,6 +762,9 @@ public final class RuntimeMemoryDiagnostics {
     }
 
     private static void ensureGpuSummaryMethods() {
+        if (!GPU_RESOURCE_DIAG_ENABLED) {
+            return;
+        }
         synchronized (RuntimeMemoryDiagnostics.class) {
             if (gpuSummaryMethodsResolved) {
                 return;
@@ -834,7 +844,7 @@ public final class RuntimeMemoryDiagnostics {
             return result instanceof String ? (String) result : fallback;
         } catch (Throwable error) {
             synchronized (RuntimeMemoryDiagnostics.class) {
-                if (!gpuSummaryInvokeFailureLogged) {
+                if (GPU_RESOURCE_DIAG_ENABLED && !gpuSummaryInvokeFailureLogged) {
                     gpuSummaryInvokeFailureLogged = true;
                     System.out.println(
                         "[amethyst-runtime-diag] gpu_summary_invoke_failed reason="
@@ -854,7 +864,7 @@ public final class RuntimeMemoryDiagnostics {
             method.invoke(null, args);
         } catch (Throwable error) {
             synchronized (RuntimeMemoryDiagnostics.class) {
-                if (!gpuSummaryInvokeFailureLogged) {
+                if (GPU_RESOURCE_DIAG_ENABLED && !gpuSummaryInvokeFailureLogged) {
                     gpuSummaryInvokeFailureLogged = true;
                     System.out.println(
                         "[amethyst-runtime-diag] gpu_summary_invoke_failed reason="

@@ -6,11 +6,14 @@ import top.apricityx.workshop.steam.protocol.SteamCmSession
 import top.apricityx.workshop.steam.protocol.SteamContentClient
 import top.apricityx.workshop.steam.protocol.SteamDirectoryClient
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
@@ -188,6 +191,7 @@ class UgcWorkshopDownloader(
         var lastError: Throwable? = null
         for (server in contentServers) {
             try {
+                currentCoroutineContext().ensureActive()
                 log("Trying manifest download from ${server.host}")
                 val path = buildString {
                     append("depot/${item.depotId}/manifest/${item.manifestId}/5")
@@ -208,6 +212,7 @@ class UgcWorkshopDownloader(
                 )
                 return DepotManifestParser.parse(unzipSingleEntry(bytes))
             } catch (error: Throwable) {
+                if (error is CancellationException || error is InterruptedException) throw error
                 lastError = error
                 log("Manifest download failed from ${server.host}: ${error.message}")
             }
@@ -239,6 +244,7 @@ class UgcWorkshopDownloader(
         chunks.map { chunk ->
             async(Dispatchers.IO) {
                 semaphore.withPermit {
+                    currentCoroutineContext().ensureActive()
                     val stageFile = File(stageDir, "${chunk.idHex}.chunk")
                     if (tryReuseCachedChunk(stageFile, chunk, downloaded, completedChunks, totalBytes, totalChunks, totalFiles, emit)) {
                         return@withPermit
@@ -321,6 +327,7 @@ class UgcWorkshopDownloader(
         for (attempt in 1..MAX_CHUNK_DOWNLOAD_ATTEMPTS) {
             for (server in rotateServers(contentServers, attempt - 1)) {
                 try {
+                    currentCoroutineContext().ensureActive()
                     val path = "depot/$depotId/chunk/${chunk.idHex}"
                     val raw = requestBytes(
                         server = server,
@@ -335,6 +342,7 @@ class UgcWorkshopDownloader(
                     )
                     return ChunkProcessor.process(raw, chunk, depotKey)
                 } catch (error: Throwable) {
+                    if (error is CancellationException || error is InterruptedException) throw error
                     lastError = error
                     log("Chunk ${chunk.idHex} failed from ${server.host}: ${error.fullMessage()}")
                 }
@@ -365,6 +373,7 @@ class UgcWorkshopDownloader(
     ) {
         var completedFiles = 0
         manifest.files.forEach { file ->
+            currentCoroutineContext().ensureActive()
             if (!file.linkTarget.isNullOrBlank()) {
                 log("Skipping symlink-like manifest entry ${file.path} -> ${file.linkTarget}")
                 return@forEach
@@ -400,6 +409,8 @@ class UgcWorkshopDownloader(
                         chunkFile.inputStream().buffered().use { input ->
                             val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
                             while (true) {
+                                currentCoroutineContext().ensureActive()
+                                if (Thread.currentThread().isInterrupted) throw InterruptedException("SteamPipe workshop download interrupted")
                                 val read = input.read(buffer)
                                 if (read == -1) {
                                     break

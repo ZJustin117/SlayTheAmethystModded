@@ -28,7 +28,7 @@ object WorkshopModStateResolver {
         remoteUpdatedAtMillis: Long = 0L,
     ): WorkshopResolvedModState {
         val taskState = resolveTaskState(taskStatus, taskMessage)
-        if (taskState != null && (record?.cardState != WorkshopModCardState.UpdateAvailable || taskStatus?.isActiveDownload() == true)) {
+        if (taskState != null && (record?.cardState != WorkshopModCardState.UpdateAvailable || taskStatus.shouldOverrideUpdateAvailableRecord())) {
             return taskState
         }
         if (record == null) {
@@ -66,6 +66,19 @@ object WorkshopModStateResolver {
         WorkshopDownloadTaskStatus.Completed,
         WorkshopDownloadTaskStatus.Cancelled,
         null -> null
+    }
+
+    private fun WorkshopDownloadTaskStatus?.shouldOverrideUpdateAvailableRecord(): Boolean = when (this) {
+        WorkshopDownloadTaskStatus.Queued,
+        WorkshopDownloadTaskStatus.Resolving,
+        WorkshopDownloadTaskStatus.Downloading,
+        WorkshopDownloadTaskStatus.Pausing,
+        WorkshopDownloadTaskStatus.Cancelling,
+        WorkshopDownloadTaskStatus.Paused,
+        WorkshopDownloadTaskStatus.Failed -> true
+        WorkshopDownloadTaskStatus.Completed,
+        WorkshopDownloadTaskStatus.Cancelled,
+        null -> false
     }
 
     private fun resolveRecordState(

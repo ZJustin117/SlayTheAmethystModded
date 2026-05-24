@@ -60,6 +60,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.stamethyst.R
+import io.stamethyst.backend.workshop.WorkshopDownloadBlocklist
 import io.stamethyst.backend.workshop.WorkshopDownloadLogService
 import io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus
 import io.stamethyst.backend.workshop.isActiveDownload
@@ -251,6 +252,19 @@ private fun DownloadTaskActions(
     compact: Boolean,
 ) {
     if (task.status == WorkshopDownloadTaskStatus.Completed) return
+    if (WorkshopDownloadBlocklist.isBlocked(task.publishedFileId)) {
+        Row(
+            modifier = if (compact) Modifier.fillMaxWidth() else Modifier,
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(
+                enabled = task.status != WorkshopDownloadTaskStatus.Cancelling,
+                onClick = onCancel,
+            ) { Text(stringResource(R.string.main_folder_dialog_cancel)) }
+        }
+        return
+    }
     Row(
         modifier = if (compact) Modifier.fillMaxWidth() else Modifier,
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),

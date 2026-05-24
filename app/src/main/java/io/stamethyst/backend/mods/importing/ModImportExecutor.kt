@@ -1,6 +1,8 @@
 package io.stamethyst.backend.mods.importing
 
 import android.content.Context
+import android.system.ErrnoException
+import android.system.Os
 import io.stamethyst.R
 import io.stamethyst.backend.mods.DuplicateZipEntryNormalizer
 import io.stamethyst.backend.mods.ImportedModPatchInfo
@@ -20,12 +22,15 @@ import io.stamethyst.backend.mods.importing.patches.ManifestRootPatchModule
 import io.stamethyst.backend.mods.importing.patches.VupShionImportPatchModule
 import io.stamethyst.ui.main.MainFolderAssignmentHandoffStore
 import io.stamethyst.ui.main.MainFolderStateStore
+import io.stamethyst.ui.main.ModAliasStore
 import io.stamethyst.ui.main.NewlyImportedModHighlightStore
 import io.stamethyst.ui.main.resolveModStoragePathCandidates
+import io.stamethyst.ui.main.resolveModFileNameWithoutJar
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
+import java.util.LinkedHashSet
 
 internal object ModImportExecutor {
     internal fun normalizeWorkingJarForImport(workingJar: File) =
@@ -58,6 +63,7 @@ internal object ModImportExecutor {
         context: Context,
         plan: ModImportPlan,
         decisions: ModImportDecisions,
+        onPatchEvent: (ModImportPatchExecutionEvent) -> Unit = {},
         onProgress: (ModImportExecutionProgress) -> Unit = {}
     ): ModImportExecutionReport {
         OptionalModStorageCoordinator.ensureOptionalModLibraryReady(context)
@@ -108,20 +114,20 @@ internal object ModImportExecutor {
                         modId = item.normalizedModId,
                         modName = item.displayModName,
                         skipped = true,
-                        message = context.getString(R.string.mod_import_result_skipped_duplicate_decision)
+                        message = context.importString(R.string.mod_import_result_skipped_duplicate_decision)
                     )
                 )
             }
 
         executableItems.forEach { item ->
-            results.add(executeItem(context, item, plan, decisions, modulesById, progress))
+            results.add(executeItem(context, item, plan, decisions, modulesById, progress, onPatchEvent))
         }
         onProgress(
             ModImportExecutionProgress(
                 currentIndex = executableItems.size,
                 total = executableItems.size,
                 currentFileName = "",
-                message = context.getString(R.string.mod_import_progress_complete),
+                message = context.importString(R.string.mod_import_progress_complete),
                 currentStep = progress.completedSteps,
                 totalSteps = progress.totalSteps
             )
@@ -137,38 +143,83 @@ internal object ModImportExecutor {
         plan: ModImportPlan,
         decisions: ModImportDecisions,
         modulesById: Map<String, ImportPatchModule>,
-        progress: ProgressReporter
+        progress: ProgressReporter,
+        onPatchEvent: (ModImportPatchExecutionEvent) -> Unit
     ): ModImportExecutionItemResult {
-        val workingJar = File(plan.session.sessionDir, "working-${item.source.index}.jar")
+        val preparedWorkingJar = item.preparedImportFile
+        val workingJar = preparedWorkingJar ?: File(plan.session.sessionDir, "working-${item.source.index}.jar")
         var activeWorkingJar = workingJar
         var committedTarget: File? = null
         var commitMarker: File? = null
         return try {
             progress.step(
                 item = item,
-                message = context.getString(R.string.mod_import_progress_prepare_working_copy, item.source.displayName)
+                message = context.importString(R.string.mod_import_progress_prepare_working_copy, item.source.displayName)
             )
-            copyFile(item.source.file, workingJar)
-            val normalized = normalizeWorkingJarForImport(workingJar)
-            if (normalized.rewritten) {
-                activeWorkingJar = File(plan.session.sessionDir, "normalized-working-${item.source.index}.jar")
-                copyFile(workingJar, activeWorkingJar)
+            if (preparedWorkingJar == null) {
+                copyFile(item.source.file, workingJar)
+                val normalized = normalizeWorkingJarForImport(workingJar)
+                if (normalized.rewritten) {
+                    activeWorkingJar = File(plan.session.sessionDir, "normalized-working-${item.source.index}.jar")
+                    copyFile(workingJar, activeWorkingJar)
+                }
             }
-            val patchResults = ArrayList<ImportPatchResult>()
+            val patchResults = ArrayList<ImportPatchResult>(item.preparedPatchResults)
+            val preparedPatchModuleIds = item.preparedPatchResults.mapTo(LinkedHashSet()) { it.moduleId }
             for (patchPlan in item.patchPlans) {
                 if (patchPlan.moduleId == DuplicateZipEntryPatchModule.id) {
+                    onPatchEvent(
+                        ModImportPatchExecutionEvent.Skipped(
+                            item = item,
+                            patchPlan = patchPlan,
+                            reason = ModImportPatchSkipReason.DuplicateZipEntryPreApplied
+                        )
+                    )
                     continue
                 }
                 if (!decisions.isPatchEnabled(item.id, patchPlan)) {
+                    onPatchEvent(
+                        ModImportPatchExecutionEvent.Skipped(
+                            item = item,
+                            patchPlan = patchPlan,
+                            reason = ModImportPatchSkipReason.DisabledByDecision
+                        )
+                    )
                     continue
                 }
-                val module = modulesById[patchPlan.moduleId] ?: continue
+                if (preparedPatchModuleIds.contains(patchPlan.moduleId)) {
+                    onPatchEvent(
+                        ModImportPatchExecutionEvent.Skipped(
+                            item = item,
+                            patchPlan = patchPlan,
+                            reason = ModImportPatchSkipReason.AlreadyPrepared
+                        )
+                    )
+                    continue
+                }
+                val module = modulesById[patchPlan.moduleId]
+                if (module == null) {
+                    onPatchEvent(
+                        ModImportPatchExecutionEvent.Skipped(
+                            item = item,
+                            patchPlan = patchPlan,
+                            reason = ModImportPatchSkipReason.ModuleUnavailable
+                        )
+                    )
+                    continue
+                }
                 try {
                     progress.step(
                         item = item,
-                        message = context.getString(
+                        message = context.importString(
                             R.string.mod_import_progress_apply_patch,
                             resolvePatchProgressName(context, patchPlan)
+                        )
+                    )
+                    onPatchEvent(
+                        ModImportPatchExecutionEvent.Started(
+                            item = item,
+                            patchPlan = patchPlan
                         )
                     )
                     val result = module.apply(
@@ -179,7 +230,22 @@ internal object ModImportExecutor {
                         decisions = decisions
                     )
                     patchResults.add(result)
+                    onPatchEvent(
+                        ModImportPatchExecutionEvent.Succeeded(
+                            item = item,
+                            patchPlan = patchPlan,
+                            result = result
+                        )
+                    )
                 } catch (error: Throwable) {
+                    onPatchEvent(
+                        ModImportPatchExecutionEvent.Failed(
+                            item = item,
+                            patchPlan = patchPlan,
+                            error = error,
+                            importBlocked = patchPlan.failurePolicy == ImportPatchFailurePolicy.BlockImport
+                        )
+                    )
                     if (patchPlan.failurePolicy == ImportPatchFailurePolicy.BlockImport) {
                         throw error
                     }
@@ -191,7 +257,7 @@ internal object ModImportExecutor {
                             summaryResId = patchPlan.summaryResId,
                             displayName = patchPlan.displayName,
                             applied = false,
-                            summary = context.getString(R.string.mod_import_patch_failed_skipped),
+                            summary = context.importString(R.string.mod_import_patch_failed_skipped),
                             details = listOf(error.message ?: error.javaClass.simpleName)
                         )
                     )
@@ -199,7 +265,7 @@ internal object ModImportExecutor {
             }
             progress.step(
                 item = item,
-                message = context.getString(R.string.mod_import_progress_validate_manifest, item.source.displayName)
+                message = context.importString(R.string.mod_import_progress_validate_manifest, item.source.displayName)
             )
             val finalLaunchModId = MtsLaunchManifestValidator.resolveLaunchModId(activeWorkingJar).trim()
             val replaceExisting = item.duplicateConflictKey?.let { conflictKey ->
@@ -213,12 +279,20 @@ internal object ModImportExecutor {
             val targetName = reuse.targetFileName
                 ?.takeIf { it.isNotBlank() }
                 ?: item.source.displayName.ifBlank { "${item.normalizedModId}.jar" }
-            val target = ModManager.resolveStorageFileForImportedMod(context, targetName)
+            val target = if (
+                replaceExisting &&
+                decisions.reusePreviousFileNameOnReplace &&
+                !reuse.targetFileName.isNullOrBlank()
+            ) {
+                ModManager.resolveStorageFileForImportedModReplacement(context, reuse.targetFileName)
+            } else {
+                ModManager.resolveStorageFileForImportedMod(context, targetName)
+            }
             commitMarker = importCommitMarker(target)
             writeImportCommitMarker(commitMarker, target)
             progress.step(
                 item = item,
-                message = context.getString(R.string.mod_import_progress_write_file, target.name)
+                message = context.importString(R.string.mod_import_progress_write_file, target.name)
             )
             moveFileReplacing(activeWorkingJar, target)
             committedTarget = target
@@ -226,15 +300,26 @@ internal object ModImportExecutor {
             val targetPath = target.absolutePath
             progress.step(
                 item = item,
-                message = context.getString(R.string.mod_import_progress_update_folder, item.source.displayName)
+                message = context.importString(R.string.mod_import_progress_update_folder, item.source.displayName)
             )
             val hasExplicitFolderDecision = decisions.hasTargetFolderDecision(item.id)
             val selectedFolderId = decisions.targetFolderIdFor(item.id)
             if (hasExplicitFolderDecision) {
                 if (selectedFolderId.isNullOrBlank()) {
-                    clearFolderDecision(context, targetPath)
+                    clearFolderDecision(
+                        context = context,
+                        storagePath = targetPath,
+                        sourceStoragePaths = reuse.sourceStoragePaths,
+                        normalizedModId = if (replaceExisting) item.normalizedModId else ""
+                    )
                 } else {
-                    applyFolderDecision(context, targetPath, selectedFolderId)
+                    applyFolderDecision(
+                        context = context,
+                        storagePath = targetPath,
+                        folderId = selectedFolderId,
+                        sourceStoragePaths = reuse.sourceStoragePaths,
+                        normalizedModId = if (replaceExisting) item.normalizedModId else ""
+                    )
                 }
             } else if (!reuse.assignedFolderId.isNullOrBlank()) {
                 applyFolderDecision(
@@ -257,7 +342,7 @@ internal object ModImportExecutor {
             }
             progress.step(
                 item = item,
-                message = context.getString(R.string.mod_import_progress_write_metadata, item.source.displayName)
+                message = context.importString(R.string.mod_import_progress_write_metadata, item.source.displayName)
             )
             ImportedModPatchRegistry.put(
                 context = context,
@@ -269,7 +354,7 @@ internal object ModImportExecutor {
             if (replaceExisting) {
                 progress.step(
                     item = item,
-                    message = context.getString(R.string.mod_import_progress_replace_existing, item.source.displayName)
+                    message = context.importString(R.string.mod_import_progress_replace_existing, item.source.displayName)
                 )
                 ModManager.removeExistingOptionalModsForImport(
                     context = context,
@@ -277,10 +362,16 @@ internal object ModImportExecutor {
                     launchModId = finalLaunchModId,
                     excludedPath = target.absolutePath
                 )
+                applyDuplicateFileNameAlias(
+                    context = context,
+                    targetPath = targetPath,
+                    reuse = reuse,
+                    decisions = decisions
+                )
             }
             progress.step(
                 item = item,
-                message = context.getString(R.string.mod_import_progress_item_complete, item.source.displayName)
+                message = context.importString(R.string.mod_import_progress_item_complete, item.source.displayName)
             )
             ModImportExecutionItemResult(
                 itemId = item.id,
@@ -289,7 +380,7 @@ internal object ModImportExecutor {
                 modName = item.displayModName,
                 storagePath = targetPath,
                 imported = true,
-                message = context.getString(R.string.mod_import_execution_imported),
+                message = context.importString(R.string.mod_import_execution_imported),
                 patchResults = patchResults
             )
         } catch (error: Throwable) {
@@ -332,6 +423,27 @@ internal object ModImportExecutor {
         )
     }
 
+    private fun applyDuplicateFileNameAlias(
+        context: Context,
+        targetPath: String,
+        reuse: DuplicateReusePlan,
+        decisions: ModImportDecisions
+    ) {
+        reuse.sourceStoragePaths.forEach { sourcePath ->
+            ModAliasStore.setAlias(context, sourcePath, "")
+        }
+        if (!decisions.reusePreviousFileNameOnReplace) {
+            return
+        }
+        val alias = reuse.targetFileName
+            ?.let { fileName -> resolveModFileNameWithoutJar(fileName) }
+            ?.trim()
+            .orEmpty()
+        if (alias.isNotEmpty()) {
+            ModAliasStore.setAlias(context, targetPath, alias)
+        }
+    }
+
     private fun countItemSteps(
         item: ModImportItemPlan,
         decisions: ModImportDecisions,
@@ -340,6 +452,7 @@ internal object ModImportExecutor {
         val enabledPatchSteps = item.patchPlans.count { patchPlan ->
             patchPlan.moduleId != DuplicateZipEntryPatchModule.id &&
                 decisions.isPatchEnabled(item.id, patchPlan) &&
+                item.preparedPatchResults.none { it.moduleId == patchPlan.moduleId } &&
                 modulesById.containsKey(patchPlan.moduleId)
         }
         val replaceExisting = item.duplicateConflictKey?.let { conflictKey ->
@@ -350,7 +463,7 @@ internal object ModImportExecutor {
 
     private fun resolvePatchProgressName(context: Context, patchPlan: ImportPatchPlan): String {
         return if (patchPlan.displayNameResId != 0) {
-            context.getString(patchPlan.displayNameResId)
+            context.importString(patchPlan.displayNameResId)
         } else {
             patchPlan.displayName
         }
@@ -421,13 +534,29 @@ internal object ModImportExecutor {
         }
     }
 
-    private fun clearFolderDecision(context: Context, storagePath: String) {
+    private fun clearFolderDecision(
+        context: Context,
+        storagePath: String,
+        sourceStoragePaths: Collection<String> = emptyList(),
+        normalizedModId: String = ""
+    ) {
         val store = MainFolderStateStore().apply { ensureLoaded(context) }
         var changed = false
         resolveModStoragePathCandidates(storagePath).forEach { candidate ->
             if (store.assignments.remove(candidate) != null) {
                 changed = true
             }
+        }
+        sourceStoragePaths.forEach { sourcePath ->
+            resolveModStoragePathCandidates(sourcePath).forEach { candidate ->
+                if (store.assignments.remove(candidate) != null) {
+                    changed = true
+                }
+            }
+        }
+        val normalizedKey = ModManager.normalizeModId(normalizedModId)
+        if (normalizedKey.isNotEmpty() && store.assignments.remove(normalizedKey) != null) {
+            changed = true
         }
         store.unassignedIsCollapsed = false
         if (changed) {
@@ -522,7 +651,10 @@ internal object ModImportExecutor {
         if (parent != null && !parent.exists() && !parent.mkdirs()) {
             throw IOException("Failed to create directory: ${parent.absolutePath}")
         }
-        if (source.renameTo(target)) {
+        if (!source.exists()) {
+            throw IOException("Source file not found: ${source.absolutePath}")
+        }
+        if (renameFile(source, target)) {
             return
         }
         val temp = File(
@@ -532,19 +664,36 @@ internal object ModImportExecutor {
         if (temp.exists() && !temp.delete()) {
             throw IOException("Failed to clear stale temporary import file: ${temp.absolutePath}")
         }
-        FileInputStream(source).use { input ->
-            FileOutputStream(temp, false).use { output ->
-                input.copyTo(output)
-                output.fd.sync()
+        var committed = false
+        try {
+            FileInputStream(source).use { input ->
+                FileOutputStream(temp, false).use { output ->
+                    input.copyTo(output)
+                    output.fd.sync()
+                }
+            }
+            if (renameFile(temp, target)) {
+                committed = true
+            } else {
+                throw IOException("Failed to commit imported mod file: ${target.absolutePath}")
+            }
+        } finally {
+            if (!committed) {
+                temp.delete()
             }
         }
-        if (!temp.renameTo(target)) {
-            temp.delete()
-            throw IOException("Failed to commit imported mod file: ${target.absolutePath}")
+        source.delete()
+    }
+
+    private fun renameFile(source: File, target: File): Boolean {
+        if (source.renameTo(target)) {
+            return true
         }
-        if (!source.delete()) {
-            target.delete()
-            throw IOException("Failed to delete temporary import file: ${source.absolutePath}")
+        return try {
+            Os.rename(source.absolutePath, target.absolutePath)
+            true
+        } catch (_: ErrnoException) {
+            false
         }
     }
 

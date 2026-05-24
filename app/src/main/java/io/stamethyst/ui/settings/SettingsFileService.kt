@@ -36,6 +36,7 @@ import io.stamethyst.ui.main.MainFolderStateStore
 import io.stamethyst.ui.main.ModAliasStore
 import io.stamethyst.ui.main.normalizeModExportFileName
 import io.stamethyst.ui.main.resolveAssignedFolderId
+import io.stamethyst.ui.main.resolveModFileNameWithoutJar
 import io.stamethyst.ui.main.resolveModStoragePathCandidates
 import java.io.File
 import java.io.FileInputStream
@@ -77,6 +78,7 @@ internal data class ModImportResult(
     val patchedJacketNoAnoKoShaderEntries: Int = 0,
     val patchedJacketNoAnoKoDesktopVersionDirectives: Int = 0,
     val patchedJacketNoAnoKoFragmentPrecisionBlocks: Int = 0,
+    val suggestedFolderId: String? = null,
     val folderPlacementHandledByDuplicateReuse: Boolean = false
 ) {
     val wasAtlasPatched: Boolean
@@ -591,17 +593,13 @@ internal object SettingsFileService {
                 ?: if (displayName.isNotBlank()) displayName else "$modId.jar"
             val targetFile = ModManager.resolveStorageFileForImportedMod(host, requestedFileName)
             moveFileReplacing(tempFile, targetFile)
-            var folderPlacementHandledByDuplicateReuse = false
-            if (!duplicateReusePlan.assignedFolderId.isNullOrBlank()) {
-                folderPlacementHandledByDuplicateReuse = runCatching {
-                    applyDuplicateModImportFolderReuse(
-                        host = host,
-                        normalizedModId = modId,
-                        sourceStoragePaths = duplicateReusePlan.sourceStoragePaths,
-                        targetStoragePath = targetFile.absolutePath,
-                        assignedFolderId = duplicateReusePlan.assignedFolderId
-                    )
-                }.getOrDefault(false)
+            if (replaceExistingDuplicates) {
+                applyDuplicateModImportFileNameAlias(
+                    host = host,
+                    targetStoragePath = targetFile.absolutePath,
+                    duplicateReusePlan = duplicateReusePlan,
+                    options = duplicateReplaceOptions
+                )
             }
             val modName = manifest.name.trim().ifBlank { modId }
             val result = ModImportResult(
@@ -627,7 +625,7 @@ internal object SettingsFileService {
                     patchedJacketNoAnoKoDesktopVersionDirectives,
                 patchedJacketNoAnoKoFragmentPrecisionBlocks =
                     patchedJacketNoAnoKoFragmentPrecisionBlocks,
-                folderPlacementHandledByDuplicateReuse = folderPlacementHandledByDuplicateReuse
+                suggestedFolderId = duplicateReusePlan.assignedFolderId
             )
             runCatching {
                 ImportedModPatchRegistry.put(
@@ -1701,43 +1699,25 @@ internal object SettingsFileService {
             .toList()
     }
 
-    private fun applyDuplicateModImportFolderReuse(
+    private fun applyDuplicateModImportFileNameAlias(
         host: Activity,
-        normalizedModId: String,
-        sourceStoragePaths: Collection<String>,
         targetStoragePath: String,
-        assignedFolderId: String
-    ): Boolean {
-        val targetPath = targetStoragePath.trim()
-        val folderId = assignedFolderId.trim()
-        if (targetPath.isEmpty() || folderId.isEmpty()) {
-            return false
+        duplicateReusePlan: DuplicateModImportReusePlan,
+        options: DuplicateModImportReplaceOptions
+    ) {
+        duplicateReusePlan.sourceStoragePaths.forEach { sourcePath ->
+            ModAliasStore.setAlias(host, sourcePath, "")
         }
-        val folderStateStore = MainFolderStateStore().apply { ensureLoaded(host) }
-        if (folderStateStore.folders.none { it.id == folderId }) {
-            return false
+        if (!options.renameToPreviousFileName) {
+            return
         }
-
-        var changed = false
-        sourceStoragePaths.forEach { sourcePath ->
-            resolveModStoragePathCandidates(sourcePath).forEach { candidate ->
-                if (folderStateStore.assignments.remove(candidate) != null) {
-                    changed = true
-                }
-            }
+        val alias = duplicateReusePlan.targetFileName
+            ?.let { fileName -> resolveModFileNameWithoutJar(fileName) }
+            ?.trim()
+            .orEmpty()
+        if (alias.isNotEmpty()) {
+            ModAliasStore.setAlias(host, targetStoragePath, alias)
         }
-        val normalizedKey = ModManager.normalizeModId(normalizedModId)
-        if (normalizedKey.isNotEmpty() && folderStateStore.assignments.remove(normalizedKey) != null) {
-            changed = true
-        }
-        if (folderStateStore.assignments[targetPath] != folderId) {
-            folderStateStore.assignments[targetPath] = folderId
-            changed = true
-        }
-        if (changed) {
-            folderStateStore.persist(host)
-        }
-        return true
     }
 
     private fun isEphemeralImportFileName(fileName: String?): Boolean {

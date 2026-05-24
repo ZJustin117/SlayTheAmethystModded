@@ -13,6 +13,7 @@ object RuntimePaths {
     private const val LATEST_LOG_FILE_NAME = "latest.log"
     private const val BOOT_BRIDGE_EVENTS_FILE_NAME = "boot_bridge_events.log"
     private const val JVM_LOG_DIR_NAME = "jvm_logs"
+    private const val WORKSHOP_AUTO_IMPORT_PATCH_LOG_DIR_NAME = "workshop_auto_import_patch_logs"
     private const val MEMORY_DIAGNOSTICS_LOG_FILE_NAME = "memory_diagnostics.log"
     private const val JVM_GC_LOG_FILE_NAME = "jvm_gc.log"
     private const val JVM_HEAP_SNAPSHOT_FILE_NAME = "jvm_heap_snapshot.txt"
@@ -170,6 +171,10 @@ object RuntimePaths {
 
     @JvmStatic
     fun jvmLogsDir(context: Context): File = File(stsRoot(context), JVM_LOG_DIR_NAME)
+
+    @JvmStatic
+    fun workshopAutoImportPatchLogsDir(context: Context): File =
+        File(stsRoot(context), WORKSHOP_AUTO_IMPORT_PATCH_LOG_DIR_NAME)
 
     @JvmStatic
     fun memoryDiagnosticsLog(context: Context): File =

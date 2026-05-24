@@ -137,11 +137,6 @@ private fun TouchMouseInteractionMode.displayNameResId(): Int {
 @Stable
 @SuppressLint("SuspiciousIndentation")
 class SettingsScreenViewModel : ViewModel() {
-    private data class SteamCloudLoginAutoEnableResult(
-        val autoEnabled: Boolean,
-        val failureSummary: String? = null,
-    )
-
     sealed interface Effect {
         data object OpenImportJarPicker : Effect
         data object OpenImportModsPicker : Effect
@@ -325,6 +320,10 @@ class SettingsScreenViewModel : ViewModel() {
             LauncherPreferences.DEFAULT_WORKSHOP_STEAM_LANGUAGE,
         val workshopAutoImportEnabled: Boolean =
             LauncherPreferences.DEFAULT_WORKSHOP_AUTO_IMPORT_ENABLED,
+        val workshopAutoImportAtlasDownscaleEnabled: Boolean =
+            LauncherPreferences.DEFAULT_WORKSHOP_AUTO_IMPORT_ATLAS_DOWNSCALE_ENABLED,
+        val workshopAutoImportAtlasDownscaleMaxEdgePx: Int =
+            LauncherPreferences.DEFAULT_WORKSHOP_AUTO_IMPORT_ATLAS_DOWNSCALE_MAX_EDGE_PX,
         val baiduTranslationCredentialsConfigured: Boolean = false,
         val steamCloudCredentialsSummary: String = "",
         val steamCloudStatusText: String = "",
@@ -1150,46 +1149,26 @@ class SettingsScreenViewModel : ViewModel() {
                 }
                 SteamCloudManifestStore.clear(host)
                 SteamCloudBaselineStore.clear(host)
-                val autoEnableResult = enableSteamCloudSaveModeAfterLogin(host)
+                val shouldPromptSteamCloudSaveModeSwitch =
+                    LauncherPreferences.readSteamCloudSaveMode(host) != SteamCloudSaveMode.STEAM_CLOUD
                 host.runOnUiThread {
                     clearPendingSteamCloudChallengeState()
                     dismissSteamCloudManifestDialog()
                     dismissSteamCloudUploadPlanDialog()
                     dismissSteamCloudPushConfirmDialog()
-                    when {
-                        autoEnableResult.failureSummary != null -> {
-                            showToast(
-                                host,
-                                UiText.StringResource(
-                                    R.string.settings_steam_cloud_login_succeeded,
-                                    authResult.accountName
-                                )
+                    setBusy(false, null)
+                    if (shouldPromptSteamCloudSaveModeSwitch) {
+                        showSteamCloudSwitchPromptAfterLoginDialog(host, authResult.accountName)
+                    } else {
+                        showToast(
+                            host,
+                            UiText.StringResource(
+                                R.string.settings_steam_cloud_login_succeeded,
+                                authResult.accountName
                             )
-                            showToast(
-                                host,
-                                UiText.StringResource(
-                                    R.string.settings_steam_cloud_login_auto_enable_failed,
-                                    autoEnableResult.failureSummary
-                                ),
-                                Toast.LENGTH_LONG,
-                            )
-                        }
-
-                        autoEnableResult.autoEnabled -> {
-                            showSteamCloudAutoEnabledDialog(host)
-                        }
-
-                        else -> {
-                            showToast(
-                                host,
-                                UiText.StringResource(
-                                    R.string.settings_steam_cloud_login_succeeded,
-                                    authResult.accountName
-                                )
-                            )
-                        }
+                        )
                     }
-                    refreshStatus(host)
+                    refreshStatus(host, clearBusy = false)
                 }
             } catch (error: Throwable) {
                 val summary = summarizeSteamCloudError(host, error)
@@ -1215,27 +1194,6 @@ class SettingsScreenViewModel : ViewModel() {
             }
         }
         return true
-    }
-
-    private fun enableSteamCloudSaveModeAfterLogin(host: Activity): SteamCloudLoginAutoEnableResult {
-        val currentMode = LauncherPreferences.readSteamCloudSaveMode(host)
-        if (currentMode == SteamCloudSaveMode.STEAM_CLOUD) {
-            return SteamCloudLoginAutoEnableResult(autoEnabled = false)
-        }
-        return try {
-            SteamCloudSaveProfileManager.switchMode(
-                context = host,
-                fromMode = currentMode,
-                toMode = SteamCloudSaveMode.STEAM_CLOUD,
-            )
-            LauncherPreferences.saveSteamCloudSaveMode(host, SteamCloudSaveMode.STEAM_CLOUD)
-            SteamCloudLoginAutoEnableResult(autoEnabled = true)
-        } catch (error: Throwable) {
-            SteamCloudLoginAutoEnableResult(
-                autoEnabled = false,
-                failureSummary = summarizeSteamCloudError(host, error),
-            )
-        }
     }
 
     fun onRefreshSteamCloudManifest(host: Activity) {
@@ -1579,6 +1537,16 @@ class SettingsScreenViewModel : ViewModel() {
 
     fun onWorkshopAutoImportChanged(host: Activity, enabled: Boolean) {
         LauncherPreferences.setWorkshopAutoImportEnabled(host, enabled)
+        refreshStatus(host)
+    }
+
+    fun onWorkshopAutoImportAtlasDownscaleChanged(host: Activity, enabled: Boolean) {
+        LauncherPreferences.setWorkshopAutoImportAtlasDownscaleEnabled(host, enabled)
+        refreshStatus(host)
+    }
+
+    fun onWorkshopAutoImportAtlasDownscaleMaxEdgeChanged(host: Activity, maxEdgePx: Int) {
+        LauncherPreferences.saveWorkshopAutoImportAtlasDownscaleMaxEdgePx(host, maxEdgePx)
         refreshStatus(host)
     }
 
@@ -3142,6 +3110,8 @@ class SettingsScreenViewModel : ViewModel() {
             workshopWattAccelerationEnabled = market.workshopWattAccelerationEnabled,
             workshopSteamLanguage = market.workshopSteamLanguage,
             workshopAutoImportEnabled = market.workshopAutoImportEnabled,
+            workshopAutoImportAtlasDownscaleEnabled = market.workshopAutoImportAtlasDownscaleEnabled,
+            workshopAutoImportAtlasDownscaleMaxEdgePx = market.workshopAutoImportAtlasDownscaleMaxEdgePx,
             baiduTranslationCredentialsConfigured = market.baiduTranslationCredentialsConfigured,
         )
     }
@@ -3403,15 +3373,25 @@ class SettingsScreenViewModel : ViewModel() {
         LauncherTransientNoticeBus.show(host, message, duration)
     }
 
-    private fun showSteamCloudAutoEnabledDialog(host: Activity) {
+    private fun showSteamCloudSwitchPromptAfterLoginDialog(host: Activity, accountName: String) {
         if (host.isFinishing || host.isDestroyed) {
             return
         }
-        AlertDialog.Builder(host)
-            .setTitle(R.string.settings_steam_cloud_auto_enabled_title)
-            .setMessage(R.string.settings_steam_cloud_auto_enabled_message)
-            .setPositiveButton(R.string.common_action_confirm, null)
+        val dialog = AlertDialog.Builder(host)
+            .setTitle(R.string.settings_steam_cloud_switch_prompt_title)
+            .setMessage(
+                host.getString(
+                    R.string.settings_steam_cloud_switch_prompt_message,
+                    accountName,
+                )
+            )
+            .setPositiveButton(R.string.settings_steam_cloud_switch_prompt_confirm) { _, _ ->
+                onSteamCloudSaveModeChanged(host, SteamCloudSaveMode.STEAM_CLOUD)
+            }
+            .setNegativeButton(R.string.settings_steam_cloud_switch_prompt_keep_independent, null)
+            .setCancelable(false)
             .show()
+        dialog.setCanceledOnTouchOutside(false)
     }
 
     private fun showSaveImportFailedDialog(host: Activity, error: Throwable) {

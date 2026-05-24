@@ -4,6 +4,7 @@ import android.app.ActivityManager
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
+import io.stamethyst.backend.mods.AtlasOfflineDownscaleStrategy
 import io.stamethyst.backend.render.DisplayConfigSync
 import io.stamethyst.backend.render.MobileGluesAnglePolicy
 import io.stamethyst.backend.render.MobileGluesAngleDepthClearFixMode
@@ -154,6 +155,10 @@ object LauncherConfig {
         "workshop_watt_acceleration_enabled"
     private const val PREF_KEY_WORKSHOP_STEAM_LANGUAGE = "workshop_steam_language"
     private const val PREF_KEY_WORKSHOP_AUTO_IMPORT_ENABLED = "workshop_auto_import_enabled"
+    private const val PREF_KEY_WORKSHOP_AUTO_IMPORT_ATLAS_DOWNSCALE_ENABLED =
+        "workshop_auto_import_atlas_downscale_enabled"
+    private const val PREF_KEY_WORKSHOP_AUTO_IMPORT_ATLAS_DOWNSCALE_MAX_EDGE_PX =
+        "workshop_auto_import_atlas_downscale_max_edge_px"
     private const val PREF_KEY_LAST_WORKSHOP_UPDATE_CHECK_AT_MS = "last_workshop_update_check_at_ms"
     private const val PREF_KEY_STEAM_CLOUD_SAVE_MODE = "steam_cloud_save_mode"
     private const val PREF_KEY_STEAM_CLOUD_SYNC_BLACKLIST_PATHS =
@@ -237,6 +242,8 @@ object LauncherConfig {
     const val DEFAULT_WORKSHOP_WATT_ACCELERATION_ENABLED = true
     const val DEFAULT_WORKSHOP_STEAM_LANGUAGE = "schinese"
     const val DEFAULT_WORKSHOP_AUTO_IMPORT_ENABLED = true
+    const val DEFAULT_WORKSHOP_AUTO_IMPORT_ATLAS_DOWNSCALE_ENABLED = true
+    const val DEFAULT_WORKSHOP_AUTO_IMPORT_ATLAS_DOWNSCALE_MAX_EDGE_PX = 1024
     val DEFAULT_STEAM_CLOUD_SAVE_MODE: SteamCloudSaveMode = SteamCloudSaveMode.DEFAULT
     val DEFAULT_STEAM_CLOUD_SYNC_BLACKLIST_PATHS: Set<String> =
         SteamCloudSyncBlacklist.defaultLocalRelativePaths()
@@ -1404,6 +1411,41 @@ object LauncherConfig {
     fun setWorkshopAutoImportEnabled(context: Context, enabled: Boolean) {
         prefs(context, crossProcess = true).edit(commit = true) {
             putBoolean(PREF_KEY_WORKSHOP_AUTO_IMPORT_ENABLED, enabled)
+        }
+    }
+
+    fun isWorkshopAutoImportAtlasDownscaleEnabled(context: Context): Boolean {
+        return prefs(context, crossProcess = true).getBoolean(
+            PREF_KEY_WORKSHOP_AUTO_IMPORT_ATLAS_DOWNSCALE_ENABLED,
+            DEFAULT_WORKSHOP_AUTO_IMPORT_ATLAS_DOWNSCALE_ENABLED
+        )
+    }
+
+    fun setWorkshopAutoImportAtlasDownscaleEnabled(context: Context, enabled: Boolean) {
+        prefs(context, crossProcess = true).edit(commit = true) {
+            putBoolean(PREF_KEY_WORKSHOP_AUTO_IMPORT_ATLAS_DOWNSCALE_ENABLED, enabled)
+        }
+    }
+
+    fun normalizeWorkshopAutoImportAtlasDownscaleMaxEdgePx(maxEdgePx: Int): Int {
+        return AtlasOfflineDownscaleStrategy.maxEdge(maxEdgePx).value
+    }
+
+    fun readWorkshopAutoImportAtlasDownscaleMaxEdgePx(context: Context): Int {
+        return normalizeWorkshopAutoImportAtlasDownscaleMaxEdgePx(
+            prefs(context, crossProcess = true).getInt(
+                PREF_KEY_WORKSHOP_AUTO_IMPORT_ATLAS_DOWNSCALE_MAX_EDGE_PX,
+                DEFAULT_WORKSHOP_AUTO_IMPORT_ATLAS_DOWNSCALE_MAX_EDGE_PX
+            )
+        )
+    }
+
+    fun saveWorkshopAutoImportAtlasDownscaleMaxEdgePx(context: Context, maxEdgePx: Int) {
+        prefs(context, crossProcess = true).edit(commit = true) {
+            putInt(
+                PREF_KEY_WORKSHOP_AUTO_IMPORT_ATLAS_DOWNSCALE_MAX_EDGE_PX,
+                normalizeWorkshopAutoImportAtlasDownscaleMaxEdgePx(maxEdgePx)
+            )
         }
     }
 

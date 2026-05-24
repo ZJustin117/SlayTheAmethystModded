@@ -1,6 +1,9 @@
 package top.apricityx.workshop.workshop
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -95,6 +98,8 @@ class DirectWorkshopDownloader(
                             var written = existingBytes
 
                             while (true) {
+                                currentCoroutineContext().ensureActive()
+                                if (Thread.currentThread().isInterrupted) throw InterruptedException("Direct workshop download interrupted")
                                 val read = input.read(buffer)
                                 if (read == -1) {
                                     break
@@ -123,6 +128,10 @@ class DirectWorkshopDownloader(
                 }
                 emitCompletedFile(outputFile, emit)
                 return@withContext
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: InterruptedException) {
+                throw error
             } catch (error: Throwable) {
                 lastError = error
                 log("Direct download attempt $attempt/$MAX_DIRECT_DOWNLOAD_ATTEMPTS failed: ${error.message}")

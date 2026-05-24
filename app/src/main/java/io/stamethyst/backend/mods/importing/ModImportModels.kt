@@ -35,7 +35,7 @@ internal data class ModImportSession(
 
 internal data class PreparedImportSource(
     val index: Int,
-    val uri: Uri,
+    val uri: Uri?,
     val displayName: String,
     val mimeType: String?,
     val file: File
@@ -66,6 +66,8 @@ internal data class ModImportItemPlan(
     val launchModId: String = "",
     val reservedComponent: String = "",
     val duplicateConflictKey: String? = null,
+    val preparedImportFile: File? = null,
+    val preparedPatchResults: List<ImportPatchResult> = emptyList(),
     val patchPlans: List<ImportPatchPlan> = emptyList()
 ) {
     val displayModId: String
@@ -90,6 +92,19 @@ internal data class ModImportPlan(
     val configurablePatchPlans: List<ImportPatchPlan>
         get() = importableItems.flatMap { it.patchPlans }.filter { it.userConfigurable }
 }
+
+internal data class ModImportPlanningOptions(
+    val includeUserConfigurablePatches: Boolean = true,
+    val deferUserConfigurablePatchInspection: Boolean = false
+)
+
+internal data class ModImportPlanningProgress(
+    val currentStep: Int,
+    val totalSteps: Int,
+    val currentFileName: String,
+    val message: String,
+    val percent: Int
+)
 
 internal data class ModImportDecisions(
     val duplicateDecisions: Map<String, DuplicateImportDecision> = emptyMap(),
@@ -166,6 +181,42 @@ internal data class ModImportExecutionReport(
         get() = results.count { it.failed }
     val appliedPatchResults: List<ImportPatchResult>
         get() = importedResults.flatMap { it.patchResults }.filter { it.applied }
+}
+
+internal enum class ModImportPatchSkipReason {
+    DuplicateZipEntryPreApplied,
+    DisabledByDecision,
+    AlreadyPrepared,
+    ModuleUnavailable
+}
+
+internal sealed interface ModImportPatchExecutionEvent {
+    val item: ModImportItemPlan
+    val patchPlan: ImportPatchPlan
+
+    data class Started(
+        override val item: ModImportItemPlan,
+        override val patchPlan: ImportPatchPlan
+    ) : ModImportPatchExecutionEvent
+
+    data class Succeeded(
+        override val item: ModImportItemPlan,
+        override val patchPlan: ImportPatchPlan,
+        val result: ImportPatchResult
+    ) : ModImportPatchExecutionEvent
+
+    data class Skipped(
+        override val item: ModImportItemPlan,
+        override val patchPlan: ImportPatchPlan,
+        val reason: ModImportPatchSkipReason
+    ) : ModImportPatchExecutionEvent
+
+    data class Failed(
+        override val item: ModImportItemPlan,
+        override val patchPlan: ImportPatchPlan,
+        val error: Throwable,
+        val importBlocked: Boolean
+    ) : ModImportPatchExecutionEvent
 }
 
 internal enum class ImportPatchCategory {

@@ -49,62 +49,89 @@ data class WorkshopDownloadTaskRecord(
 class WorkshopDownloadTaskStore(context: Context) {
     private val file = File(context.applicationContext.filesDir, "workshop/download_tasks.json")
 
-    @Synchronized fun list(): List<WorkshopDownloadTaskRecord> = load()
+    fun list(): List<WorkshopDownloadTaskRecord> = withStoreLock { loadUnlocked() }
 
-    @Synchronized fun upsert(task: WorkshopDownloadTaskRecord) {
+    fun upsert(task: WorkshopDownloadTaskRecord) = withStoreLock {
         clearDeletedMarker(task.publishedFileId)
-        val current = load().toMutableList()
+        val current = loadUnlocked().toMutableList()
         val index = current.indexOfFirst { it.publishedFileId == task.publishedFileId }
         if (index >= 0) current[index] = task else current.add(0, task)
-        save(current)
+        saveUnlocked(current)
     }
 
-    @Synchronized fun update(publishedFileId: ULong, transform: (WorkshopDownloadTaskRecord) -> WorkshopDownloadTaskRecord) {
-        val current = load().toMutableList()
+    fun update(publishedFileId: ULong, transform: (WorkshopDownloadTaskRecord) -> WorkshopDownloadTaskRecord) = withStoreLock {
+        val current = loadUnlocked().toMutableList()
         val index = current.indexOfFirst { it.publishedFileId == publishedFileId }
-        if (index < 0) return
+        if (index < 0) return@withStoreLock
         current[index] = transform(current[index])
-        save(current)
+        saveUnlocked(current)
     }
 
-    @Synchronized fun appendLog(publishedFileId: ULong, message: String) {
-        val cleanMessage = message.trim().takeIf { it.isNotEmpty() } ?: return
-        update(publishedFileId) { task ->
-            val line = "${downloadLogTimestamp()} $cleanMessage"
-            task.copy(downloadLog = listOf(task.downloadLog, line).filter(String::isNotBlank).joinToString("\n"))
-        }
+    fun appendLog(publishedFileId: ULong, message: String) = withStoreLock {
+        val cleanMessage = message.trim().takeIf { it.isNotEmpty() } ?: return@withStoreLock
+        val current = loadUnlocked().toMutableList()
+        val index = current.indexOfFirst { it.publishedFileId == publishedFileId }
+        if (index < 0) return@withStoreLock
+        val line = "${downloadLogTimestamp()} $cleanMessage"
+        current[index] = current[index].copy(downloadLog = appendBoundedDownloadLog(current[index].downloadLog, line))
+        saveUnlocked(current)
     }
 
-    @Synchronized fun remove(publishedFileId: ULong) {
-        save(load().filterNot { it.publishedFileId == publishedFileId })
+    fun remove(publishedFileId: ULong) = withStoreLock {
+        saveUnlocked(loadUnlocked().filterNot { it.publishedFileId == publishedFileId })
     }
 
-    @Synchronized fun removeAndMarkDeleted(publishedFileId: ULong) {
-        save(load().filterNot { it.publishedFileId == publishedFileId })
+    fun removeAndMarkDeleted(publishedFileId: ULong) = withStoreLock {
+        saveUnlocked(loadUnlocked().filterNot { it.publishedFileId == publishedFileId })
         val markerFile = deletedMarkerFile(publishedFileId)
         markerFile.parentFile?.mkdirs()
         markerFile.writeText(System.currentTimeMillis().toString(), StandardCharsets.UTF_8)
     }
 
-    @Synchronized fun clearDeletedMarker(publishedFileId: ULong) {
+    fun clearDeletedMarker(publishedFileId: ULong) {
         deletedMarkerFile(publishedFileId).delete()
     }
 
-    @Synchronized fun isMarkedDeleted(publishedFileId: ULong): Boolean = deletedMarkerFile(publishedFileId).isFile
+    fun isMarkedDeleted(publishedFileId: ULong): Boolean = deletedMarkerFile(publishedFileId).isFile
 
-    @Synchronized fun find(publishedFileId: ULong): WorkshopDownloadTaskRecord? = load().firstOrNull { it.publishedFileId == publishedFileId }
+    fun find(publishedFileId: ULong): WorkshopDownloadTaskRecord? = withStoreLock {
+        loadUnlocked().firstOrNull { it.publishedFileId == publishedFileId }
+    }
 
-    @Synchronized fun hasRunningTask(): Boolean = load().any { it.status.isRunningDownload() }
+    fun hasRunningTask(): Boolean = withStoreLock { loadUnlocked().any { it.status.isRunningDownload() } }
 
-    @Synchronized fun nextQueuedTask(): WorkshopDownloadTaskRecord? = load()
+    fun nextQueuedTask(): WorkshopDownloadTaskRecord? = withStoreLock { loadUnlocked()
         .filter { it.status == WorkshopDownloadTaskStatus.Queued }
-        .minByOrNull { it.updatedAtMillis }
+        .minByOrNull { it.updatedAtMillis } }
 
-    @Synchronized fun recoverInterruptedTasksWithResult(
+    fun claimNextQueuedTasks(limit: Int): List<WorkshopDownloadTaskRecord> = withStoreLock {
+        if (limit <= 0) return@withStoreLock emptyList()
+        val now = System.currentTimeMillis()
+        val claimed = ArrayList<WorkshopDownloadTaskRecord>()
+        val current = loadUnlocked().toMutableList()
+        val queuedIndexes = current.withIndex()
+            .filter { it.value.status == WorkshopDownloadTaskStatus.Queued }
+            .sortedBy { it.value.updatedAtMillis }
+            .take(limit)
+            .map { it.index }
+        queuedIndexes.forEach { index ->
+            val task = current[index].copy(
+                status = WorkshopDownloadTaskStatus.Resolving,
+                message = "正在准备下载",
+                updatedAtMillis = now,
+            )
+            current[index] = task
+            claimed += task
+        }
+        if (claimed.isNotEmpty()) saveUnlocked(current)
+        claimed
+    }
+
+    fun recoverInterruptedTasksWithResult(
         shouldRecover: (WorkshopDownloadTaskRecord) -> Boolean = { true },
-    ): List<WorkshopDownloadTaskRecord> {
+    ): List<WorkshopDownloadTaskRecord> = withStoreLock {
         val recovered = ArrayList<WorkshopDownloadTaskRecord>()
-        val tasks = load().map { task ->
+        val tasks = loadUnlocked().map { task ->
             if ((task.status.isRunningDownload() || task.status.isStoppingDownload()) && shouldRecover(task)) {
                 task.copy(
                     status = WorkshopDownloadTaskStatus.Paused,
@@ -115,35 +142,36 @@ class WorkshopDownloadTaskStore(context: Context) {
                 task
             }
         }
-        if (recovered.isNotEmpty()) save(tasks)
-        return recovered
+        if (recovered.isNotEmpty()) saveUnlocked(tasks)
+        return@withStoreLock recovered
     }
 
-    private fun load(): List<WorkshopDownloadTaskRecord> {
-        if (!file.isFile) return emptyList()
-        return runCatching {
-            val root = JSONObject(file.readText(StandardCharsets.UTF_8))
-            val array = root.optJSONArray("tasks") ?: return emptyList()
+    private fun loadUnlocked(): List<WorkshopDownloadTaskRecord> {
+        return WorkshopJsonFileStore.readJsonOrDefault(file, emptyList()) { text ->
+            val root = JSONObject(text)
+            val array = root.optJSONArray("tasks") ?: return@readJsonOrDefault emptyList()
             buildList {
                 for (i in 0 until array.length()) {
                     val item = array.optJSONObject(i) ?: continue
                     add(item.toTask())
                 }
             }
-        }.getOrDefault(emptyList())
+        }
     }
 
-    private fun save(tasks: List<WorkshopDownloadTaskRecord>) {
-        file.parentFile?.mkdirs()
+    private fun saveUnlocked(tasks: List<WorkshopDownloadTaskRecord>) {
         val array = JSONArray()
         tasks.forEach { array.put(it.toJson()) }
-        val tempFile = File(file.parentFile, "${file.name}.tmp")
-        tempFile.writeText(JSONObject().put("tasks", array).toString(2), StandardCharsets.UTF_8)
-        if (file.exists() && !file.delete()) return
-        tempFile.renameTo(file)
+        WorkshopJsonFileStore.writeAtomically(file, JSONObject().put("tasks", array).toString(2))
     }
 
+    private fun <T> withStoreLock(block: () -> T): T = WorkshopJsonFileStore.withFileLock(file, lock, block)
+
     private fun deletedMarkerFile(publishedFileId: ULong): File = File(file.parentFile, "deleted_$publishedFileId")
+
+    companion object {
+        private val lock = Any()
+    }
 }
 
 fun WorkshopDownloadTaskStatus.isRunningDownload(): Boolean = when (this) {
@@ -252,6 +280,17 @@ private fun JSONObject.toTask(): WorkshopDownloadTaskRecord {
 }
 
 private fun downloadLogTimestamp(): String = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
+
+private fun appendBoundedDownloadLog(currentLog: String, line: String): String {
+    val combined = listOf(currentLog, line).filter(String::isNotBlank).joinToString("\n")
+    if (combined.length <= MAX_DOWNLOAD_LOG_CHARS) return combined
+    val tailSize = (MAX_DOWNLOAD_LOG_CHARS - DOWNLOAD_LOG_TRUNCATED_MARKER.length)
+        .coerceAtLeast(0)
+    return DOWNLOAD_LOG_TRUNCATED_MARKER + combined.takeLast(tailSize)
+}
+
+private const val MAX_DOWNLOAD_LOG_CHARS = 256 * 1024
+private const val DOWNLOAD_LOG_TRUNCATED_MARKER = "...(older download log truncated)...\n"
 
 private fun JSONObject.optionalInt(key: String): Int? = if (has(key) && !isNull(key)) optInt(key) else null
 private fun JSONObject.optionalLong(key: String): Long? = if (has(key) && !isNull(key)) optLong(key) else null

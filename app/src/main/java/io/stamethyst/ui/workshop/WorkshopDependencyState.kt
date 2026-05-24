@@ -1,6 +1,7 @@
 package io.stamethyst.ui.workshop
 
 import io.stamethyst.backend.mods.ModManager
+import io.stamethyst.backend.workshop.WorkshopDownloadBlocklist
 import io.stamethyst.backend.workshop.WorkshopInstalledModRecord
 import io.stamethyst.backend.workshop.WorkshopItemSummary
 import io.stamethyst.backend.workshop.WorkshopModCardState
@@ -76,7 +77,7 @@ private fun WorkshopItemSummary.isInstalledOrQueued(
 }
 
 private fun WorkshopItemSummary.isDefaultInstalledWorkshopDependency(): Boolean {
-    if (publishedFileId in defaultInstalledWorkshopDependencyIds) return true
+    if (WorkshopDownloadBlocklist.isBlocked(publishedFileId)) return true
     val tokens = listOf(title, description, authorName)
         .map { it.normalizedWorkshopDependencyToken() }
     return tokens.any { it in defaultInstalledWorkshopDependencyTokens }
@@ -88,12 +89,6 @@ private fun String.normalizedWorkshopDependencyToken(): String {
         .lowercase(Locale.ROOT)
         .replace(Regex("[^a-z0-9]"), "")
 }
-
-private val defaultInstalledWorkshopDependencyIds = setOf(
-    1605060445uL, // ModTheSpire
-    1605833019uL, // BaseMod
-    1609158507uL, // StSLib
-)
 
 private val defaultInstalledWorkshopDependencyTokens = setOf(
     "modthespire",

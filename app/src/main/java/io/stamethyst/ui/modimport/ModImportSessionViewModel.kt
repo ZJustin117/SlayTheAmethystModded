@@ -208,8 +208,11 @@ internal class ModImportSessionViewModel : ViewModel() {
 
     fun execute(context: Context, onCompleted: () -> Unit = {}) {
         val plan = uiState.plan ?: return
-        val decisions = uiState.decisions
         if (!uiState.canImport) return
+        val decisions = uiState.decisions.withDefaultReplacementFolders(
+            plan = plan,
+            validFolderIds = uiState.folderOptions.mapNotNull { it.id }.toSet()
+        )
         val requestToken = activeRequestToken
         uiState = uiState.copy(step = ModImportStep.Executing, progress = null, report = null)
         executor.execute {
@@ -294,6 +297,50 @@ internal fun ModImportItemPlan.statusLabelResId(): Int {
         ModImportItemStatus.NEEDS_DECISION -> R.string.mod_import_status_needs_decision
         ModImportItemStatus.SKIPPED -> R.string.mod_import_status_skipped
         ModImportItemStatus.BLOCKED -> R.string.mod_import_status_blocked
+    }
+}
+
+internal fun ModImportDecisions.defaultReplacementFolderIdFor(
+    plan: ModImportPlan,
+    item: ModImportItemPlan,
+    validFolderIds: Set<String>
+): String? {
+    if (!reusePreviousFolderOnReplace || validFolderIds.isEmpty()) {
+        return null
+    }
+    val conflictKey = item.duplicateConflictKey ?: return null
+    if (duplicateDecisionFor(conflictKey) != DuplicateImportDecision.ReplaceExisting) {
+        return null
+    }
+    val folderId = plan.duplicateConflicts
+        .firstOrNull { it.normalizedModId == conflictKey }
+        ?.existingSources
+        ?.firstOrNull { !it.assignedFolderId.isNullOrBlank() }
+        ?.assignedFolderId
+        ?.trim()
+        .orEmpty()
+    return folderId.takeIf { it.isNotEmpty() && validFolderIds.contains(it) }
+}
+
+internal fun ModImportDecisions.withDefaultReplacementFolders(
+    plan: ModImportPlan,
+    validFolderIds: Set<String>
+): ModImportDecisions {
+    if (!reusePreviousFolderOnReplace || validFolderIds.isEmpty()) {
+        return this
+    }
+    val updated = LinkedHashMap(targetFolderIdByItemId)
+    plan.importableItems.forEach { item ->
+        if (hasTargetFolderDecision(item.id)) {
+            return@forEach
+        }
+        val folderId = defaultReplacementFolderIdFor(plan, item, validFolderIds) ?: return@forEach
+        updated[item.id] = folderId
+    }
+    return if (updated.size == targetFolderIdByItemId.size) {
+        this
+    } else {
+        copy(targetFolderIdByItemId = updated)
     }
 }
 

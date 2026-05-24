@@ -124,6 +124,7 @@ import io.stamethyst.ui.settings.LauncherSettingsGameScreen
 import io.stamethyst.ui.settings.LauncherSettingsLauncherScreen
 import io.stamethyst.ui.settings.LauncherSettingsMarketCloudScreen
 import io.stamethyst.ui.settings.LauncherSettingsScreen
+import io.stamethyst.ui.settings.LauncherSettingsWorkshopAutoImportDefaultsScreen
 import io.stamethyst.ui.settings.LauncherSteamCloudGuardScreen
 import io.stamethyst.ui.settings.LauncherSteamCloudLoginScreen
 import io.stamethyst.ui.settings.LauncherSteamCloudSaveSettingsScreen
@@ -186,6 +187,7 @@ fun LauncherContent(
     val shouldShowBlockingBusyWindow =
         isBlockingBusyInteractionLocked &&
             currentRoute != Route.QuickStart &&
+            currentRoute != Route.QuickStartJarImport &&
             currentRoute != Route.QuickStartSteamDownload
     val blockingBusyMessage = when {
         mainUiState.busyOperation.usesBlockingOverlay() -> mainUiState.busyMessage
@@ -236,6 +238,12 @@ fun LauncherContent(
     LaunchedEffect(currentRoute) {
         if (currentRoute != Route.Mods) {
             modsBatchSelectionMode = false
+        }
+    }
+
+    LaunchedEffect(currentRoute, activity) {
+        if (currentRoute == Route.Mods) {
+            mainViewModel.refresh(activity)
         }
     }
 
@@ -522,6 +530,13 @@ fun LauncherContent(
 
                         entry<Route.SettingsMarketCloud> {
                             LauncherSettingsMarketCloudScreen(
+                                viewModel = settingsViewModel,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+
+                        entry<Route.SettingsWorkshopAutoImportDefaults> {
+                            LauncherSettingsWorkshopAutoImportDefaultsScreen(
                                 viewModel = settingsViewModel,
                                 modifier = Modifier.fillMaxSize(),
                             )
@@ -1351,6 +1366,7 @@ private fun Route?.launcherDockRoute(): Route? {
         Route.SettingsLauncher,
         Route.SettingsGame,
         Route.SettingsMarketCloud,
+        Route.SettingsWorkshopAutoImportDefaults,
         Route.SettingsFeedback,
         Route.SettingsAbout -> Route.Settings
         Route.CrashRecovery,

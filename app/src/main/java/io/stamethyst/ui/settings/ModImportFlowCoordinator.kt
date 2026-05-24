@@ -12,6 +12,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import io.stamethyst.R
 import io.stamethyst.backend.mods.AtlasOfflineDownscaleStrategy
+import io.stamethyst.backend.mods.ModManager
 import io.stamethyst.ui.UiBusyOperation
 import io.stamethyst.ui.UiText
 import io.stamethyst.ui.VupShionPatchedDialog
@@ -541,8 +542,12 @@ internal object ModImportFlowCoordinator {
             return
         }
         val folderOptions = buildImportFolderOptions(folderStateStore)
+        val validFolderIds = folderOptions.mapNotNull { it.id }.toSet()
         val selections = importedMods.map { result ->
-            ImportedModFolderSelection(result = result, folderId = null)
+            ImportedModFolderSelection(
+                result = result,
+                folderId = result.suggestedFolderId?.trim()?.takeIf { validFolderIds.contains(it) }
+            )
         }
         val adapterItems = buildImportFolderSelectionLabels(host, selections, folderOptions).toMutableList()
         val adapter = SimpleAdapter(
@@ -665,6 +670,7 @@ internal object ModImportFlowCoordinator {
                 host = host,
                 folderStateStore = folderStateStore,
                 storagePath = selection.result.storagePath,
+                normalizedModId = selection.result.modId,
                 folderId = selection.folderId
             )
         }
@@ -711,9 +717,10 @@ internal object ModImportFlowCoordinator {
         host: Activity,
         folderStateStore: MainFolderStateStore,
         storagePath: String,
+        normalizedModId: String,
         folderId: String?
     ) {
-        var changed = clearImportedModFolderAssignment(folderStateStore, storagePath)
+        var changed = clearImportedModFolderAssignment(folderStateStore, storagePath, normalizedModId)
         val targetFolderId = folderId?.trim().orEmpty()
         if (targetFolderId.isEmpty()) {
             folderStateStore.unassignedIsCollapsed = false
@@ -734,13 +741,18 @@ internal object ModImportFlowCoordinator {
 
     private fun clearImportedModFolderAssignment(
         folderStateStore: MainFolderStateStore,
-        storagePath: String
+        storagePath: String,
+        normalizedModId: String = ""
     ): Boolean {
         var changed = false
         resolveModStoragePathCandidates(storagePath).forEach { candidate ->
             if (folderStateStore.assignments.remove(candidate) != null) {
                 changed = true
             }
+        }
+        val normalizedKey = ModManager.normalizeModId(normalizedModId)
+        if (normalizedKey.isNotEmpty() && folderStateStore.assignments.remove(normalizedKey) != null) {
+            changed = true
         }
         return changed
     }

@@ -2,6 +2,9 @@ package top.apricityx.workshop.workshop
 
 import top.apricityx.workshop.steam.protocol.CdnRequestEndpoint
 import top.apricityx.workshop.steam.protocol.CdnServer
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -47,6 +50,7 @@ internal class SteamCdnTransport(
         var lastError: Throwable? = null
         for (endpoint in server.requestEndpoints()) {
             try {
+                currentCoroutineContext().ensureActive()
                 return requestBytesFromEndpoint(
                     server = server,
                     endpoint = endpoint,
@@ -56,6 +60,7 @@ internal class SteamCdnTransport(
                     resolveAuthToken = resolveAuthToken,
                 )
             } catch (error: Throwable) {
+                if (error is CancellationException || error is InterruptedException) throw error
                 lastError = error
             }
         }
@@ -127,6 +132,7 @@ internal class SteamCdnTransport(
     ): ByteArray {
         var currentQuery = query
         repeat(2) { attempt ->
+            currentCoroutineContext().ensureActive()
             val request = Request.Builder()
                 .url(buildRequestUrl(server, endpoint, path, currentQuery, proxyServer))
                 .build()

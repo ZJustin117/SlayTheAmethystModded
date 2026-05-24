@@ -75,6 +75,45 @@ class WorkshopMetadataStoreTest {
     }
 
     @Test
+    fun recoverFinishedTransferPreservesCompletedAutoImportFailureRecord() {
+        val roots = TestRoots.create("workshop-metadata-store-recover-auto-import-failed")
+        val metadataStore = WorkshopMetadataStore(roots.context)
+        val taskStore = WorkshopDownloadTaskStore(roots.context)
+        val details = details(publishedFileId = 127uL, title = "Downfall")
+        val outputDir = File(roots.context.filesDir, "workshop/646570/127").apply { mkdirs() }
+        File(outputDir, "Downfall.jar").writeText("downloaded-jar")
+        val autoImportFailedMessage = "下载完成，自动导入失败：自动导入未产生已安装模组"
+        metadataStore.upsert(
+            record(title = "Downfall", publishedFileId = 127uL, updatedAtMillis = 200L).copy(
+                localJarPath = "Downfall.jar",
+                cardState = WorkshopModCardState.ImportedUnpatched,
+                statusText = "自动导入失败，请手动导入",
+            )
+        )
+        val task = task(details).copy(
+            status = WorkshopDownloadTaskStatus.Completed,
+            message = autoImportFailedMessage,
+            progressPercent = 100,
+            completedFiles = 1,
+            totalFiles = 1,
+        )
+        taskStore.upsert(task)
+
+        val recovered = WorkshopInterruptedDownloadRecovery.recoverFinishedTransferIfPossible(
+            context = roots.context,
+            metadataStore = metadataStore,
+            taskStore = taskStore,
+            task = task,
+        )
+
+        assertFalse(recovered)
+        val record = metadataStore.findByPublishedFileId(646570u, 127uL)
+        assertEquals(WorkshopModCardState.ImportedUnpatched, record?.cardState)
+        assertEquals("自动导入失败，请手动导入", record?.statusText)
+        assertEquals(autoImportFailedMessage, taskStore.find(127uL)?.message)
+    }
+
+    @Test
     fun recoverFinishedTransferIgnoresPartialDownloadEvenWhenJarExists() {
         val roots = TestRoots.create("workshop-metadata-store-recover-partial")
         val metadataStore = WorkshopMetadataStore(roots.context)
@@ -141,6 +180,43 @@ class WorkshopMetadataStoreTest {
         assertEquals(WorkshopModCardState.UpdateAvailable, record?.cardState)
         assertEquals(installedJar.absolutePath, record?.localJarPath)
         assertEquals(WorkshopDownloadTaskStatus.Completed, taskStore.find(125uL)?.status)
+    }
+
+    @Test
+    fun recoverFinishedTransferDoesNotRestoreQueuedUpdateBeforeItStarts() {
+        val roots = TestRoots.create("workshop-metadata-store-recover-queued-update")
+        val metadataStore = WorkshopMetadataStore(roots.context)
+        val taskStore = WorkshopDownloadTaskStore(roots.context)
+        val details = details(publishedFileId = 126uL, title = "Queued Update")
+        val installedJar = File(roots.rootDir, "optional/Queued Update.jar").apply {
+            parentFile?.mkdirs()
+            writeText("old-installed-jar")
+        }
+        metadataStore.upsert(
+            record(title = "Queued Update", publishedFileId = 126uL, updatedAtMillis = 100L).copy(
+                localJarPath = installedJar.absolutePath,
+                cardState = WorkshopModCardState.Downloading,
+                statusText = "等待更新",
+            )
+        )
+        val task = task(details).copy(
+            status = WorkshopDownloadTaskStatus.Queued,
+            message = "等待更新",
+        )
+        taskStore.upsert(task)
+
+        val recovered = WorkshopInterruptedDownloadRecovery.recoverFinishedTransferIfPossible(
+            context = roots.context,
+            metadataStore = metadataStore,
+            taskStore = taskStore,
+            task = task,
+        )
+
+        assertFalse(recovered)
+        val record = metadataStore.findByPublishedFileId(646570u, 126uL)
+        assertEquals(WorkshopModCardState.Downloading, record?.cardState)
+        assertEquals("等待更新", record?.statusText)
+        assertEquals(WorkshopDownloadTaskStatus.Queued, taskStore.find(126uL)?.status)
     }
 
     private fun record(

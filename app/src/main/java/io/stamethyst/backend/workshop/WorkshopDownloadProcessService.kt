@@ -93,30 +93,6 @@ class WorkshopDownloadProcessService : Service() {
                 putExtra(EXTRA_RESULT_RECEIVER, receiver)
                 putExtra(EXTRA_APP_ID, details.summary.appId.toString())
                 putExtra(EXTRA_PUBLISHED_FILE_ID, details.summary.publishedFileId.toString())
-                putExtra(EXTRA_TITLE, details.summary.title)
-                putExtra(EXTRA_DESCRIPTION, details.summary.description)
-                putExtra(EXTRA_PREVIEW_URL, details.summary.previewUrl)
-                putExtra(EXTRA_AUTHOR_NAME, details.summary.authorName)
-                putExtra(EXTRA_FILE_SIZE_BYTES, details.summary.fileSizeBytes)
-                putExtra(EXTRA_UPDATED_AT_MILLIS, details.summary.updatedAtMillis)
-                putExtra(EXTRA_DOWNLOAD_COUNT, details.summary.downloadCount)
-                putExtra(EXTRA_FILE_URL, details.fileUrl)
-                putExtra(EXTRA_HCONTENT_FILE, details.hcontentFile?.toString())
-                putExtra(EXTRA_DEPOT_ID, details.depotId?.toString())
-                putExtra(EXTRA_JSON_METADATA, details.jsonMetadata)
-                putExtra(EXTRA_DEPENDENCIES, details.dependencies.joinToString("\n") { dependency ->
-                    listOf(
-                        dependency.appId,
-                        dependency.publishedFileId,
-                        dependency.title,
-                        dependency.previewUrl,
-                        dependency.description,
-                        dependency.authorName,
-                        dependency.fileSizeBytes,
-                        dependency.updatedAtMillis,
-                        dependency.downloadCount,
-                    ).joinToString("\t")
-                })
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 appContext.startForegroundService(intent)
@@ -130,16 +106,36 @@ class WorkshopDownloadProcessService : Service() {
         }
 
         fun startNextQueued(context: Context) {
-            repeat(availableDownloadSlots(context)) {
-                val task = WorkshopDownloadTaskStore(context).nextQueuedTask() ?: return
-                start(context, task.details, null)
+            val taskStore = WorkshopDownloadTaskStore(context)
+            taskStore.claimNextQueuedTasks(availableDownloadSlots(context)).forEach { task ->
+                runCatching { start(context, task.details, null) }.onFailure { error ->
+                    taskStore.update(task.publishedFileId) {
+                        it.copy(
+                            status = WorkshopDownloadTaskStatus.Failed,
+                            message = "启动下载服务失败：${error.message ?: error.javaClass.simpleName}",
+                            errorClass = error.javaClass.name,
+                            errorMessage = error.message ?: error.javaClass.simpleName,
+                            errorStackTrace = error.stackTraceToString(),
+                            updatedAtMillis = System.currentTimeMillis(),
+                        )
+                    }
+                }
             }
         }
 
         private fun availableDownloadSlots(context: Context): Int {
             val limit = LauncherPreferences.readWorkshopMaxConcurrentDownloads(context)
-            val runningCount = activeDownloadKeySnapshot.size
+            val persistedRunningCount = WorkshopDownloadTaskStore(context).list().count { it.status.isRunningDownload() }
+            val runningCount = maxOf(activeDownloadKeySnapshot.size, activeDownloadMarkerCount(context), persistedRunningCount)
             return (limit - runningCount).coerceAtLeast(0)
+        }
+
+        private fun activeDownloadMarkerCount(context: Context): Int {
+            val now = System.currentTimeMillis()
+            val markerDir = File(context.applicationContext.filesDir, ACTIVE_MARKER_DIR)
+            return markerDir.listFiles()
+                .orEmpty()
+                .count { file -> file.isFile && file.name.endsWith(".active") && now - file.lastModified() <= ACTIVE_MARKER_STALE_MS }
         }
 
         fun pause(context: Context, appId: UInt, publishedFileId: ULong, receiver: ResultReceiver? = null) {
@@ -166,6 +162,7 @@ class WorkshopDownloadProcessService : Service() {
     private var workerThreads: MutableMap<String, Thread> = ConcurrentHashMap()
 
     private val requestedStops: MutableMap<String, StopReason> = ConcurrentHashMap()
+    private val activeServices: MutableMap<String, WorkshopService> = ConcurrentHashMap()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -178,6 +175,7 @@ class WorkshopDownloadProcessService : Service() {
         if (safeIntent.action != ACTION_DOWNLOAD) return START_NOT_STICKY
 
         val receiver = extractResultReceiver(safeIntent)
+        startForeground(NOTIFICATION_ID, buildNotification("准备下载"))
         val requestedDownloadKey = safeIntent.downloadKeyOrNull()
         if (requestedDownloadKey != null && workerThreads.containsKey(requestedDownloadKey)) {
             startForeground(NOTIFICATION_ID, buildNotification("下载正在进行"))
@@ -188,17 +186,74 @@ class WorkshopDownloadProcessService : Service() {
             return START_NOT_STICKY
         }
         if (workerThreads.size >= LauncherPreferences.readWorkshopMaxConcurrentDownloads(applicationContext)) {
+            safeIntent.publishedFileIdOrNull()?.let { publishedFileId ->
+                val deferredTaskStore = WorkshopDownloadTaskStore(applicationContext)
+                val deferredTask = deferredTaskStore.find(publishedFileId)
+                if (deferredTask != null && WorkshopDownloadBlocklist.isBlocked(publishedFileId)) {
+                    cancelBlockedTask(deferredTaskStore, deferredTask, receiver)
+                    if (workerThreads.isEmpty()) {
+                        stopForegroundCompat()
+                        stopSelf()
+                    }
+                    return START_NOT_STICKY
+                }
+                deferredTaskStore.update(publishedFileId) { task ->
+                    if (task.status == WorkshopDownloadTaskStatus.Resolving) {
+                        task.copy(
+                            status = WorkshopDownloadTaskStatus.Queued,
+                            message = "等待下载",
+                            updatedAtMillis = System.currentTimeMillis(),
+                        )
+                    } else {
+                        task
+                    }
+                }
+            }
             receiver?.send(RESULT_PROGRESS, Bundle().apply {
                 putString(EXTRA_MESSAGE, "等待下载")
                 putString(EXTRA_TASK_STATUS, "Queued")
             })
+            if (workerThreads.isEmpty()) {
+                stopForegroundCompat()
+                stopSelf()
+            }
             return START_NOT_STICKY
         }
 
-        startForeground(NOTIFICATION_ID, buildNotification("准备下载"))
-        val startingDetails = extractDetails(safeIntent)
         val startingTaskStore = WorkshopDownloadTaskStore(applicationContext)
-        startingTaskStore.clearDeletedMarker(startingDetails.summary.publishedFileId)
+        val requestedPublishedFileId = safeIntent.publishedFileIdOrNull()
+        if (requestedPublishedFileId == null) {
+            if (workerThreads.isEmpty()) {
+                stopForegroundCompat()
+                stopSelf()
+            }
+            return START_NOT_STICKY
+        }
+        val startingTask = startingTaskStore.find(requestedPublishedFileId)
+        if (startingTask == null) {
+            if (workerThreads.isEmpty()) {
+                stopForegroundCompat()
+                stopSelf()
+            }
+            return START_NOT_STICKY
+        }
+        if (startingTaskStore.isMarkedDeleted(startingTask.publishedFileId) || !startingTask.status.canStartDownload()) {
+            if (workerThreads.isEmpty()) {
+                stopForegroundCompat()
+                stopSelf()
+            }
+            return START_NOT_STICKY
+        }
+        if (WorkshopDownloadBlocklist.isBlocked(startingTask.publishedFileId)) {
+            cancelBlockedTask(startingTaskStore, startingTask, receiver)
+            if (workerThreads.isEmpty()) {
+                stopForegroundCompat()
+                stopSelf()
+            }
+            startNextQueued(applicationContext)
+            return START_NOT_STICKY
+        }
+        val startingDetails = startingTask.details
         startingTaskStore.update(startingDetails.summary.publishedFileId) {
             it.copy(
                 status = WorkshopDownloadTaskStatus.Resolving,
@@ -220,6 +275,8 @@ class WorkshopDownloadProcessService : Service() {
 
     override fun onDestroy() {
         val threads = workerThreads.values.toList()
+        activeServices.values.forEach { it.cancelActiveCalls() }
+        activeServices.clear()
         workerThreads.clear()
         activeDownloadKeySnapshot = emptySet()
         threads.forEach { thread ->
@@ -230,17 +287,67 @@ class WorkshopDownloadProcessService : Service() {
 
     private fun handleControlIntent(intent: Intent) {
         val requestedDownloadKey = intent.downloadKeyOrNull() ?: return
-        val thread = workerThreads[requestedDownloadKey] ?: return
-        requestedStops[requestedDownloadKey] = if (intent.action == ACTION_PAUSE) StopReason.Pause else StopReason.Cancel
+        val stopReason = if (intent.action == ACTION_PAUSE) StopReason.Pause else StopReason.Cancel
+        val thread = workerThreads[requestedDownloadKey]
+        if (thread == null) {
+            handleControlWithoutWorker(intent, stopReason)
+            return
+        }
+        requestedStops[requestedDownloadKey] = stopReason
+        activeServices[requestedDownloadKey]?.cancelActiveCalls()
         thread.interrupt()
     }
 
+    private fun handleControlWithoutWorker(intent: Intent, stopReason: StopReason) {
+        val appId = intent.getStringExtra(EXTRA_APP_ID)?.toUIntOrNull() ?: return
+        val publishedFileId = intent.publishedFileIdOrNull() ?: return
+        val taskStore = WorkshopDownloadTaskStore(applicationContext)
+        when (stopReason) {
+            StopReason.Pause -> {
+                taskStore.update(publishedFileId) {
+                    it.copy(
+                        status = WorkshopDownloadTaskStatus.Paused,
+                        message = "下载已暂停",
+                        updatedAtMillis = System.currentTimeMillis(),
+                        preservePartialDownload = true,
+                    )
+                }
+                WorkshopMetadataStore(applicationContext).updateState(
+                    appId = appId,
+                    publishedFileId = publishedFileId,
+                    state = WorkshopModCardState.DownloadPaused,
+                    statusText = "下载已暂停",
+                )
+            }
+            StopReason.Cancel -> {
+                taskStore.removeAndMarkDeleted(publishedFileId)
+                WorkshopMetadataStore(applicationContext).remove(appId, publishedFileId)
+                File(applicationContext.filesDir, "workshop/$appId/$publishedFileId").deleteRecursively()
+            }
+        }
+    }
+
     private fun runDownload(startId: Int, intent: Intent, receiver: ResultReceiver?) {
-        var details = extractDetails(intent)
         val metadataStore = WorkshopMetadataStore(applicationContext)
         val taskStore = WorkshopDownloadTaskStore(applicationContext)
         val service = WorkshopService(applicationContext)
         val downloadKey = requireNotNull(intent.downloadKeyOrNull())
+        activeServices[downloadKey] = service
+        val publishedFileId = intent.publishedFileIdOrNull()
+        val loadedDetails = publishedFileId?.takeUnless(taskStore::isMarkedDeleted)?.let { taskStore.find(it)?.details }
+        if (loadedDetails == null) {
+            workerThreads.remove(downloadKey)
+            activeServices.remove(downloadKey)
+            requestedStops.remove(downloadKey)
+            activeDownloadKeySnapshot = workerThreads.keys.toSet()
+            if (workerThreads.isEmpty()) {
+                stopForegroundCompat()
+                stopSelf()
+            }
+            startNextQueued(applicationContext)
+            return
+        }
+        var details = loadedDetails
         val activeDownloadHeartbeat = startActiveDownloadHeartbeat(details.summary.publishedFileId, downloadKey)
         val initialTask = taskStore.find(details.summary.publishedFileId)
         val preservePartialDownload = initialTask?.shouldPreservePartialDownload() == true
@@ -275,7 +382,7 @@ class WorkshopDownloadProcessService : Service() {
             )
             taskStore.update(details.summary.publishedFileId) {
                 it.copy(
-                    status = WorkshopDownloadTaskStatus.Queued,
+                    status = WorkshopDownloadTaskStatus.Resolving,
                     message = queuedMessage,
                     updatedAtMillis = System.currentTimeMillis(),
                     progressPercent = if (preservePartialDownload) it.progressPercent else null,
@@ -289,7 +396,7 @@ class WorkshopDownloadProcessService : Service() {
                 )
             }
             taskStore.appendLog(details.summary.publishedFileId, queuedMessage)
-            sendProgress(receiver, queuedMessage, "Queued")
+            sendProgress(receiver, queuedMessage, "Resolving")
             runBlocking {
                 if (!details.hasDownloadSource()) {
                     taskStore.update(details.summary.publishedFileId) {
@@ -312,6 +419,12 @@ class WorkshopDownloadProcessService : Service() {
                     cleanDownloadedContent(outputDir)
                 }
                 taskStore.appendLog(details.summary.publishedFileId, "输出目录：${outputDir.absolutePath}")
+                var lastProgressPersistAtMillis = 0L
+                var lastProgressPercent: Int? = null
+                var lastProgressCompletedFiles: Int? = null
+                var lastProgressCompletedChunks: Int? = null
+                var lastProgressLogAtMillis = 0L
+                var lastProgressLogPercent: Int? = null
                 service.download(WorkshopDownloadRequest(details, outputDir)).collect { event ->
                     when (event) {
                         WorkshopDownloadEvent.Ignored -> Unit
@@ -321,21 +434,47 @@ class WorkshopDownloadProcessService : Service() {
                         }
                         is WorkshopDownloadEvent.Progress -> {
                             if (taskStore.isMarkedDeleted(details.summary.publishedFileId)) return@collect
+                            val now = System.currentTimeMillis()
+                            val progressPercent = event.progress.progressPercent()
+                            if (!event.progress.shouldPersist(
+                                    nowMillis = now,
+                                    lastPersistAtMillis = lastProgressPersistAtMillis,
+                                    lastPercent = lastProgressPercent,
+                                    lastCompletedFiles = lastProgressCompletedFiles,
+                                    lastCompletedChunks = lastProgressCompletedChunks,
+                                )
+                            ) {
+                                return@collect
+                            }
                             taskStore.update(details.summary.publishedFileId) {
                                 it.copy(
                                     status = WorkshopDownloadTaskStatus.Downloading,
                                     message = "正在下载",
-                                    progressPercent = event.progress.progressPercent(),
+                                    progressPercent = progressPercent,
                                     downloadedBytes = event.progress.writtenBytes,
                                     totalBytes = event.progress.totalBytes ?: it.totalBytes,
                                     completedFiles = event.progress.completedFiles ?: it.completedFiles,
                                     totalFiles = event.progress.totalFiles ?: it.totalFiles,
                                     completedChunks = event.progress.completedChunks ?: it.completedChunks,
                                     totalChunks = event.progress.totalChunks ?: it.totalChunks,
-                                    updatedAtMillis = System.currentTimeMillis(),
+                                    updatedAtMillis = now,
                                 )
                             }
-                            taskStore.appendLog(details.summary.publishedFileId, event.progress.downloadLogLine())
+                            if (event.progress.shouldLog(
+                                    percent = progressPercent,
+                                    nowMillis = now,
+                                    lastLogAtMillis = lastProgressLogAtMillis,
+                                    lastLoggedPercent = lastProgressLogPercent,
+                                )
+                            ) {
+                                taskStore.appendLog(details.summary.publishedFileId, event.progress.downloadLogLine())
+                                lastProgressLogAtMillis = now
+                                lastProgressLogPercent = progressPercent
+                            }
+                            lastProgressPersistAtMillis = now
+                            lastProgressPercent = progressPercent
+                            lastProgressCompletedFiles = event.progress.completedFiles
+                            lastProgressCompletedChunks = event.progress.completedChunks
                             sendProgress(receiver, "正在下载", "Downloading", event.progress)
                         }
                         is WorkshopDownloadEvent.StateChanged -> {
@@ -393,8 +532,8 @@ class WorkshopDownloadProcessService : Service() {
                                 taskStore.update(details.summary.publishedFileId) {
                                     it.copy(
                                         status = WorkshopDownloadTaskStatus.Downloading,
-                                        message = "下载完成，正在处理导入修补",
-                                        progressPercent = 100,
+                                        message = if (autoImportEnabled) "下载完成，准备导入修补" else "下载完成，正在处理导入修补",
+                                        progressPercent = if (autoImportEnabled) 0 else 100,
                                         downloadedBytes = (it.totalBytes ?: it.downloadedBytes).coerceAtLeast(it.downloadedBytes),
                                         completedFiles = it.totalFiles ?: it.completedFiles,
                                         updatedAtMillis = System.currentTimeMillis(),
@@ -409,7 +548,40 @@ class WorkshopDownloadProcessService : Service() {
                                 }
                                 if (autoImportEnabled) {
                                     val jarFile = File(outputDir, jarArtifact.relativePath)
-                                    when (val importResult = WorkshopAutoImporter.importDownloadedJar(applicationContext, details, jarFile)) {
+                                    var lastAutoImportProgressMessage = ""
+                                    when (val importResult = WorkshopAutoImporter.importDownloadedJar(
+                                        context = applicationContext,
+                                        details = details,
+                                        jarFile = jarFile,
+                                        onProgress = { progress ->
+                                            val progressMessage = progress.toDownloadStatusMessage()
+                                            taskStore.update(details.summary.publishedFileId) {
+                                                it.copy(
+                                                    status = WorkshopDownloadTaskStatus.Downloading,
+                                                    message = progressMessage,
+                                                    progressPercent = progress.percent.coerceIn(0, 100),
+                                                    updatedAtMillis = System.currentTimeMillis(),
+                                                    preservePartialDownload = false,
+                                                )
+                                            }
+                                            metadataStore.updateState(
+                                                appId = details.summary.appId,
+                                                publishedFileId = details.summary.publishedFileId,
+                                                state = WorkshopModCardState.Downloading,
+                                                statusText = progressMessage,
+                                            )
+                                            if (progressMessage != lastAutoImportProgressMessage) {
+                                                taskStore.appendLog(details.summary.publishedFileId, progressMessage)
+                                                lastAutoImportProgressMessage = progressMessage
+                                            }
+                                            sendProgress(
+                                                receiver = receiver,
+                                                message = progressMessage,
+                                                taskStatus = "Downloading",
+                                                progressPercent = progress.percent.coerceIn(0, 100),
+                                            )
+                                        },
+                                    )) {
                                         is WorkshopAutoImportResult.Imported -> {
                                             message = "下载完成，已自动导入 ${importResult.modName}"
                                             downloadedRecord.copy(
@@ -500,6 +672,7 @@ class WorkshopDownloadProcessService : Service() {
                     })
                 }
                 StopReason.Cancel -> {
+                    val explicitlyDeleted = taskStore.isMarkedDeleted(details.summary.publishedFileId)
                     cleanOutput(details)
                     taskStore.update(details.summary.publishedFileId) {
                         it.copy(
@@ -510,7 +683,11 @@ class WorkshopDownloadProcessService : Service() {
                         )
                     }
                     taskStore.appendLog(details.summary.publishedFileId, "下载已取消，已清理输出目录")
-                    metadataStore.remove(details.summary.appId, details.summary.publishedFileId)
+                    if (!explicitlyDeleted && existingRecord != null) {
+                        metadataStore.upsert(existingRecord)
+                    } else {
+                        metadataStore.remove(details.summary.appId, details.summary.publishedFileId)
+                    }
                     receiver?.send(RESULT_CANCELLED, Bundle().apply {
                         putString(EXTRA_MESSAGE, "下载已取消")
                         putString(EXTRA_TASK_STATUS, "Cancelled")
@@ -545,6 +722,7 @@ class WorkshopDownloadProcessService : Service() {
             activeDownloadHeartbeat.interrupt()
             clearActiveDownloadMarker(details.summary.publishedFileId)
             workerThreads.remove(downloadKey)
+            activeServices.remove(downloadKey)
             requestedStops.remove(downloadKey)
             activeDownloadKeySnapshot = workerThreads.keys.toSet()
             if (workerThreads.isEmpty()) {
@@ -553,6 +731,35 @@ class WorkshopDownloadProcessService : Service() {
             }
             startNextQueued(applicationContext)
         }
+    }
+
+    private fun cancelBlockedTask(
+        taskStore: WorkshopDownloadTaskStore,
+        task: WorkshopDownloadTaskRecord,
+        receiver: ResultReceiver?,
+    ) {
+        val message = getString(R.string.workshop_download_task_message_blocked)
+        val summary = task.details.summary
+        taskStore.update(task.publishedFileId) {
+            it.copy(
+                status = WorkshopDownloadTaskStatus.Cancelled,
+                message = message,
+                updatedAtMillis = System.currentTimeMillis(),
+                errorClass = "WorkshopDownloadBlocked",
+                errorMessage = message,
+            )
+        }
+        taskStore.appendLog(task.publishedFileId, message)
+        WorkshopMetadataStore(applicationContext).updateState(
+            appId = summary.appId,
+            publishedFileId = summary.publishedFileId,
+            state = WorkshopModCardState.DownloadFailed,
+            statusText = message,
+        )
+        receiver?.send(RESULT_CANCELLED, Bundle().apply {
+            putString(EXTRA_MESSAGE, message)
+            putString(EXTRA_TASK_STATUS, "Cancelled")
+        })
     }
 
     private fun startActiveDownloadHeartbeat(publishedFileId: ULong, downloadKey: String): Thread {
@@ -612,6 +819,7 @@ class WorkshopDownloadProcessService : Service() {
         message: String,
         taskStatus: String?,
         progress: WorkshopDownloadProgress? = null,
+        progressPercent: Int? = null,
     ) {
         updateNotification(message)
         receiver?.send(
@@ -622,12 +830,12 @@ class WorkshopDownloadProcessService : Service() {
                 progress?.let { current ->
                     putLong(EXTRA_WRITTEN_BYTES, current.writtenBytes)
                     current.totalBytes?.let { putLong(EXTRA_TOTAL_BYTES, it) }
-                    current.progressPercent()?.let { putInt(EXTRA_PROGRESS_PERCENT, it) }
                     current.completedFiles?.let { putInt(EXTRA_COMPLETED_FILES, it) }
                     current.totalFiles?.let { putInt(EXTRA_TOTAL_FILES, it) }
                     current.completedChunks?.let { putInt(EXTRA_COMPLETED_CHUNKS, it) }
                     current.totalChunks?.let { putInt(EXTRA_TOTAL_CHUNKS, it) }
                 }
+                (progress?.progressPercent() ?: progressPercent)?.let { putInt(EXTRA_PROGRESS_PERCENT, it.coerceIn(0, 100)) }
             }
         )
     }
@@ -656,6 +864,8 @@ class WorkshopDownloadProcessService : Service() {
         val publishedFileId = getStringExtra(EXTRA_PUBLISHED_FILE_ID).orEmpty()
         return if (appId.isBlank() || publishedFileId.isBlank()) null else "$appId:$publishedFileId"
     }
+
+    private fun Intent.publishedFileIdOrNull(): ULong? = getStringExtra(EXTRA_PUBLISHED_FILE_ID)?.toULongOrNull()
 
     private fun downloadPreviewImageIfNeeded(
         service: WorkshopService,
@@ -734,8 +944,8 @@ class WorkshopDownloadProcessService : Service() {
         taskStore.update(details.summary.publishedFileId) {
             it.copy(
                 status = WorkshopDownloadTaskStatus.Downloading,
-                message = "下载完成，正在处理导入修补",
-                progressPercent = 100,
+                message = "下载完成，准备导入修补",
+                progressPercent = 0,
                 downloadedBytes = (it.totalBytes ?: it.downloadedBytes).coerceAtLeast(it.downloadedBytes),
                 completedFiles = it.totalFiles ?: it.completedFiles,
                 updatedAtMillis = System.currentTimeMillis(),
@@ -745,35 +955,53 @@ class WorkshopDownloadProcessService : Service() {
         taskStore.appendLog(details.summary.publishedFileId, "下载文件已落盘，进入导入修补阶段")
     }
 
+    private fun WorkshopAutoImportProgress.toDownloadStatusMessage(): String {
+        val progressText = if (totalSteps > 0) {
+            val step = when {
+                percent >= 100 -> totalSteps
+                currentStep < totalSteps -> currentStep + 1
+                else -> currentStep
+            }.coerceIn(1, totalSteps)
+            "（$step/$totalSteps，${percent.coerceIn(0, 100)}%）"
+        } else {
+            "（${percent.coerceIn(0, 100)}%）"
+        }
+        return "正在导入修补$progressText：$message"
+    }
+
     private fun WorkshopInstalledModRecord?.hasInstalledJar(): Boolean {
         val path = this?.localJarPath?.trim().orEmpty()
         return path.isNotEmpty() && File(path).isAbsolute && File(path).isFile
     }
 
     private fun WorkshopInstalledModRecord.restoreCandidateForInterruptedUpdate(): WorkshopInstalledModRecord? {
-        if (cardState == WorkshopModCardState.UpdateAvailable) {
-            return this
-        }
-        if (cardState != WorkshopModCardState.Downloading) {
-            return null
-        }
-        return when (contentKind) {
-            WorkshopInstalledContentKind.TexturePack -> copy(
-                cardState = WorkshopModCardState.TexturePackInstalled,
-                statusText = statusText.ifBlank { "已作为 Texture Replacer 资源包安装并启用" },
-            )
-            WorkshopInstalledContentKind.NonStandard -> copy(
-                cardState = WorkshopModCardState.NonStandardDownloaded,
-                statusText = statusText.ifBlank { "该模组不是标准 jar 格式，请手动处理" },
-            )
-            WorkshopInstalledContentKind.JarMod -> if (localJarPath.isNotBlank()) {
-                copy(
-                    cardState = WorkshopModCardState.ImportedPatched,
-                    statusText = statusText.ifBlank { "已安装" },
+        return when (cardState) {
+            WorkshopModCardState.UpdateAvailable,
+            WorkshopModCardState.ImportedUnpatched,
+            WorkshopModCardState.ImportedPatched,
+            WorkshopModCardState.NonStandardDownloaded,
+            WorkshopModCardState.TexturePackInstalled,
+            WorkshopModCardState.FileMissing -> this
+            WorkshopModCardState.Downloading -> when (contentKind) {
+                WorkshopInstalledContentKind.TexturePack -> copy(
+                    cardState = WorkshopModCardState.TexturePackInstalled,
+                    statusText = statusText.ifBlank { "已作为 Texture Replacer 资源包安装并启用" },
                 )
-            } else {
-                null
+                WorkshopInstalledContentKind.NonStandard -> copy(
+                    cardState = WorkshopModCardState.NonStandardDownloaded,
+                    statusText = statusText.ifBlank { "该模组不是标准 jar 格式，请手动处理" },
+                )
+                WorkshopInstalledContentKind.JarMod -> if (localJarPath.isNotBlank()) {
+                    copy(
+                        cardState = WorkshopModCardState.ImportedPatched,
+                        statusText = statusText.ifBlank { "已安装" },
+                    )
+                } else {
+                    null
+                }
             }
+            WorkshopModCardState.DownloadPaused,
+            WorkshopModCardState.DownloadFailed -> null
         }
     }
 
@@ -856,6 +1084,57 @@ private fun WorkshopDownloadProgress.progressPercent(): Int? {
     return ((writtenBytes.coerceIn(0L, safeTotalBytes) * 100L) / safeTotalBytes).toInt().coerceIn(0, 100)
 }
 
+private fun WorkshopDownloadProgress.shouldPersist(
+    nowMillis: Long,
+    lastPersistAtMillis: Long,
+    lastPercent: Int?,
+    lastCompletedFiles: Int?,
+    lastCompletedChunks: Int?,
+): Boolean {
+    val percent = progressPercent()
+    if (lastPersistAtMillis == 0L) return true
+    if (percent != null && percent != lastPercent) return true
+    if (isCompleteProgress()) return true
+    if (completedFiles != null && completedFiles != lastCompletedFiles && nowMillis - lastPersistAtMillis >= PROGRESS_PERSIST_INTERVAL_MS) return true
+    if (completedChunks != null && completedChunks != lastCompletedChunks && nowMillis - lastPersistAtMillis >= PROGRESS_PERSIST_INTERVAL_MS) return true
+    return nowMillis - lastPersistAtMillis >= PROGRESS_PERSIST_INTERVAL_MS
+}
+
+private fun WorkshopDownloadProgress.shouldLog(
+    percent: Int?,
+    nowMillis: Long,
+    lastLogAtMillis: Long,
+    lastLoggedPercent: Int?,
+): Boolean {
+    if (isCompleteProgress()) return true
+    if (lastLogAtMillis == 0L) return true
+    if (percent != null && (lastLoggedPercent == null || percent >= lastLoggedPercent + PROGRESS_LOG_PERCENT_STEP)) return true
+    return nowMillis - lastLogAtMillis >= PROGRESS_LOG_INTERVAL_MS
+}
+
+private fun WorkshopDownloadProgress.isCompleteProgress(): Boolean {
+    val totalFileCount = totalFiles
+    val files = completedFiles
+    if (files != null && totalFileCount != null && totalFileCount > 0 && files >= totalFileCount) return true
+    if (totalFileCount != null && totalFileCount > 0) return false
+    if (progressPercent() == 100) return true
+    val chunks = completedChunks
+    val totalChunkCount = totalChunks
+    return chunks != null && totalChunkCount != null && totalChunkCount > 0 && chunks >= totalChunkCount
+}
+
+private fun WorkshopDownloadTaskStatus.canStartDownload(): Boolean = when (this) {
+    WorkshopDownloadTaskStatus.Queued,
+    WorkshopDownloadTaskStatus.Resolving -> true
+    WorkshopDownloadTaskStatus.Downloading,
+    WorkshopDownloadTaskStatus.Pausing,
+    WorkshopDownloadTaskStatus.Cancelling,
+    WorkshopDownloadTaskStatus.Paused,
+    WorkshopDownloadTaskStatus.Completed,
+    WorkshopDownloadTaskStatus.Failed,
+    WorkshopDownloadTaskStatus.Cancelled -> false
+}
+
 private fun WorkshopDownloadProgress.downloadLogLine(): String = buildString {
     append("下载进度：writtenBytes=").append(writtenBytes)
     totalBytes?.let { append(", totalBytes=").append(it) }
@@ -867,6 +1146,10 @@ private fun WorkshopDownloadProgress.downloadLogLine(): String = buildString {
         append(", chunks=").append(completedChunks ?: 0).append('/').append(totalChunks ?: "?")
     }
 }
+
+private const val PROGRESS_PERSIST_INTERVAL_MS = 1_000L
+private const val PROGRESS_LOG_INTERVAL_MS = 15_000L
+private const val PROGRESS_LOG_PERCENT_STEP = 5
 
 private fun buildInitialDownloadLog(details: WorkshopItemDetails): String = buildString {
     appendLine("创意工坊下载日志")

@@ -18,6 +18,7 @@ import io.stamethyst.backend.mods.importing.ImportPatchPlan
 import io.stamethyst.backend.mods.importing.ImportPatchResult
 import io.stamethyst.backend.mods.importing.ModImportDecisions
 import io.stamethyst.backend.mods.importing.ModImportItemPlan
+import io.stamethyst.backend.mods.importing.importString
 import java.io.File
 
 internal object DuplicateZipEntryPatchModule : ImportPatchModule {
@@ -48,17 +49,17 @@ internal object DuplicateZipEntryPatchModule : ImportPatchModule {
             moduleVersion = version,
             displayNameResId = displayNameResId,
             summaryResId = summaryResId,
-            displayName = context.getString(displayNameResId),
+            displayName = context.importString(displayNameResId),
             applied = result.changed,
             summary = if (result.changed) {
-                context.getString(R.string.mod_import_patch_zip_entry_applied)
+                context.importString(R.string.mod_import_patch_zip_entry_applied)
             } else {
-                context.getString(R.string.mod_import_patch_zip_entry_noop)
+                context.importString(R.string.mod_import_patch_zip_entry_noop)
             },
             details = listOf(
-                context.getString(R.string.mod_import_patch_zip_entry_detail_total, result.totalEntries),
-                context.getString(R.string.mod_import_patch_zip_entry_detail_unique, result.uniqueEntries),
-                context.getString(R.string.mod_import_patch_zip_entry_detail_removed, result.duplicateEntriesRemoved)
+                context.importString(R.string.mod_import_patch_zip_entry_detail_total, result.totalEntries),
+                context.importString(R.string.mod_import_patch_zip_entry_detail_unique, result.uniqueEntries),
+                context.importString(R.string.mod_import_patch_zip_entry_detail_removed, result.duplicateEntriesRemoved)
             ),
             metrics = mapOf(
                 "totalEntries" to result.totalEntries,
@@ -102,19 +103,19 @@ internal object ManifestRootPatchModule : ImportPatchModule {
             moduleVersion = version,
             displayNameResId = displayNameResId,
             summaryResId = summaryResId,
-            displayName = context.getString(displayNameResId),
+            displayName = context.importString(displayNameResId),
             applied = result.hasPatchedChanges,
             summary = if (result.hasPatchedChanges) {
-                context.getString(R.string.mod_import_patch_manifest_root_applied)
+                context.importString(R.string.mod_import_patch_manifest_root_applied)
             } else {
-                context.getString(R.string.mod_import_patch_manifest_root_noop)
+                context.importString(R.string.mod_import_patch_manifest_root_noop)
             },
             details = listOf(
-                context.getString(R.string.mod_import_patch_manifest_root_detail_moved, result.patchedFileEntries),
-                context.getString(
+                context.importString(R.string.mod_import_patch_manifest_root_detail_moved, result.patchedFileEntries),
+                context.importString(
                     R.string.mod_import_patch_manifest_root_detail_prefix,
                     result.sourceRootPrefix.ifBlank {
-                        context.getString(R.string.mod_import_patch_manifest_root_prefix_none)
+                        context.importString(R.string.mod_import_patch_manifest_root_prefix_none)
                     }
                 )
             ),
@@ -160,16 +161,16 @@ internal object AtlasFilterPatchModule : ImportPatchModule {
             moduleVersion = version,
             displayNameResId = displayNameResId,
             summaryResId = summaryResId,
-            displayName = context.getString(displayNameResId),
+            displayName = context.importString(displayNameResId),
             applied = result.hasPatchedChanges,
             summary = if (result.hasPatchedChanges) {
-                context.getString(R.string.mod_import_patch_atlas_filter_applied)
+                context.importString(R.string.mod_import_patch_atlas_filter_applied)
             } else {
-                context.getString(R.string.mod_import_patch_atlas_filter_noop)
+                context.importString(R.string.mod_import_patch_atlas_filter_noop)
             },
             details = listOf(
-                context.getString(R.string.mod_import_patch_atlas_filter_detail_files, result.patchedAtlasEntries),
-                context.getString(R.string.mod_import_patch_atlas_filter_detail_lines, result.patchedFilterLines)
+                context.importString(R.string.mod_import_patch_atlas_filter_detail_files, result.patchedAtlasEntries),
+                context.importString(R.string.mod_import_patch_atlas_filter_detail_lines, result.patchedFilterLines)
             ),
             metrics = mapOf(
                 "patchedAtlasEntries" to result.patchedAtlasEntries,
@@ -185,7 +186,7 @@ internal object AtlasOfflineDownscalePatchModule : ImportPatchModule {
     override val displayNameResId = R.string.mod_import_patch_atlas_downscale_title
     override val summaryResId = R.string.mod_import_patch_atlas_downscale_summary
     override val category = ImportPatchCategory.Texture
-    override val defaultEnabled = false
+    override val defaultEnabled = true
     override val userConfigurable = true
     override val order = 400
     override val failurePolicy = ImportPatchFailurePolicy.SkipPatchContinueImport
@@ -206,9 +207,9 @@ internal object AtlasOfflineDownscalePatchModule : ImportPatchModule {
         return basePlan(
             applicable = true,
             details = listOf(
-                context.getString(R.string.mod_import_patch_atlas_downscale_candidate_files, result.patchedAtlasEntries),
-                context.getString(R.string.mod_import_patch_atlas_downscale_candidate_pages, result.downscaledPageEntries),
-                context.getString(
+                context.importString(R.string.mod_import_patch_atlas_downscale_candidate_files, result.patchedAtlasEntries),
+                context.importString(R.string.mod_import_patch_atlas_downscale_candidate_pages, result.downscaledPageEntries),
+                context.importString(
                     R.string.mod_import_patch_atlas_downscale_detail_saved_memory,
                     formatRuntimeMemorySaved(result.estimatedRuntimeBytesSaved)
                 )
@@ -235,18 +236,18 @@ internal object AtlasOfflineDownscalePatchModule : ImportPatchModule {
             moduleVersion = version,
             displayNameResId = displayNameResId,
             summaryResId = summaryResId,
-            displayName = context.getString(displayNameResId),
+            displayName = context.importString(displayNameResId),
             applied = result.hasPatchedChanges,
             summary = if (result.hasPatchedChanges) {
-                context.getString(R.string.mod_import_patch_atlas_downscale_applied)
+                context.importString(R.string.mod_import_patch_atlas_downscale_applied)
             } else {
-                context.getString(R.string.mod_import_patch_atlas_downscale_noop)
+                context.importString(R.string.mod_import_patch_atlas_downscale_noop)
             },
             details = listOf(
-                context.getString(R.string.mod_import_patch_atlas_downscale_detail_files, result.patchedAtlasEntries),
-                context.getString(R.string.mod_import_patch_atlas_downscale_detail_pages, result.downscaledPageEntries),
-                context.getString(R.string.mod_import_patch_atlas_downscale_detail_strategy, strategy.mode.name, strategy.value),
-                context.getString(
+                context.importString(R.string.mod_import_patch_atlas_downscale_detail_files, result.patchedAtlasEntries),
+                context.importString(R.string.mod_import_patch_atlas_downscale_detail_pages, result.downscaledPageEntries),
+                context.importString(R.string.mod_import_patch_atlas_downscale_detail_strategy, strategy.mode.name, strategy.value),
+                context.importString(
                     R.string.mod_import_patch_atlas_downscale_detail_saved_memory,
                     formatRuntimeMemorySaved(result.estimatedRuntimeBytesSaved)
                 )
@@ -308,14 +309,14 @@ internal object FrierenImportPatchModule : ImportPatchModule {
             moduleVersion = version,
             displayNameResId = displayNameResId,
             summaryResId = summaryResId,
-            displayName = context.getString(displayNameResId),
+            displayName = context.importString(displayNameResId),
             applied = result.patchedAntiPirateMethod,
             summary = if (result.patchedAntiPirateMethod) {
-                context.getString(R.string.mod_import_patch_frieren_applied)
+                context.importString(R.string.mod_import_patch_frieren_applied)
             } else {
-                context.getString(R.string.mod_import_patch_frieren_noop)
+                context.importString(R.string.mod_import_patch_frieren_noop)
             },
-            details = listOf(context.getString(R.string.mod_import_patch_frieren_detail, result.patchedAntiPirateMethod.toString()))
+            details = listOf(context.importString(R.string.mod_import_patch_frieren_detail, result.patchedAntiPirateMethod.toString()))
         )
     }
 }
@@ -354,18 +355,18 @@ internal object DownfallImportPatchModule : ImportPatchModule {
             moduleVersion = version,
             displayNameResId = displayNameResId,
             summaryResId = summaryResId,
-            displayName = context.getString(displayNameResId),
+            displayName = context.importString(displayNameResId),
             applied = result.patchedClassEntries > 0,
             summary = if (result.patchedClassEntries > 0) {
-                context.getString(R.string.mod_import_patch_downfall_applied)
+                context.importString(R.string.mod_import_patch_downfall_applied)
             } else {
-                context.getString(R.string.mod_import_patch_downfall_noop)
+                context.importString(R.string.mod_import_patch_downfall_noop)
             },
             details = listOf(
-                context.getString(R.string.mod_import_patch_downfall_detail_classes, result.patchedClassEntries),
-                context.getString(R.string.mod_import_patch_downfall_detail_merchant, result.patchedMerchantClassEntries),
-                context.getString(R.string.mod_import_patch_downfall_detail_hexaghost, result.patchedHexaghostBodyClassEntries),
-                context.getString(R.string.mod_import_patch_downfall_detail_boss_panel, result.patchedBossMechanicPanelClassEntries)
+                context.importString(R.string.mod_import_patch_downfall_detail_classes, result.patchedClassEntries),
+                context.importString(R.string.mod_import_patch_downfall_detail_merchant, result.patchedMerchantClassEntries),
+                context.importString(R.string.mod_import_patch_downfall_detail_hexaghost, result.patchedHexaghostBodyClassEntries),
+                context.importString(R.string.mod_import_patch_downfall_detail_boss_panel, result.patchedBossMechanicPanelClassEntries)
             ),
             metrics = mapOf(
                 "patchedClassEntries" to result.patchedClassEntries,
@@ -411,14 +412,14 @@ internal object VupShionImportPatchModule : ImportPatchModule {
             moduleVersion = version,
             displayNameResId = displayNameResId,
             summaryResId = summaryResId,
-            displayName = context.getString(displayNameResId),
+            displayName = context.importString(displayNameResId),
             applied = result.hasAnyPatch,
             summary = if (result.hasAnyPatch) {
-                context.getString(R.string.mod_import_patch_vupshion_applied)
+                context.importString(R.string.mod_import_patch_vupshion_applied)
             } else {
-                context.getString(R.string.mod_import_patch_vupshion_noop)
+                context.importString(R.string.mod_import_patch_vupshion_noop)
             },
-            details = listOf(context.getString(R.string.mod_import_patch_vupshion_detail, result.hasAnyPatch.toString()))
+            details = listOf(context.importString(R.string.mod_import_patch_vupshion_detail, result.hasAnyPatch.toString()))
         )
     }
 }
@@ -457,17 +458,17 @@ internal object JacketNoAnoKoImportPatchModule : ImportPatchModule {
             moduleVersion = version,
             displayNameResId = displayNameResId,
             summaryResId = summaryResId,
-            displayName = context.getString(displayNameResId),
+            displayName = context.importString(displayNameResId),
             applied = result.hasAnyPatch,
             summary = if (result.hasAnyPatch) {
-                context.getString(R.string.mod_import_patch_jacketnoanoko_applied)
+                context.importString(R.string.mod_import_patch_jacketnoanoko_applied)
             } else {
-                context.getString(R.string.mod_import_patch_jacketnoanoko_noop)
+                context.importString(R.string.mod_import_patch_jacketnoanoko_noop)
             },
             details = listOf(
-                context.getString(R.string.mod_import_patch_jacketnoanoko_detail_shader_files, result.patchedShaderEntries),
-                context.getString(R.string.mod_import_patch_jacketnoanoko_detail_version_directives, result.removedDesktopVersionDirectives),
-                context.getString(R.string.mod_import_patch_jacketnoanoko_detail_precision_blocks, result.insertedFragmentPrecisionBlocks)
+                context.importString(R.string.mod_import_patch_jacketnoanoko_detail_shader_files, result.patchedShaderEntries),
+                context.importString(R.string.mod_import_patch_jacketnoanoko_detail_version_directives, result.removedDesktopVersionDirectives),
+                context.importString(R.string.mod_import_patch_jacketnoanoko_detail_precision_blocks, result.insertedFragmentPrecisionBlocks)
             ),
             metrics = mapOf(
                 "patchedShaderEntries" to result.patchedShaderEntries,

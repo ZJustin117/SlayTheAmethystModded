@@ -456,12 +456,15 @@ internal class MainModManagementController(
             emitSnackbar(host.getString(R.string.main_folder_empty))
             return
         }
+        val previousSelection = snapshotPendingSelection()
         if (selected) {
             batchEnableMods(host, targetMods)
         } else {
             batchDisableMods(host, targetMods)
         }
-        persistActiveProfileSelection(host)
+        if (!persistPendingSelection(host)) {
+            restorePendingSelection(previousSelection)
+        }
         hostCallbacks.republish(host)
     }
 
@@ -477,12 +480,15 @@ internal class MainModManagementController(
             emitSnackbar(host.getString(R.string.main_folder_unassigned_empty_snackbar))
             return
         }
+        val previousSelection = snapshotPendingSelection()
         if (selected) {
             batchEnableMods(host, targetMods)
         } else {
             batchDisableMods(host, targetMods)
         }
-        persistActiveProfileSelection(host)
+        if (!persistPendingSelection(host)) {
+            restorePendingSelection(previousSelection)
+        }
         hostCallbacks.republish(host)
     }
 
@@ -957,6 +963,7 @@ internal class MainModManagementController(
         if (!hostCallbacks.canEditMainScreenState() || mod.required) {
             return
         }
+        val previousSelection = snapshotPendingSelection()
         try {
             if (enabled) {
                 val result = enableModWithDependencies(
@@ -993,14 +1000,19 @@ internal class MainModManagementController(
                 }
             }
         } catch (error: Throwable) {
+            restorePendingSelection(previousSelection)
             emitSnackbar(
                 host.getString(
                     R.string.main_mod_toggle_failed,
                     error.message ?: host.getString(R.string.feedback_unknown_error)
                 )
             )
+            hostCallbacks.republish(host)
+            return
         }
-        persistActiveProfileSelection(host)
+        if (!persistPendingSelection(host)) {
+            restorePendingSelection(previousSelection)
+        }
         hostCallbacks.republish(host)
     }
 
@@ -1014,12 +1026,15 @@ internal class MainModManagementController(
         if (targets.isEmpty()) {
             return
         }
+        val previousSelection = snapshotPendingSelection()
         if (selected) {
             batchEnableMods(host, targets)
         } else {
             batchDisableMods(host, targets)
         }
-        persistActiveProfileSelection(host)
+        if (!persistPendingSelection(host)) {
+            restorePendingSelection(previousSelection)
+        }
         hostCallbacks.republish(host)
     }
 
@@ -1554,6 +1569,7 @@ internal class MainModManagementController(
         executor.execute {
             try {
                 if (mod.isActiveWorkshopDownload()) {
+                    WorkshopDownloadTaskStore(host).removeAndMarkDeleted(workshop.publishedFileId)
                     WorkshopDownloadProcessService.cancel(host, workshop.appId, workshop.publishedFileId)
                 }
                 val deleted = deleteWorkshopResidue(host, workshop)
@@ -1594,9 +1610,9 @@ internal class MainModManagementController(
             recordsByPublishedFileId[record.publishedFileId] = record
         }
         downloadTasksByPublishedFileId.values
-            .filter { task -> task.status.isActiveDownload() }
+            .filter { task -> task.status.shouldShowStandaloneWorkshopTask() }
             .forEach { task ->
-                recordsByPublishedFileId.putIfAbsent(task.publishedFileId, task.toDownloadingWorkshopRecord(host))
+                recordsByPublishedFileId.putIfAbsent(task.publishedFileId, task.toWorkshopTaskRecord(host))
             }
         return recordsByPublishedFileId.values
             .filter { record ->
@@ -1611,7 +1627,7 @@ internal class MainModManagementController(
             }
     }
 
-    private fun WorkshopDownloadTaskRecord.toDownloadingWorkshopRecord(host: Activity): WorkshopInstalledModRecord {
+    private fun WorkshopDownloadTaskRecord.toWorkshopTaskRecord(host: Activity): WorkshopInstalledModRecord {
         val summary = details.summary
         return WorkshopInstalledModRecord(
             appId = summary.appId,
@@ -1623,7 +1639,7 @@ internal class MainModManagementController(
             updatedAtMillis = summary.updatedAtMillis,
             installedAtMillis = updatedAtMillis,
             localJarPath = "",
-            cardState = WorkshopModCardState.Downloading,
+            cardState = status.toStandaloneWorkshopCardState(),
             statusText = message.ifBlank { host.getString(R.string.workshop_download_task_message_waiting) },
             dependencies = details.dependencies,
         )
@@ -1644,7 +1660,7 @@ internal class MainModManagementController(
         val latestActive = tasks
             .filter { it.status.isActiveDownload() }
             .maxByOrNull { it.updatedAtMillis }
-        return if (latestActive != null && !latest.status.isFinishedDownload()) {
+        return if (latestActive != null && latestActive.updatedAtMillis > latest.updatedAtMillis && !latest.status.isFinishedDownload()) {
             latest.copy(
                 status = latestActive.status,
                 message = latestActive.message.ifBlank { latest.message },
@@ -1656,9 +1672,26 @@ internal class MainModManagementController(
 
     private fun io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus.isFinishedDownload(): Boolean = when (this) {
         io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus.Completed,
-        io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus.Failed,
         io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus.Cancelled -> true
         else -> false
+    }
+
+    private fun io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus.shouldShowStandaloneWorkshopTask(): Boolean = when (this) {
+        io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus.Queued,
+        io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus.Resolving,
+        io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus.Downloading,
+        io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus.Pausing,
+        io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus.Cancelling,
+        io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus.Paused,
+        io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus.Failed -> true
+        io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus.Completed,
+        io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus.Cancelled -> false
+    }
+
+    private fun io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus.toStandaloneWorkshopCardState(): WorkshopModCardState = when (this) {
+        io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus.Paused -> WorkshopModCardState.DownloadPaused
+        io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus.Failed -> WorkshopModCardState.DownloadFailed
+        else -> WorkshopModCardState.Downloading
     }
 
     private fun WorkshopDownloadTaskRecord.normalizeActiveDownloadTask(host: Activity): WorkshopDownloadTaskRecord {
@@ -1960,6 +1993,32 @@ internal class MainModManagementController(
             profileState = profileStore.load(host, pendingEnabledOptionalModIds)
         }
         profileState = profileStore.updateActiveSelection(host, profileState, pendingEnabledOptionalModIds)
+    }
+
+    private fun persistPendingSelection(host: Activity): Boolean {
+        try {
+            applyPendingSelection(host)
+        } catch (error: Throwable) {
+            emitSnackbar(
+                host.getString(
+                    R.string.main_mod_toggle_failed,
+                    error.message ?: host.getString(R.string.feedback_unknown_error)
+                )
+            )
+            return false
+        }
+        runCatching { persistActiveProfileSelection(host) }
+        return true
+    }
+
+    private fun snapshotPendingSelection(): Set<String> {
+        return LinkedHashSet(pendingEnabledOptionalModIds)
+    }
+
+    private fun restorePendingSelection(selection: Set<String>) {
+        pendingEnabledOptionalModIds.clear()
+        pendingEnabledOptionalModIds.addAll(selection)
+        markOptionalModsWithPendingSelectionDirty()
     }
 
     private fun activeProfileName(host: Activity): String {

@@ -1,6 +1,7 @@
 package io.stamethyst.ui.workshop
 
 import io.stamethyst.backend.workshop.WorkshopInstalledModRecord
+import io.stamethyst.backend.workshop.WorkshopDownloadBlocklist
 import io.stamethyst.backend.workshop.WorkshopDownloadTaskStatus
 import io.stamethyst.backend.workshop.WorkshopItemSummary
 import io.stamethyst.backend.workshop.WorkshopModStateResolver
@@ -20,6 +21,7 @@ internal enum class WorkshopModDownloadState(
     Paused(R.string.workshop_download_state_paused, R.string.workshop_action_continue, true),
     Cancelling(R.string.workshop_download_state_cancelling, R.string.workshop_download_state_cancelling, false),
     DownloadFailed(R.string.workshop_download_state_failed, R.string.workshop_action_retry, true),
+    Unavailable(R.string.workshop_download_state_unavailable, R.string.workshop_download_state_unavailable, false),
 }
 
 internal fun resolveWorkshopModDownloadState(
@@ -27,6 +29,7 @@ internal fun resolveWorkshopModDownloadState(
     installedMods: List<WorkshopInstalledModRecord>,
     downloadTasks: List<WorkshopDownloadTaskUi>,
 ): WorkshopModDownloadState {
+    if (WorkshopDownloadBlocklist.isBlocked(item.publishedFileId)) return WorkshopModDownloadState.Unavailable
     val task = downloadTasks.firstOrNull { it.publishedFileId == item.publishedFileId }
     val installed = installedMods.firstOrNull {
         it.appId == item.appId && it.publishedFileId == item.publishedFileId

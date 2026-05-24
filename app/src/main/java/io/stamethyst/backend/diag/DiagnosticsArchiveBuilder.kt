@@ -9,6 +9,7 @@ import io.stamethyst.backend.crash.SignalCrashDumpReader
 import io.stamethyst.backend.launch.JvmLogRotationManager
 import io.stamethyst.backend.steamcloud.SteamCloudDiagnosticsStore
 import io.stamethyst.backend.steamcloud.SteamCloudManifestStore
+import io.stamethyst.backend.workshop.WorkshopAutoImportPatchLogStore
 import io.stamethyst.backend.workshop.WorkshopDownloadLogService
 import io.stamethyst.backend.workshop.WorkshopDownloadTaskRecord
 import io.stamethyst.backend.workshop.WorkshopDownloadTaskStore
@@ -230,6 +231,7 @@ internal object DiagnosticsArchiveBuilder {
             }
 
             exportedCount += writeWorkshopDownloadDiagnostics(zipOutput, context)
+            exportedCount += writeWorkshopAutoImportPatchLogsForArchive(zipOutput, context)
 
             val histogramFiles = collectHistogramFiles(context)
             writeTextEntry(
@@ -414,6 +416,47 @@ internal object DiagnosticsArchiveBuilder {
             )
         }
         return exportedCount
+    }
+
+    @Throws(IOException::class)
+    internal fun writeWorkshopAutoImportPatchLogsForArchive(
+        zipOutput: ZipOutputStream,
+        context: Context
+    ): Int {
+        val logFiles = WorkshopAutoImportPatchLogStore.listLogFiles(context)
+        if (logFiles.isEmpty()) {
+            return 0
+        }
+        writeTextEntry(
+            zipOutput,
+            "sts/workshop/auto_import_patch_logs/index.txt",
+            buildWorkshopAutoImportPatchLogIndex(logFiles)
+        )
+        var exportedCount = 0
+        logFiles.forEach { logFile ->
+            exportedCount += writeOptionalFile(
+                zipOutput,
+                logFile,
+                "sts/workshop/auto_import_patch_logs/${logFile.name}"
+            )
+        }
+        return exportedCount
+    }
+
+    private fun buildWorkshopAutoImportPatchLogIndex(logFiles: List<File>): String = buildString {
+        append("Workshop auto import patch logs\n")
+        append("Log slots: ").append(WorkshopAutoImportPatchLogStore.MAX_LOG_SLOTS).append('\n')
+        append("Log count: ").append(logFiles.size).append('\n')
+        append('\n')
+        logFiles.forEach { logFile ->
+            append("- ").append(logFile.name).append('\n')
+            append("  Size: ").append(logFile.length()).append(" bytes\n")
+            append("  Modified At Ms: ").append(logFile.lastModified()).append('\n')
+            append("  Log Entry: sts/workshop/auto_import_patch_logs/")
+                .append(logFile.name)
+                .append('\n')
+            append('\n')
+        }
     }
 
     private fun buildWorkshopDownloadTaskIndex(tasks: List<WorkshopDownloadTaskRecord>): String = buildString {

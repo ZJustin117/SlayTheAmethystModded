@@ -103,6 +103,8 @@ internal object SettingsRepository {
         val workshopWattAccelerationEnabled: Boolean,
         val workshopSteamLanguage: SteamLanguagePreference,
         val workshopAutoImportEnabled: Boolean,
+        val workshopAutoImportAtlasDownscaleEnabled: Boolean,
+        val workshopAutoImportAtlasDownscaleMaxEdgePx: Int,
         val baiduTranslationCredentialsConfigured: Boolean,
     )
 
@@ -211,6 +213,10 @@ internal object SettingsRepository {
                 workshopWattAccelerationEnabled = LauncherPreferences.isWorkshopWattAccelerationEnabled(context),
                 workshopSteamLanguage = LauncherPreferences.readWorkshopSteamLanguage(context),
                 workshopAutoImportEnabled = LauncherPreferences.isWorkshopAutoImportEnabled(context),
+                workshopAutoImportAtlasDownscaleEnabled =
+                    LauncherPreferences.isWorkshopAutoImportAtlasDownscaleEnabled(context),
+                workshopAutoImportAtlasDownscaleMaxEdgePx =
+                    LauncherPreferences.readWorkshopAutoImportAtlasDownscaleMaxEdgePx(context),
                 baiduTranslationCredentialsConfigured = BaiduTranslationCredentialsRepository(context).hasConfiguredCredentials(),
             ),
             compatibility = CompatibilitySnapshot(
@@ -403,6 +409,14 @@ internal object SettingsRepository {
         LauncherPreferences.setWorkshopAutoImportEnabled(
             context,
             LauncherPreferences.DEFAULT_WORKSHOP_AUTO_IMPORT_ENABLED
+        )
+        LauncherPreferences.setWorkshopAutoImportAtlasDownscaleEnabled(
+            context,
+            LauncherPreferences.DEFAULT_WORKSHOP_AUTO_IMPORT_ATLAS_DOWNSCALE_ENABLED
+        )
+        LauncherPreferences.saveWorkshopAutoImportAtlasDownscaleMaxEdgePx(
+            context,
+            LauncherPreferences.DEFAULT_WORKSHOP_AUTO_IMPORT_ATLAS_DOWNSCALE_MAX_EDGE_PX
         )
         CompatibilitySettings.resetToDefaults(context)
     }

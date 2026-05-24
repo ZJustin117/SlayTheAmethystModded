@@ -71,6 +71,8 @@ class WorkshopDownloadEngine(
             send(DownloadEvent.Completed(files))
         } catch (error: CancellationException) {
             throw error
+        } catch (error: InterruptedException) {
+            throw error
         } catch (error: Throwable) {
             val failureMessage = error.userVisibleDownloadFailureMessage()
             send(DownloadEvent.LogAppended("Download failed: $failureMessage"))

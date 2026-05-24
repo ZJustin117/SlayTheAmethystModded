@@ -318,8 +318,37 @@ fun LauncherSettingsMarketCloudScreen(
         onWorkshopAutoImportChanged = { enabled ->
             viewModel.onWorkshopAutoImportChanged(activity, enabled)
         },
+        onOpenWorkshopAutoImportDefaults = {
+            navigator.push(Route.SettingsWorkshopAutoImportDefaults)
+        },
         onClearWorkshopPreviewCache = { viewModel.onClearWorkshopPreviewCache(activity) },
         onOpenBaiduTranslationCredentials = { navigator.push(Route.BaiduTranslationCredentials()) },
+    )
+}
+
+@Composable
+fun LauncherSettingsWorkshopAutoImportDefaultsScreen(
+    viewModel: SettingsScreenViewModel,
+    modifier: Modifier = Modifier,
+) {
+    val activity = requireNotNull(LocalActivity.current)
+    val navigator = currentNavigator
+    val uiState = viewModel.uiState
+
+    LaunchedEffect(activity) {
+        viewModel.bind(activity)
+    }
+
+    LauncherSettingsWorkshopAutoImportDefaultsScreenContent(
+        modifier = modifier,
+        uiState = uiState,
+        onGoBack = navigator::goBack,
+        onAtlasDownscaleChanged = { enabled ->
+            viewModel.onWorkshopAutoImportAtlasDownscaleChanged(activity, enabled)
+        },
+        onAtlasDownscaleMaxEdgeChanged = { maxEdgePx ->
+            viewModel.onWorkshopAutoImportAtlasDownscaleMaxEdgeChanged(activity, maxEdgePx)
+        },
     )
 }
 
@@ -765,6 +794,7 @@ private fun LauncherSettingsMarketCloudScreenContent(
     onWorkshopWattAccelerationChanged: (Boolean) -> Unit = {},
     onWorkshopSteamLanguageChanged: (SteamLanguagePreference) -> Unit = {},
     onWorkshopAutoImportChanged: (Boolean) -> Unit = {},
+    onOpenWorkshopAutoImportDefaults: () -> Unit = {},
     onClearWorkshopPreviewCache: () -> Unit = {},
     onOpenBaiduTranslationCredentials: () -> Unit = {},
 ) {
@@ -796,8 +826,83 @@ private fun LauncherSettingsMarketCloudScreenContent(
                     onWorkshopWattAccelerationChanged = onWorkshopWattAccelerationChanged,
                     onWorkshopSteamLanguageChanged = onWorkshopSteamLanguageChanged,
                     onWorkshopAutoImportChanged = onWorkshopAutoImportChanged,
+                    onOpenWorkshopAutoImportDefaults = onOpenWorkshopAutoImportDefaults,
                     onClearWorkshopPreviewCache = onClearWorkshopPreviewCache,
                     onOpenBaiduTranslationCredentials = onOpenBaiduTranslationCredentials,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LauncherSettingsWorkshopAutoImportDefaultsScreenContent(
+    modifier: Modifier = Modifier,
+    uiState: SettingsScreenViewModel.UiState,
+    onGoBack: () -> Unit = {},
+    onAtlasDownscaleChanged: (Boolean) -> Unit = {},
+    onAtlasDownscaleMaxEdgeChanged: (Int) -> Unit = {},
+) {
+    SettingsRouteScaffold(
+        modifier = modifier,
+        uiState = uiState,
+        title = stringResource(R.string.settings_workshop_auto_import_defaults_title),
+        subtitle = stringResource(R.string.settings_workshop_auto_import_defaults_subtitle),
+        iconResId = R.drawable.ic_workshop_download,
+        onGoBack = onGoBack,
+    ) {
+        item {
+            SettingsSectionCard(
+                title = stringResource(R.string.settings_workshop_auto_import_defaults_atlas_section_title)
+            ) {
+                Text(
+                    text = stringResource(R.string.settings_workshop_auto_import_defaults_atlas_intro),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.size(8.dp))
+                SwitchSettingRow(
+                    checked = uiState.workshopAutoImportAtlasDownscaleEnabled,
+                    enabled = !uiState.busy,
+                    enabledText = stringResource(
+                        R.string.settings_workshop_auto_import_defaults_atlas_enabled_title
+                    ),
+                    disabledText = stringResource(
+                        R.string.settings_workshop_auto_import_defaults_atlas_disabled_title
+                    ),
+                    description = stringResource(
+                        R.string.settings_workshop_auto_import_defaults_atlas_desc
+                    ),
+                    onCheckedChange = onAtlasDownscaleChanged,
+                )
+                Spacer(modifier = Modifier.size(8.dp))
+                SettingsDropdownField(
+                    label = stringResource(
+                        R.string.settings_workshop_auto_import_defaults_atlas_level_title
+                    ),
+                    valueText = stringResource(
+                        R.string.mod_import_atlas_downscale_level_max_edge_label,
+                        uiState.workshopAutoImportAtlasDownscaleMaxEdgePx,
+                    ),
+                    enabled = !uiState.busy && uiState.workshopAutoImportAtlasDownscaleEnabled,
+                    supportingText = stringResource(
+                        R.string.mod_import_atlas_downscale_level_max_edge_desc,
+                        uiState.workshopAutoImportAtlasDownscaleMaxEdgePx,
+                    ),
+                    options = LauncherPreferences.WORKSHOP_AUTO_IMPORT_ATLAS_DOWNSCALE_MAX_EDGE_OPTIONS.toList(),
+                    optionLabel = { maxEdgePx ->
+                        stringResource(
+                            R.string.mod_import_atlas_downscale_level_max_edge_label,
+                            maxEdgePx
+                        )
+                    },
+                    optionDescription = { maxEdgePx ->
+                        stringResource(
+                            R.string.mod_import_atlas_downscale_level_max_edge_desc,
+                            maxEdgePx
+                        )
+                    },
+                    onOptionSelected = onAtlasDownscaleMaxEdgeChanged,
                 )
             }
         }
@@ -1143,6 +1248,7 @@ private fun SettingsMarketSection(
     onWorkshopWattAccelerationChanged: (Boolean) -> Unit,
     onWorkshopSteamLanguageChanged: (SteamLanguagePreference) -> Unit,
     onWorkshopAutoImportChanged: (Boolean) -> Unit,
+    onOpenWorkshopAutoImportDefaults: () -> Unit,
     onClearWorkshopPreviewCache: () -> Unit,
     onOpenBaiduTranslationCredentials: () -> Unit,
 ) {
@@ -1198,6 +1304,20 @@ private fun SettingsMarketSection(
         disabledText = stringResource(R.string.settings_market_workshop_auto_import_disabled_title),
         description = stringResource(R.string.settings_market_workshop_auto_import_desc),
         onCheckedChange = onWorkshopAutoImportChanged,
+    )
+    Spacer(modifier = Modifier.size(8.dp))
+    SettingsActionListItem(
+        title = stringResource(R.string.settings_market_workshop_auto_import_defaults_title),
+        supportingText = if (uiState.workshopAutoImportAtlasDownscaleEnabled) {
+            stringResource(
+                R.string.settings_market_workshop_auto_import_defaults_summary_enabled,
+                uiState.workshopAutoImportAtlasDownscaleMaxEdgePx,
+            )
+        } else {
+            stringResource(R.string.settings_market_workshop_auto_import_defaults_summary_disabled)
+        },
+        enabled = !uiState.busy,
+        onClick = onOpenWorkshopAutoImportDefaults,
     )
     Spacer(modifier = Modifier.size(8.dp))
     SettingsActionListItem(

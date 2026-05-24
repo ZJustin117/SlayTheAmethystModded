@@ -21,6 +21,17 @@
     <string name="settings_market_workshop_auto_import_enabled_title">Workshop auto import: Enabled</string>
     <string name="settings_market_workshop_auto_import_disabled_title">Workshop auto import: Disabled</string>
     <string name="settings_market_workshop_auto_import_desc">Automatically imports downloaded Workshop jar mods. If disabled, downloaded jars stay in the Workshop card until you import them manually.</string>
+    <string name="settings_market_workshop_auto_import_defaults_title">Auto import defaults</string>
+    <string name="settings_market_workshop_auto_import_defaults_summary_enabled">Atlas offline downscale: enabled, max edge %1$dpx</string>
+    <string name="settings_market_workshop_auto_import_defaults_summary_disabled">Atlas offline downscale: disabled</string>
+    <string name="settings_workshop_auto_import_defaults_title">Auto import defaults</string>
+    <string name="settings_workshop_auto_import_defaults_subtitle">Default patch choices for Workshop auto import</string>
+    <string name="settings_workshop_auto_import_defaults_atlas_section_title">Atlas offline downscale</string>
+    <string name="settings_workshop_auto_import_defaults_atlas_intro">These defaults are used only when Workshop downloads automatically import a jar mod. Manual imports still use their own prompt.</string>
+    <string name="settings_workshop_auto_import_defaults_atlas_enabled_title">Atlas offline downscale: Enabled</string>
+    <string name="settings_workshop_auto_import_defaults_atlas_disabled_title">Atlas offline downscale: Disabled</string>
+    <string name="settings_workshop_auto_import_defaults_atlas_desc">When enabled, auto import applies the atlas offline downscale patch to eligible oversized Spine atlas pages.</string>
+    <string name="settings_workshop_auto_import_defaults_atlas_level_title">Downscale level</string>
     <string name="settings_baidu_translation_credentials_title">Baidu translation credentials</string>
     <string name="settings_baidu_translation_credentials_configured">Configured</string>
     <string name="settings_baidu_translation_credentials_not_configured">Not configured. Translation needs AppID and API Key.</string>
@@ -1116,10 +1127,11 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="settings_steam_cloud_independent_profile_missing">No independent save profile is available yet.</string>
     <string name="settings_steam_cloud_force_independent_override_succeeded">Independent saves overwrote Steam Cloud. Uploaded %1$d file(s), deleted %2$d cloud file(s). Backups are in %3$s.</string>
     <string name="settings_steam_cloud_force_independent_override_failed">Failed to overwrite Steam Cloud with independent saves: %1$s</string>
-    <string name="settings_steam_cloud_auto_enabled_title">Steam Cloud saves enabled</string>
-    <string name="settings_steam_cloud_auto_enabled_message">The launcher switched to Steam Cloud saves automatically. Saves from before enabling this feature were preserved locally as Independent saves. You can switch between them in Settings > Cloud save settings.</string>
+    <string name="settings_steam_cloud_switch_prompt_title">Use Steam Cloud saves?</string>
+    <string name="settings_steam_cloud_switch_prompt_message">Steam Cloud login succeeded for %1$s. Do you want to switch to Steam Cloud saves now? Your current Independent saves stay stored locally, and you can switch back in Settings > Cloud save settings.</string>
+    <string name="settings_steam_cloud_switch_prompt_confirm">Switch to Steam Cloud</string>
+    <string name="settings_steam_cloud_switch_prompt_keep_independent">Keep Independent saves</string>
     <string name="settings_steam_cloud_login_succeeded">Steam Cloud login succeeded for %1$s.</string>
-    <string name="settings_steam_cloud_login_auto_enable_failed">Steam Cloud login succeeded, but the launcher could not switch to Steam Cloud saves automatically: %1$s. You can change it manually in Settings > Cloud save settings.</string>
     <string name="settings_steam_cloud_login_cancelled">Steam Cloud login cancelled.</string>
     <string name="settings_steam_cloud_login_failed">Steam Cloud login failed: %1$s</string>
     <string name="settings_steam_cloud_login_guard_wait_timeout_summary">Steam Guard verification waited too long. Steam closed the login connection; sign in again and enter the latest code or approve the prompt quickly.</string>
@@ -1986,6 +1998,7 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="workshop_download_state_paused">Paused</string>
     <string name="workshop_download_state_cancelling">Cancelling</string>
     <string name="workshop_download_state_failed">Download failed</string>
+    <string name="workshop_download_state_unavailable">Unavailable</string>
     <string name="workshop_action_download">Download</string>
     <string name="workshop_action_update">Update</string>
     <string name="workshop_action_continue">Continue</string>
@@ -2060,6 +2073,7 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="workshop_download_task_message_completed">Download completed. Install it from the Mods page.</string>
     <string name="workshop_download_task_message_failed">Download failed. You can retry.</string>
     <string name="workshop_download_task_message_cancelled">Download cancelled. You can retry.</string>
+    <string name="workshop_download_task_message_blocked">This Workshop item is managed by the launcher and cannot be downloaded.</string>
     <string name="workshop_error_no_entries_found">No Workshop entries found</string>
     <string name="workshop_error_load_comments_failed">Failed to load comments.</string>
     <string name="workshop_status_pausing">Pausing</string>
@@ -2073,6 +2087,7 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="workshop_status_starting_download_format">Downloading %1$s</string>
     <string name="workshop_status_download_completed">Download completed</string>
     <string name="workshop_status_download_failed">Download failed</string>
+    <string name="workshop_status_download_blocked">This Workshop item is managed by the launcher and cannot be downloaded: %1$s</string>
     <string name="workshop_status_checking_updates">Checking Workshop updates</string>
     <string name="workshop_status_updates_found">Found %1$d Workshop updates</string>
     <string name="workshop_status_update_failed_suffix">, %1$d checks failed</string>

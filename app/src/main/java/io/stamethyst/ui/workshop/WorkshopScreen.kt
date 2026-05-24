@@ -488,7 +488,7 @@ private fun WorkshopHeaderPinnedContent(
         modifier = Modifier
             .fillMaxWidth()
             .statusBarsPadding()
-            .padding(start = 16.dp, top = 18.dp, end = 16.dp, bottom = 16.dp),
+            .padding(start = 16.dp, top = 18.dp, end = 16.dp, bottom = 0.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1082,7 +1082,8 @@ internal fun WorkshopDownloadActionButton(
         ) { Text(stringResource(state.actionLabelResId)) }
         WorkshopModDownloadState.Queued,
         WorkshopModDownloadState.Cancelling,
-        WorkshopModDownloadState.Downloading -> OutlinedButton(
+        WorkshopModDownloadState.Downloading,
+        WorkshopModDownloadState.Unavailable -> OutlinedButton(
             modifier = modifier,
             enabled = false,
             onClick = onClick,
@@ -1126,6 +1127,7 @@ private val WorkshopModDownloadState.actionIconRes: Int
         WorkshopModDownloadState.Paused -> R.drawable.ic_workshop_paused
         WorkshopModDownloadState.Cancelling -> R.drawable.ic_workshop_cancelling
         WorkshopModDownloadState.DownloadFailed -> R.drawable.ic_workshop_retry
+        WorkshopModDownloadState.Unavailable -> R.drawable.ic_workshop_cancelling
     }
 
 @Composable

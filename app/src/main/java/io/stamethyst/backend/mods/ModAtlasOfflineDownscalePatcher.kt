@@ -623,7 +623,13 @@ internal object ModAtlasOfflineDownscalePatcher {
             inJustDecodeBounds = true
             inScaled = false
         }
-        BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size, options)
+        val decodedBounds = runCatching {
+            BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size, options)
+            true
+        }.getOrDefault(false)
+        if (!decodedBounds) {
+            return null
+        }
         val width = options.outWidth
         val height = options.outHeight
         if (width <= 0 || height <= 0) {
@@ -669,12 +675,14 @@ internal object ModAtlasOfflineDownscalePatcher {
             inScaled = false
             inPreferredConfig = Bitmap.Config.ARGB_8888
         }
-        val sourceBitmap = BitmapFactory.decodeByteArray(
-            imageBytes,
-            0,
-            imageBytes.size,
-            decodeOptions
-        ) ?: return null
+        val sourceBitmap = runCatching {
+            BitmapFactory.decodeByteArray(
+                imageBytes,
+                0,
+                imageBytes.size,
+                decodeOptions
+            )
+        }.getOrNull() ?: return null
 
         val scaledBitmap = Bitmap.createScaledBitmap(sourceBitmap, targetWidth, targetHeight, true)
         try {

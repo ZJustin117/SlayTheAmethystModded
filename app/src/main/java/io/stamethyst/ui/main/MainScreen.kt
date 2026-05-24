@@ -104,6 +104,7 @@ import io.stamethyst.backend.steamcloud.SteamCloudUserWarning
 import io.stamethyst.backend.steamcloud.SteamCloudUploadPlan
 import io.stamethyst.backend.workshop.WorkshopUpdateCheckCoordinator
 import io.stamethyst.backend.workshop.WorkshopUpdateCheckUiState
+import io.stamethyst.backend.workshop.isActiveDownload
 import io.stamethyst.ui.CollapsibleFloatingGlassHeader
 import io.stamethyst.ui.FloatingGlassHeader
 import io.stamethyst.ui.LauncherTransientNoticeBus
@@ -116,6 +117,7 @@ import io.stamethyst.ui.icon.ArrowBack
 import io.stamethyst.ui.icon.Settings
 import io.stamethyst.ui.modimport.ModImportRequestBus
 import io.stamethyst.ui.preferences.LauncherPreferences
+import io.stamethyst.ui.workshop.WorkshopDownloadCenterStore
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
@@ -993,6 +995,8 @@ internal fun LauncherMainRoute(
     val uiState = viewModel.uiState
     val hasActiveWorkshopDownloads = uiState.optionalMods.any { mod ->
         mod.workshop?.state == WorkshopModState.Downloading
+    } || WorkshopDownloadCenterStore.tasks.any { task ->
+        task.status.isActiveDownload()
     }
     var effectDialog by remember { mutableStateOf<MainScreenViewModel.Effect.ShowDialog?>(null) }
     var pendingExportModSourcePath by remember { mutableStateOf<String?>(null) }

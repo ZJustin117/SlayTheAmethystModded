@@ -1,6 +1,7 @@
 package io.stamethyst.ui.preferences
 
 import android.content.Context
+import io.stamethyst.backend.mods.AtlasOfflineDownscaleStrategy
 import io.stamethyst.backend.render.MobileGluesAnglePolicy
 import io.stamethyst.backend.render.MobileGluesAngleDepthClearFixMode
 import io.stamethyst.backend.render.MobileGluesCustomGlVersion
@@ -133,6 +134,12 @@ object LauncherPreferences {
         get() = SteamLanguagePreference.fromStorageValue(LauncherConfig.DEFAULT_WORKSHOP_STEAM_LANGUAGE)
     val DEFAULT_WORKSHOP_AUTO_IMPORT_ENABLED: Boolean
         get() = LauncherConfig.DEFAULT_WORKSHOP_AUTO_IMPORT_ENABLED
+    val DEFAULT_WORKSHOP_AUTO_IMPORT_ATLAS_DOWNSCALE_ENABLED: Boolean
+        get() = LauncherConfig.DEFAULT_WORKSHOP_AUTO_IMPORT_ATLAS_DOWNSCALE_ENABLED
+    val DEFAULT_WORKSHOP_AUTO_IMPORT_ATLAS_DOWNSCALE_MAX_EDGE_PX: Int
+        get() = LauncherConfig.DEFAULT_WORKSHOP_AUTO_IMPORT_ATLAS_DOWNSCALE_MAX_EDGE_PX
+    val WORKSHOP_AUTO_IMPORT_ATLAS_DOWNSCALE_MAX_EDGE_OPTIONS: IntArray
+        get() = AtlasOfflineDownscaleStrategy.maxEdgeOptions()
     val DEFAULT_STEAM_CLOUD_SAVE_MODE: SteamCloudSaveMode
         get() = LauncherConfig.DEFAULT_STEAM_CLOUD_SAVE_MODE
     val DEFAULT_STEAM_CLOUD_SYNC_BLACKLIST_PATHS: Set<String>
@@ -495,6 +502,22 @@ object LauncherPreferences {
 
     fun setWorkshopAutoImportEnabled(context: Context, enabled: Boolean) {
         LauncherConfig.setWorkshopAutoImportEnabled(context, enabled)
+    }
+
+    fun isWorkshopAutoImportAtlasDownscaleEnabled(context: Context): Boolean {
+        return LauncherConfig.isWorkshopAutoImportAtlasDownscaleEnabled(context)
+    }
+
+    fun setWorkshopAutoImportAtlasDownscaleEnabled(context: Context, enabled: Boolean) {
+        LauncherConfig.setWorkshopAutoImportAtlasDownscaleEnabled(context, enabled)
+    }
+
+    fun readWorkshopAutoImportAtlasDownscaleMaxEdgePx(context: Context): Int {
+        return LauncherConfig.readWorkshopAutoImportAtlasDownscaleMaxEdgePx(context)
+    }
+
+    fun saveWorkshopAutoImportAtlasDownscaleMaxEdgePx(context: Context, maxEdgePx: Int) {
+        LauncherConfig.saveWorkshopAutoImportAtlasDownscaleMaxEdgePx(context, maxEdgePx)
     }
 
     fun readLastWorkshopUpdateCheckAtMs(context: Context): Long {

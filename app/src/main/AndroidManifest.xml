@@ -16,6 +16,8 @@
         android:name="io.stamethyst.StsApplication"
         android:allowBackup="true"
         android:appCategory="game"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
         android:isGame="true"
         android:allowNativeHeapPointerTagging="false"
         android:icon="@mipmap/ic_launcher_amethyst"
@@ -24,7 +26,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.SlayTheAmethyst"
         android:usesCleartextTraffic="true"
-        tools:targetApi="30">
+        tools:targetApi="31">
 
         <meta-data
             android:name="android.game_mode_config"
@@ -83,8 +85,7 @@
         <service
             android:name="io.stamethyst.backend.workshop.WorkshopDownloadProcessService"
             android:exported="false"
-            android:foregroundServiceType="dataSync"
-            android:process=":workshopdownload" />
+            android:foregroundServiceType="dataSync" />
 
         <activity
             android:name="net.kdt.pojavlaunch.ExitActivity"

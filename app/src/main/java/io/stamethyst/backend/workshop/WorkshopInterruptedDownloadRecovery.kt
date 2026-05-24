@@ -10,6 +10,8 @@ internal object WorkshopInterruptedDownloadRecovery {
         taskStore: WorkshopDownloadTaskStore,
         task: WorkshopDownloadTaskRecord,
     ): Boolean {
+        // Queued tasks may be brand-new updates waiting for the download service to start.
+        if (task.status == WorkshopDownloadTaskStatus.Queued) return false
         val summary = task.details.summary
         val outputDir = workshopOutputDir(context, summary.appId, summary.publishedFileId)
         val existingRecord = metadataStore.findByPublishedFileId(
@@ -19,6 +21,7 @@ internal object WorkshopInterruptedDownloadRecovery {
         if (existingRecord?.hasRestorableInstalledJar(context) == true) {
             return restoreExistingRecordIfPossible(context, metadataStore, taskStore, task, existingRecord)
         }
+        if (task.status == WorkshopDownloadTaskStatus.Completed && existingRecord != null) return false
         val completedArtifact = if (task.hasFinishedFileTransfer()) findDownloadedJar(outputDir) else null
         if (completedArtifact != null) {
             metadataStore.upsert(

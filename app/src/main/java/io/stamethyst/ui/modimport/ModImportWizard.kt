@@ -605,14 +605,21 @@ private fun ConfirmStep(
             conflictKey == null || state.decisions.duplicateDecisionFor(conflictKey) != DuplicateImportDecision.SkipNew
         }
         if (folderItems.isNotEmpty() && state.folderOptions.isNotEmpty()) {
+            val validFolderIds = state.folderOptions.mapNotNull { it.id }.toSet()
             HorizontalDivider()
             Text(stringResource(R.string.main_import_folder_picker_list_title), style = MaterialTheme.typography.titleSmall)
             Text(stringResource(R.string.main_import_folder_picker_list_message), style = MaterialTheme.typography.bodySmall)
             folderItems.forEach { item ->
+                val selectedFolderId = if (state.decisions.hasTargetFolderDecision(item.id)) {
+                    state.decisions.targetFolderIdFor(item.id)
+                } else {
+                    state.decisions.targetFolderIdFor(item.id)
+                        ?: state.decisions.defaultReplacementFolderIdFor(plan, item, validFolderIds)
+                }
                 ImportFolderSelector(
                     item = item,
                     options = state.folderOptions,
-                    selectedFolderId = state.decisions.targetFolderIdFor(item.id),
+                    selectedFolderId = selectedFolderId,
                     onSetTargetFolder = onSetTargetFolder
                 )
             }

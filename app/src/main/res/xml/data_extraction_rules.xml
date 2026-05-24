@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="baidu_translation_credentials.xml" />
+        <exclude domain="sharedpref" path="baidu_translation_credentials_fallback.xml" />
+        <exclude domain="sharedpref" path="steam_cloud_auth.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="baidu_translation_credentials.xml" />
+        <exclude domain="sharedpref" path="baidu_translation_credentials_fallback.xml" />
+        <exclude domain="sharedpref" path="steam_cloud_auth.xml" />
+    </device-transfer>
+</data-extraction-rules>

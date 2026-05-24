@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <exclude domain="sharedpref" path="baidu_translation_credentials.xml" />
+    <exclude domain="sharedpref" path="baidu_translation_credentials_fallback.xml" />
+    <exclude domain="sharedpref" path="steam_cloud_auth.xml" />
+</full-backup-content>

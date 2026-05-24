@@ -204,13 +204,7 @@ internal object OptionalModStorageCoordinator {
             }
             val name = file.name
             when {
-                name.endsWith(".importing.marker") -> {
-                    val targetName = runCatching { file.readText(StandardCharsets.UTF_8).trim() }.getOrDefault("")
-                    if (targetName.isNotEmpty() && File(targetName).name == targetName) {
-                        File(libraryDir, targetName).delete()
-                    }
-                    file.delete()
-                }
+                name.endsWith(".importing.marker") -> file.delete()
                 name.contains(".importing") && name.startsWith(".") -> file.delete()
             }
         }

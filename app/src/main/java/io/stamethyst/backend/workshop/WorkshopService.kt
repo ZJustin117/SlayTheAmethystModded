@@ -68,6 +68,13 @@ internal class WorkshopService(
 
     fun hasSteamAuth(): Boolean = SteamCloudAuthStore.readAuthMaterial(context) != null
 
+    fun cancelActiveCalls() {
+        listOf(client, workshopClient, browseDetailClient).forEach { httpClient ->
+            httpClient.dispatcher.queuedCalls().forEach { it.cancel() }
+            httpClient.dispatcher.runningCalls().forEach { it.cancel() }
+        }
+    }
+
     fun authSnapshot(): AuthSnapshot = SteamCloudAuthStore.readSnapshot(context)
 
     suspend fun browse(query: WorkshopBrowseQuery): WorkshopBrowseResult = withContext(Dispatchers.IO) {
