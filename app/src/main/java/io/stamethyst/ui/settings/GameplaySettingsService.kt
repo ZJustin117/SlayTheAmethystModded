@@ -7,6 +7,7 @@ import java.io.IOException
 
 internal object GameplaySettingsService {
     const val DEFAULT_TOUCHSCREEN_ENABLED = LauncherConfig.DEFAULT_TOUCHSCREEN_ENABLED
+    const val DEFAULT_TOUCH_INDICATOR_ENABLED = LauncherConfig.DEFAULT_TOUCH_INDICATOR_ENABLED
     val DEFAULT_TOUCHSCREEN_INPUT_MODE: TouchscreenInputMode =
         LauncherConfig.DEFAULT_TOUCHSCREEN_INPUT_MODE
     const val DEFAULT_FONT_SCALE = LauncherConfig.DEFAULT_GAMEPLAY_FONT_SCALE
@@ -21,6 +22,14 @@ internal object GameplaySettingsService {
 
     fun readTouchscreenInputMode(context: Context): TouchscreenInputMode {
         return LauncherConfig.readTouchscreenInputMode(context)
+    }
+
+    fun readTouchIndicatorEnabled(context: Context): Boolean {
+        return LauncherConfig.readTouchIndicatorEnabled(context)
+    }
+
+    fun setTouchIndicatorEnabled(context: Context, enabled: Boolean) {
+        LauncherConfig.setTouchIndicatorEnabled(context, enabled)
     }
 
     @Throws(IOException::class)

@@ -132,6 +132,12 @@ private enum class SteamCloudConflictResolutionChoice {
     USE_CLOUD,
 }
 
+private enum class SteamCloudNetworkPromptAction {
+    REFRESH,
+    USE_LOCAL,
+    USE_CLOUD,
+}
+
 private const val MODS_CONTENT_MOUNT_DELAY_MS = 80L
 
 @Composable
@@ -139,9 +145,11 @@ private fun LauncherGamePage(
     modifier: Modifier = Modifier,
     uiState: MainScreenViewModel.UiState,
     actions: MainScreenActions,
+    updateNotice: LauncherUpdateNoticeUiState?,
     feedbackUnreadCount: Int,
     onOpenFeedbackUpdates: () -> Unit,
     onOpenFeedbackSubscriptions: () -> Unit,
+    onUpdateNoticeClick: () -> Unit,
     onEnabledModsClick: () -> Unit,
     onSteamCloudClick: () -> Unit,
     onLaunch: () -> Unit,
@@ -211,6 +219,13 @@ private fun LauncherGamePage(
                     FeedbackReplyUpdateCard(
                         unreadCount = feedbackUnreadCount,
                         onView = onOpenFeedbackSubscriptions,
+                    )
+                }
+
+                updateNotice?.let { notice ->
+                    LauncherUpdateNoticeCard(
+                        notice = notice,
+                        onClick = onUpdateNoticeClick,
                     )
                 }
 
@@ -742,6 +757,58 @@ private fun FeedbackReplyUpdateCard(
 }
 
 @Composable
+private fun LauncherUpdateNoticeCard(
+    notice: LauncherUpdateNoticeUiState,
+    onClick: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                contentColor = MaterialTheme.colorScheme.primary,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_launcher_update_available),
+                    contentDescription = null,
+                    modifier = Modifier.padding(10.dp),
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.main_update_notice_card_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = stringResource(
+                        R.string.main_update_notice_card_version,
+                        notice.currentVersion,
+                        notice.latestVersion,
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    text = stringResource(R.string.main_update_notice_card_summary),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun SteamCloudOverviewCard(
     indicator: MainScreenViewModel.SteamCloudIndicatorUi,
     onClick: () -> Unit,
@@ -818,6 +885,11 @@ private enum class LauncherMainContentMode {
     MODS,
 }
 
+data class LauncherUpdateNoticeUiState(
+    val currentVersion: String,
+    val latestVersion: String,
+)
+
 private const val STEAM_CLOUD_AUTO_RETRY_INITIAL_DELAY_SECONDS = 5
 private const val STEAM_CLOUD_AUTO_RETRY_MAX_DELAY_SECONDS = 300
 private const val STEAM_CLOUD_AUTO_RETRY_STORED_ATTEMPT_CAP = 7
@@ -840,9 +912,11 @@ fun LauncherMainScreen(
     viewModel: MainScreenViewModel,
     onOpenFeedback: () -> Unit = {},
     onOpenWorkshop: () -> Unit = {},
+    updateNotice: LauncherUpdateNoticeUiState? = null,
     feedbackUnreadCount: Int = 0,
     onOpenFeedbackUpdates: () -> Unit = {},
     onOpenFeedbackSubscriptions: () -> Unit = {},
+    onUpdateNoticeClick: () -> Unit = {},
 ) {
     LauncherMainRoute(
         modifier = modifier,
@@ -854,9 +928,11 @@ fun LauncherMainScreen(
             uiState = uiState,
             actions = actions,
             onOpenFeedback = onOpenFeedback,
+            updateNotice = updateNotice,
             feedbackUnreadCount = feedbackUnreadCount,
             onOpenFeedbackUpdates = onOpenFeedbackUpdates,
             onOpenFeedbackSubscriptions = onOpenFeedbackSubscriptions,
+            onUpdateNoticeClick = onUpdateNoticeClick,
         )
     }
 }
@@ -1228,9 +1304,11 @@ internal fun LauncherGameScreenContent(
     uiState: MainScreenViewModel.UiState,
     actions: MainScreenActions = MainScreenActions(isHostAvailable = false),
     onOpenFeedback: () -> Unit = {},
+    updateNotice: LauncherUpdateNoticeUiState? = null,
     feedbackUnreadCount: Int = 0,
     onOpenFeedbackUpdates: () -> Unit = {},
     onOpenFeedbackSubscriptions: () -> Unit = {},
+    onUpdateNoticeClick: () -> Unit = {},
 ) {
     LauncherMainScreenContent(
         modifier = modifier,
@@ -1238,9 +1316,11 @@ internal fun LauncherGameScreenContent(
         actions = actions,
         contentMode = LauncherMainContentMode.GAME,
         onOpenFeedback = onOpenFeedback,
+        updateNotice = updateNotice,
         feedbackUnreadCount = feedbackUnreadCount,
         onOpenFeedbackUpdates = onOpenFeedbackUpdates,
         onOpenFeedbackSubscriptions = onOpenFeedbackSubscriptions,
+        onUpdateNoticeClick = onUpdateNoticeClick,
     )
 }
 
@@ -1281,9 +1361,11 @@ private fun LauncherMainScreenContent(
     contentMode: LauncherMainContentMode,
     onOpenFeedback: () -> Unit = {},
     onOpenWorkshop: () -> Unit = {},
+    updateNotice: LauncherUpdateNoticeUiState? = null,
     feedbackUnreadCount: Int = 0,
     onOpenFeedbackUpdates: () -> Unit = {},
     onOpenFeedbackSubscriptions: () -> Unit = {},
+    onUpdateNoticeClick: () -> Unit = {},
     workshopUpdateCheckState: WorkshopUpdateCheckUiState = WorkshopUpdateCheckUiState(),
     onBatchSelectionModeChange: (Boolean) -> Unit = {},
     onCheckWorkshopUpdates: () -> Unit = {},
@@ -1295,6 +1377,9 @@ private fun LauncherMainScreenContent(
     var showEnabledModsDialog by remember { mutableStateOf(false) }
     var pendingSteamCloudConflictChoice by remember {
         mutableStateOf<SteamCloudConflictResolutionChoice?>(null)
+    }
+    var pendingSteamCloudNetworkPromptAction by remember {
+        mutableStateOf<SteamCloudNetworkPromptAction?>(null)
     }
     val showInitializing = uiState.initializing
     val hazeState = rememberHazeState()
@@ -1310,6 +1395,22 @@ private fun LauncherMainScreenContent(
     val batchSelectionMode = batchEditBarState != null
     val batchEditBarContentPadding = with(density) { batchEditBarHeightPx.toDp() }
     val launcherDockContentPadding = 108.dp
+
+    fun runSteamCloudNetworkPromptAction(action: SteamCloudNetworkPromptAction) {
+        when (action) {
+            SteamCloudNetworkPromptAction.REFRESH -> actions.onRefreshSteamCloudStatus()
+            SteamCloudNetworkPromptAction.USE_LOCAL -> actions.onUseLocalSteamCloudProgress()
+            SteamCloudNetworkPromptAction.USE_CLOUD -> actions.onUseCloudSteamCloudProgress()
+        }
+    }
+
+    fun requestSteamCloudNetworkAction(action: SteamCloudNetworkPromptAction) {
+        if (actions.shouldPromptSteamCloudDirectMode()) {
+            pendingSteamCloudNetworkPromptAction = action
+        } else {
+            runSteamCloudNetworkPromptAction(action)
+        }
+    }
 
     LaunchedEffect(batchSelectionMode) {
         onBatchSelectionModeChange(batchSelectionMode)
@@ -1402,16 +1503,18 @@ private fun LauncherMainScreenContent(
                             modifier = Modifier.fillMaxSize(),
                             uiState = uiState,
                             actions = actions,
+                            updateNotice = updateNotice,
                             feedbackUnreadCount = feedbackUnreadCount,
                             onOpenFeedbackUpdates = onOpenFeedbackUpdates,
                             onOpenFeedbackSubscriptions = onOpenFeedbackSubscriptions,
+                            onUpdateNoticeClick = onUpdateNoticeClick,
                             onEnabledModsClick = { showEnabledModsDialog = true },
                             onSteamCloudClick = {
                                 if (steamCloudIndicator.visible) {
                                     if (steamCloudIndicator.state ==
                                         MainScreenViewModel.SteamCloudIndicatorState.HIDDEN
                                     ) {
-                                        actions.onRefreshSteamCloudStatus()
+                                        requestSteamCloudNetworkAction(SteamCloudNetworkPromptAction.REFRESH)
                                     }
                                     showSteamCloudBottomSheet = true
                                 }
@@ -1539,7 +1642,7 @@ private fun LauncherMainScreenContent(
         ) {
             SteamCloudBottomSheetContent(
                 indicator = steamCloudIndicator,
-                onRefresh = actions.onRefreshSteamCloudStatus,
+                onRefresh = { requestSteamCloudNetworkAction(SteamCloudNetworkPromptAction.REFRESH) },
                 onLaunch = {
                     val action = actions.onLaunch()
                     if (action != LaunchRequestAction.OPEN_STEAM_CLOUD_SHEET) {
@@ -1568,10 +1671,41 @@ private fun LauncherMainScreenContent(
             onConfirm = {
                 pendingSteamCloudConflictChoice = null
                 when (choice) {
-                    SteamCloudConflictResolutionChoice.USE_LOCAL -> actions.onUseLocalSteamCloudProgress()
-                    SteamCloudConflictResolutionChoice.USE_CLOUD -> actions.onUseCloudSteamCloudProgress()
+                    SteamCloudConflictResolutionChoice.USE_LOCAL ->
+                        requestSteamCloudNetworkAction(SteamCloudNetworkPromptAction.USE_LOCAL)
+                    SteamCloudConflictResolutionChoice.USE_CLOUD ->
+                        requestSteamCloudNetworkAction(SteamCloudNetworkPromptAction.USE_CLOUD)
                 }
             },
+        )
+    }
+
+    pendingSteamCloudNetworkPromptAction?.let { action ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { pendingSteamCloudNetworkPromptAction = null },
+            title = { Text(text = stringResource(R.string.main_steam_cloud_direct_mode_prompt_title)) },
+            text = { Text(text = stringResource(R.string.main_steam_cloud_direct_mode_prompt_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingSteamCloudNetworkPromptAction = null
+                        actions.onSwitchSteamCloudDirectMode()
+                        runSteamCloudNetworkPromptAction(action)
+                    }
+                ) {
+                    Text(text = stringResource(R.string.main_steam_cloud_direct_mode_prompt_switch_action))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        pendingSteamCloudNetworkPromptAction = null
+                        runSteamCloudNetworkPromptAction(action)
+                    }
+                ) {
+                    Text(text = stringResource(R.string.main_steam_cloud_direct_mode_prompt_keep_action))
+                }
+            }
         )
     }
 

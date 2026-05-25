@@ -994,6 +994,11 @@ public final class SteamCloudClient implements AutoCloseable {
             address = endpoint.getAddress().getHostAddress();
         }
         address = formatHostPort(address, endpoint.getPort());
+        if (SteamCloudNetworkEnvironment.INSTANCE.isProxyOrAcceleratorEndpoint(address)) {
+            recordDiagnosticEvent("cm_connect endpoint_not_persisted proxy_or_accelerator=" + address);
+            Log.i(TAG, "Not persisting proxy-like Steam websocket CM endpoint: " + address);
+            return;
+        }
         try {
             writeTextFile(lastCmEndpointFile, address + "\n");
         } catch (IOException ignored) {

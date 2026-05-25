@@ -79,6 +79,7 @@ internal object SettingsRepository {
         val avoidDisplayCutout: Boolean,
         val cropScreenBottom: Boolean,
         val touchscreenEnabled: Boolean,
+        val touchIndicatorEnabled: Boolean,
         val fontScale: Float,
         val largerUiEnabled: Boolean
     )
@@ -187,6 +188,7 @@ internal object SettingsRepository {
                 avoidDisplayCutout = LauncherPreferences.isDisplayCutoutAvoidanceEnabled(context),
                 cropScreenBottom = LauncherPreferences.isScreenBottomCropEnabled(context),
                 touchscreenEnabled = GameplaySettingsService.readTouchscreenEnabled(context),
+                touchIndicatorEnabled = GameplaySettingsService.readTouchIndicatorEnabled(context),
                 fontScale = GameplaySettingsService.readFontScale(context),
                 largerUiEnabled = GameplaySettingsService.readLargerUiEnabled(context)
             ),

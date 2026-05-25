@@ -107,6 +107,7 @@ import io.stamethyst.ui.main.LauncherGameScreenContent
 import io.stamethyst.ui.main.LauncherMainRoute
 import io.stamethyst.ui.main.LauncherModsScreen
 import io.stamethyst.ui.main.LauncherModsScreenContent
+import io.stamethyst.ui.main.LauncherUpdateNoticeUiState
 import io.stamethyst.ui.main.MainScreenViewModel
 import io.stamethyst.ui.modimport.ModImportHost
 import io.stamethyst.ui.workshop.WorkshopScreen
@@ -169,6 +170,12 @@ fun LauncherContent(
     val feedbackInboxState by FeedbackInboxCoordinator.uiState.collectAsState()
     val mainUiState = mainViewModel.uiState
     val settingsUiState = settingsViewModel.uiState
+    val updateNotice = settingsUiState.availableUpdatePromptState?.let { promptState ->
+        LauncherUpdateNoticeUiState(
+            currentVersion = promptState.currentVersion,
+            latestVersion = promptState.latestVersion,
+        )
+    }
     val workshopViewModel: WorkshopViewModel = viewModel()
     val workshopSubscriptionsViewModel: WorkshopViewModel = viewModel(key = "workshop-subscriptions")
     val currentRoute = navigator.backStack.lastOrNull() as? Route
@@ -463,9 +470,11 @@ fun LauncherContent(
                                     modifier = Modifier.fillMaxSize(),
                                     onOpenFeedback = { navigator.push(Route.Feedback) },
                                     onOpenWorkshop = { selectDockRoute(Route.Workshop) },
+                                    updateNotice = updateNotice,
                                     feedbackUnreadCount = feedbackInboxState.unreadIssueCount,
                                     onOpenFeedbackUpdates = { openFeedbackUpdates() },
                                     onOpenFeedbackSubscriptions = { navigator.push(Route.FeedbackSubscriptions) },
+                                    onUpdateNoticeClick = settingsViewModel::showUpdatePrompt,
                                 )
                             }
                         }
@@ -1067,6 +1076,13 @@ private fun LauncherDockPager(
 ) {
     val activity = LocalActivity.current
     val context = LocalContext.current
+    val settingsUiState = settingsViewModel.uiState
+    val updateNotice = settingsUiState.availableUpdatePromptState?.let { promptState ->
+        LauncherUpdateNoticeUiState(
+            currentVersion = promptState.currentVersion,
+            latestVersion = promptState.latestVersion,
+        )
+    }
     val workshopUpdateCheckState by WorkshopUpdateCheckCoordinator.uiState.collectAsState()
 
     LaunchedEffect(context) {
@@ -1099,10 +1115,12 @@ private fun LauncherDockPager(
                         modifier = Modifier.fillMaxSize(),
                         uiState = uiState,
                         actions = actions,
+                        updateNotice = updateNotice,
                         onOpenFeedback = onOpenFeedback,
                         feedbackUnreadCount = feedbackUnreadCount,
                         onOpenFeedbackUpdates = onOpenFeedbackUpdates,
                         onOpenFeedbackSubscriptions = onOpenFeedbackSubscriptions,
+                        onUpdateNoticeClick = settingsViewModel::showUpdatePrompt,
                     )
                 }
 

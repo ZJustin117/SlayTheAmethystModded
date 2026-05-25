@@ -38,6 +38,7 @@ import io.stamethyst.backend.mods.ModManager
 import io.stamethyst.backend.mods.ModSuggestionService
 import io.stamethyst.backend.steamcloud.SteamCloudAuthStore
 import io.stamethyst.backend.steamcloud.SteamCloudOperationMutex
+import io.stamethyst.backend.steamcloud.SteamCloudNetworkEnvironment
 import io.stamethyst.backend.steamcloud.SteamCloudPullCoordinator
 import io.stamethyst.backend.steamcloud.SteamCloudPushCoordinator
 import io.stamethyst.backend.steamcloud.SteamCloudSyncDirection
@@ -415,7 +416,7 @@ class MainScreenViewModel : ViewModel() {
                     }
                 }
             } catch (error: Throwable) {
-                val summary = summarizeSteamCloudAutoSyncError(error)
+                val summary = summarizeSteamCloudAutoSyncError(host, error)
                 val failedAtMs = System.currentTimeMillis()
                 host.runOnUiThread {
                     if (!isSteamCloudCheckSessionCurrent(checkSessionId)) {
@@ -558,7 +559,7 @@ class MainScreenViewModel : ViewModel() {
                     )
                 }
             } catch (error: Throwable) {
-                val summary = summarizeSteamCloudAutoSyncError(error)
+                val summary = summarizeSteamCloudAutoSyncError(host, error)
                 host.runOnUiThread {
                     if (!isSteamCloudSyncSessionCurrent(syncSessionId)) {
                         return@runOnUiThread
@@ -640,7 +641,7 @@ class MainScreenViewModel : ViewModel() {
                     )
                 }
             } catch (error: Throwable) {
-                val summary = summarizeSteamCloudAutoSyncError(error)
+                val summary = summarizeSteamCloudAutoSyncError(host, error)
                 host.runOnUiThread {
                     if (!isSteamCloudSyncSessionCurrent(syncSessionId)) {
                         return@runOnUiThread
@@ -727,7 +728,7 @@ class MainScreenViewModel : ViewModel() {
                 }
             }
         } catch (error: Throwable) {
-            val summary = summarizeSteamCloudAutoSyncError(error)
+            val summary = summarizeSteamCloudAutoSyncError(host, error)
             host.runOnUiThread {
                 if (!isSteamCloudSyncSessionCurrent(syncSessionId)) {
                     return@runOnUiThread
@@ -803,6 +804,14 @@ class MainScreenViewModel : ViewModel() {
         if (enabled && modManagementController.clearEnabledNewlyImportedHighlights(host)) {
             republish(host)
         }
+    }
+
+    fun shouldPromptSteamCloudDirectMode(host: Activity): Boolean {
+        return SteamCloudNetworkEnvironment.shouldPromptForDirectMode(host)
+    }
+
+    fun switchSteamCloudDirectMode(host: Activity) {
+        SteamCloudNetworkEnvironment.switchToDirectMode(host)
     }
 
     fun onPatchWorkshopMod(host: Activity, mod: ModItemUi) {
@@ -1843,16 +1852,26 @@ class MainScreenViewModel : ViewModel() {
         }
     }
 
-    private fun summarizeSteamCloudAutoSyncError(error: Throwable): String {
+    private fun summarizeSteamCloudAutoSyncError(host: Activity, error: Throwable): String {
         val cause = generateSequence(error) { current -> current.cause }
             .firstOrNull { current -> current.message?.trim()?.isNotEmpty() == true }
             ?: error
         val message = cause.message?.trim().orEmpty()
+        if (isSteamCloudUploadDisconnect(message)) {
+            return host.getString(R.string.settings_steam_cloud_upload_disconnect_summary)
+        }
         return if (message.isNotEmpty()) {
             message
         } else {
             cause.javaClass.simpleName
         }
+    }
+
+    private fun isSteamCloudUploadDisconnect(message: String): Boolean {
+        val normalized = message.lowercase(Locale.US)
+        return normalized.contains("beginhttpupload") &&
+            (normalized.contains("steam disconnected") ||
+                normalized.contains("client or session is no longer active"))
     }
 
     private fun publishSteamCloudIndicatorPlan(
@@ -1978,6 +1997,12 @@ class MainScreenViewModel : ViewModel() {
             SteamCloudSyncPhase.LOGGING_ON -> host.getString(R.string.main_steam_cloud_progress_logging_on)
             SteamCloudSyncPhase.REFRESHING_MANIFEST -> host.getString(R.string.main_steam_cloud_progress_refreshing_manifest)
             SteamCloudSyncPhase.PREPARING_UPLOAD -> host.getString(R.string.main_steam_cloud_progress_preparing_upload)
+            SteamCloudSyncPhase.CREATING_UPLOAD_BATCH ->
+                host.getString(R.string.main_steam_cloud_progress_creating_upload_batch)
+
+            SteamCloudSyncPhase.REQUESTING_UPLOAD_SLOT ->
+                host.getString(R.string.main_steam_cloud_progress_requesting_upload_slot)
+
             SteamCloudSyncPhase.UPLOADING -> host.getString(
                 R.string.main_steam_cloud_progress_uploading,
                 progress.completedFiles,

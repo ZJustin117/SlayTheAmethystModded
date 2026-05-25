@@ -68,6 +68,8 @@ internal data class MainScreenActions(
     val onCancelSteamCloudSync: () -> Unit = {},
     val onUseLocalSteamCloudProgress: () -> Unit = {},
     val onUseCloudSteamCloudProgress: () -> Unit = {},
+    val shouldPromptSteamCloudDirectMode: () -> Boolean = { false },
+    val onSwitchSteamCloudDirectMode: () -> Unit = {},
 )
 
 @Composable
@@ -164,6 +166,12 @@ internal fun rememberMainScreenActions(
                 },
                 onUseCloudSteamCloudProgress = {
                     viewModel.onUseCloudSteamCloudProgress(activity)
+                },
+                shouldPromptSteamCloudDirectMode = {
+                    viewModel.shouldPromptSteamCloudDirectMode(activity)
+                },
+                onSwitchSteamCloudDirectMode = {
+                    viewModel.switchSteamCloudDirectMode(activity)
                 },
             )
         }

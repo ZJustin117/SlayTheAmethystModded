@@ -173,6 +173,7 @@ internal object SteamCloudPushCoordinator {
         plan: SteamCloudUploadPlan,
         progressCallback: ((SteamCloudSyncProgress) -> Unit)? = null,
         shouldContinue: () -> Boolean = { true },
+        allowReconnectRetry: Boolean = true,
     ): SteamCloudPushResult {
         require(plan.conflicts.isEmpty()) {
             "Steam Cloud push was requested with unresolved conflicts."
@@ -184,6 +185,8 @@ internal object SteamCloudPushCoordinator {
         val startedAtMs = System.currentTimeMillis()
         val client = SteamCloudClient(host)
         var uploadBatch: SteamCloudClient.UploadBatch? = null
+        var uploadedBytes = 0L
+        var uploadedFileCount = 0
 
         try {
             client.beginOperationDiagnostics(
@@ -220,18 +223,38 @@ internal object SteamCloudPushCoordinator {
                     progressPercent = 20,
                 )
             )
+            reportProgress(
+                progressCallback,
+                SteamCloudSyncProgress(
+                    direction = SteamCloudSyncDirection.PUSH_LOCAL_TO_CLOUD,
+                    phase = SteamCloudSyncPhase.CREATING_UPLOAD_BATCH,
+                    completedFiles = 0,
+                    totalFiles = plan.uploadCandidates.size,
+                    progressPercent = 24,
+                )
+            )
             uploadBatch = client.beginUploadBatch(
                 STEAM_CLOUD_APP_ID,
                 plan.uploadCandidates.map { it.remotePath },
             )
             ensureNotCancelled(shouldContinue)
 
-            var uploadedBytes = 0L
             plan.uploadCandidates.forEachIndexed { index, candidate ->
                 ensureNotCancelled(shouldContinue)
                 val sourceFile = File(
                     RuntimePaths.stsRoot(host),
                     candidate.localRelativePath.replace('/', File.separatorChar)
+                )
+                reportProgress(
+                    progressCallback,
+                    SteamCloudSyncProgress(
+                        direction = SteamCloudSyncDirection.PUSH_LOCAL_TO_CLOUD,
+                        phase = SteamCloudSyncPhase.REQUESTING_UPLOAD_SLOT,
+                        completedFiles = index + 1,
+                        totalFiles = plan.uploadCandidates.size,
+                        currentPath = candidate.localRelativePath,
+                        progressPercent = 28 + ((index * 55) / plan.uploadCandidates.size),
+                    )
                 )
                 val uploadedFile = try {
                     client.uploadFile(
@@ -248,6 +271,7 @@ internal object SteamCloudPushCoordinator {
                 }
                 ensureNotCancelled(shouldContinue)
                 uploadedBytes += uploadedFile.fileSize
+                uploadedFileCount = index + 1
                 reportProgress(
                     progressCallback,
                     SteamCloudSyncProgress(
@@ -337,6 +361,18 @@ internal object SteamCloudPushCoordinator {
                     client.completeUploadBatch(STEAM_CLOUD_APP_ID, batch.batchId, EResult.Fail)
                 }
             }
+            if (allowReconnectRetry && uploadedFileCount == 0 && isReconnectRetryCandidate(error, failureDiagnostics)) {
+                SteamCloudNetworkEnvironment.clearNetworkCache(host)
+                client.close()
+                return pushLocalChanges(
+                    host = host,
+                    authMaterial = authMaterial,
+                    plan = plan,
+                    progressCallback = progressCallback,
+                    shouldContinue = shouldContinue,
+                    allowReconnectRetry = false,
+                )
+            }
             SteamCloudAuthStore.recordFailure(host, summarizeError(error))
             runCatching {
                 SteamCloudDiagnosticsStore.writeSummary(
@@ -372,11 +408,14 @@ internal object SteamCloudPushCoordinator {
         sourceRoot: File = RuntimePaths.stsRoot(host),
         progressCallback: ((SteamCloudSyncProgress) -> Unit)? = null,
         shouldContinue: () -> Boolean = { true },
+        allowReconnectRetry: Boolean = true,
     ): SteamCloudPushResult {
         val startedAtMs = System.currentTimeMillis()
         val client = SteamCloudClient(host)
         var uploadBatch: SteamCloudClient.UploadBatch? = null
         var preparedPlan: PreparedMirrorPlan? = null
+        var uploadedBytes = 0L
+        var uploadedFileCount = 0
 
         try {
             client.beginOperationDiagnostics(
@@ -450,6 +489,16 @@ internal object SteamCloudPushCoordinator {
             )
 
             if (preparedPlan.uploadCandidates.isNotEmpty() || preparedPlan.deleteRemotePaths.isNotEmpty()) {
+                reportProgress(
+                    progressCallback,
+                    SteamCloudSyncProgress(
+                        direction = SteamCloudSyncDirection.PUSH_LOCAL_TO_CLOUD,
+                        phase = SteamCloudSyncPhase.CREATING_UPLOAD_BATCH,
+                        completedFiles = 0,
+                        totalFiles = preparedPlan.uploadCandidates.size,
+                        progressPercent = 29,
+                    )
+                )
                 uploadBatch = client.beginUploadBatch(
                     STEAM_CLOUD_APP_ID,
                     preparedPlan.uploadCandidates.map { it.remotePath },
@@ -458,13 +507,27 @@ internal object SteamCloudPushCoordinator {
                 ensureNotCancelled(shouldContinue)
             }
 
-            var uploadedBytes = 0L
             val totalUploads = preparedPlan.uploadCandidates.size
             preparedPlan.uploadCandidates.forEachIndexed { index, candidate ->
                 ensureNotCancelled(shouldContinue)
                 val sourceFile = File(
                     sourceRoot,
                     candidate.localRelativePath.replace('/', File.separatorChar)
+                )
+                reportProgress(
+                    progressCallback,
+                    SteamCloudSyncProgress(
+                        direction = SteamCloudSyncDirection.PUSH_LOCAL_TO_CLOUD,
+                        phase = SteamCloudSyncPhase.REQUESTING_UPLOAD_SLOT,
+                        completedFiles = index + 1,
+                        totalFiles = totalUploads,
+                        currentPath = candidate.localRelativePath,
+                        progressPercent = if (totalUploads <= 0) {
+                            85
+                        } else {
+                            30 + ((index * 55) / totalUploads)
+                        },
+                    )
                 )
                 val uploadedFile = try {
                     client.uploadFile(
@@ -481,6 +544,7 @@ internal object SteamCloudPushCoordinator {
                 }
                 ensureNotCancelled(shouldContinue)
                 uploadedBytes += uploadedFile.fileSize
+                uploadedFileCount = index + 1
                 reportProgress(
                     progressCallback,
                     SteamCloudSyncProgress(
@@ -578,6 +642,18 @@ internal object SteamCloudPushCoordinator {
                 runCatching {
                     client.completeUploadBatch(STEAM_CLOUD_APP_ID, batch.batchId, EResult.Fail)
                 }
+            }
+            if (allowReconnectRetry && uploadedFileCount == 0 && isReconnectRetryCandidate(error, failureDiagnostics)) {
+                SteamCloudNetworkEnvironment.clearNetworkCache(host)
+                client.close()
+                return overwriteRemoteWithLocal(
+                    host = host,
+                    authMaterial = authMaterial,
+                    sourceRoot = sourceRoot,
+                    progressCallback = progressCallback,
+                    shouldContinue = shouldContinue,
+                    allowReconnectRetry = false,
+                )
             }
             SteamCloudAuthStore.recordFailure(host, summarizeError(error))
             runCatching {
@@ -723,6 +799,29 @@ internal object SteamCloudPushCoordinator {
         } else {
             error.javaClass.simpleName
         }
+    }
+
+    private fun isReconnectRetryCandidate(
+        error: Throwable,
+        diagnostics: SteamCloudClient.DiagnosticsSnapshot?,
+    ): Boolean {
+        var sawBeginHttpUpload = diagnostics?.currentStage
+            .orEmpty()
+            .lowercase(Locale.US)
+            .contains("beginhttpupload")
+        var sawReconnectFailure = false
+        var current: Throwable? = error
+        while (current != null) {
+            val normalized = current.message.orEmpty().lowercase(Locale.US)
+            sawBeginHttpUpload = sawBeginHttpUpload || normalized.contains("beginhttpupload")
+            if ((normalized.contains("steam disconnected") && normalized.contains("unexpected")) ||
+                normalized.contains("client or session is no longer active")
+            ) {
+                sawReconnectFailure = true
+            }
+            current = current.cause
+        }
+        return sawBeginHttpUpload && sawReconnectFailure
     }
 
     private fun prepareMirrorPlan(plan: SteamCloudMirrorPlan): PreparedMirrorPlan {

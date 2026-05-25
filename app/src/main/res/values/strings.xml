@@ -867,6 +867,9 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="main_feedback_reply_card_single">A feedback issue you follow has a new reply</string>
     <string name="main_feedback_reply_card_multiple">%1$d feedback issues you follow have new replies. Open your followed issues to check progress.</string>
     <string name="main_feedback_reply_card_action">View</string>
+    <string name="main_update_notice_card_title">Update detected</string>
+    <string name="main_update_notice_card_version">Current %1$s · Latest %2$s</string>
+    <string name="main_update_notice_card_summary">Tap to view release notes and download options.</string>
     <string name="main_enabled_mods_count">%1$d / %2$d mods enabled</string>
     <string name="main_enabled_mods_dialog_title">Enabled mods</string>
     <string name="main_enabled_mods_dialog_empty">No mods are currently enabled.</string>
@@ -1030,6 +1033,8 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="settings_steam_cloud_watt_acceleration_enabled_title">Steam accelerated connection on</string>
     <string name="settings_steam_cloud_watt_acceleration_disabled_title">Steam accelerated connection off</string>
     <string name="settings_steam_cloud_watt_acceleration_desc">Access Steam through forwarding rules for better speed. If Steam cannot be accessed normally, turn this off and enable an accelerator.</string>
+    <string name="settings_steam_cloud_clear_network_cache_title">Clear Steam Cloud network cache</string>
+    <string name="settings_steam_cloud_clear_network_cache_desc">Remove cached Steam CM endpoints and server list without clearing login, saves, or sync baseline.</string>
     <string name="settings_steam_cloud_intro">Switch between independent local saves and Steam Cloud saves. Use the launcher cloud button to check status, sync changes, and resolve conflicts.</string>
     <string name="settings_steam_cloud_account_signed_in">Current Steam account</string>
     <string name="settings_steam_cloud_account_not_signed_in">Not signed in</string>
@@ -1139,6 +1144,8 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="settings_steam_cloud_login_cancelled">Steam Cloud login cancelled.</string>
     <string name="settings_steam_cloud_login_failed">Steam Cloud login failed: %1$s</string>
     <string name="settings_steam_cloud_login_guard_wait_timeout_summary">Steam Guard verification waited too long. Steam closed the login connection; sign in again and enter the latest code or approve the prompt quickly.</string>
+    <string name="settings_steam_cloud_upload_disconnect_summary">Steam Cloud upload connection was interrupted while requesting an upload slot. Switch to direct mode, turn off the proxy or accelerator, or retry on a stable network.</string>
+    <string name="settings_steam_cloud_network_cache_cleared">Steam Cloud network cache cleared.</string>
     <string name="settings_steam_cloud_manifest_refresh_succeeded">Steam Cloud manifest refreshed: %1$d files.</string>
     <string name="settings_steam_cloud_manifest_refresh_failed">Steam Cloud manifest refresh failed: %1$s</string>
     <string name="settings_steam_cloud_manifest_missing">No cached Steam Cloud manifest is available yet.</string>
@@ -1195,6 +1202,10 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="main_steam_cloud_launch_warning_title">Start without Steam Cloud sync?</string>
     <string name="main_steam_cloud_launch_warning_message">Steam Cloud sync failed, so your latest cloud progress could not be verified. Starting now uses the current local saves and may leave cloud progress out of date until the next successful sync.</string>
     <string name="main_steam_cloud_launch_warning_cancel">Go back</string>
+    <string name="main_steam_cloud_direct_mode_prompt_title">Steam Cloud network mode</string>
+    <string name="main_steam_cloud_direct_mode_prompt_message">Detected that the current Steam connection is using a proxy or accelerator. Switch to direct mode?</string>
+    <string name="main_steam_cloud_direct_mode_prompt_switch_action">Switch to direct</string>
+    <string name="main_steam_cloud_direct_mode_prompt_keep_action">Continue current mode</string>
     <string name="main_steam_cloud_action_cancel_check">Cancel check</string>
     <string name="main_steam_cloud_check_cancelled_summary">Check cancelled. Your current saves are not synced.</string>
     <string name="main_steam_cloud_sync_cancelled_summary">Steam Cloud upload cancelled. Your current saves are not synced.</string>
@@ -1240,6 +1251,8 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="main_steam_cloud_progress_logging_on">Logging on to Steam…</string>
     <string name="main_steam_cloud_progress_refreshing_manifest">Refreshing Steam Cloud manifest…</string>
     <string name="main_steam_cloud_progress_preparing_upload">Preparing Steam Cloud sync…</string>
+    <string name="main_steam_cloud_progress_creating_upload_batch">Creating Steam Cloud upload batch…</string>
+    <string name="main_steam_cloud_progress_requesting_upload_slot">Requesting Steam Cloud upload slot…</string>
     <string name="main_steam_cloud_progress_preparing_auto_sync">Applying Steam Cloud changes…</string>
     <string name="main_steam_cloud_progress_preparing_local_override">Preparing to overwrite Steam Cloud with local progress…</string>
     <string name="main_steam_cloud_progress_preparing_cloud_override">Preparing to overwrite local progress with Steam Cloud…</string>
@@ -1382,6 +1395,9 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="settings_touchscreen_mode_desktop_desc">Shows the mouse cursor and uses full desktop click behavior. This has the best click compatibility, but some operations are not suitable for mobile.</string>
     <string name="settings_touchscreen_mode_hybrid_desc">Recommended. Keeps the touch input UI and touch indicator, and enables touchscreen logic only for vanilla screens. This can fix cases where mod buttons cannot be tapped under native touch.</string>
     <string name="settings_touchscreen_mode_mobile_desc">Restores global native touchscreen semantics. Closest to vanilla mobile touch behavior, but more likely to trigger mod UI issues.</string>
+    <string name="settings_touch_indicator_enabled">Touch indicator: Shown</string>
+    <string name="settings_touch_indicator_disabled">Touch indicator: Hidden</string>
+    <string name="settings_touch_indicator_desc">Controls whether taps in hybrid or mobile touchscreen mode show the small fading circle in game.</string>
     <string name="settings_gameplay_font_scale_title">Text size</string>
     <string name="settings_gameplay_font_scale_value">%1$sx</string>
     <string name="settings_gameplay_font_scale_desc">Controls the text size multiplier.</string>

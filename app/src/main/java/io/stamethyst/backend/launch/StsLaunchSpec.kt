@@ -197,7 +197,13 @@ object StsLaunchSpec {
         )
         args.add(
             "-Damethyst.touch_indicator_enabled=" +
-                if (touchscreenInputMode.touchscreenEnabled) "true" else "false"
+                if (touchscreenInputMode.touchscreenEnabled &&
+                    LauncherConfig.readTouchIndicatorEnabled(context)
+                ) {
+                    "true"
+                } else {
+                    "false"
+                }
         )
         args.add(
             "-Damethyst.touchscreen_policy=" +

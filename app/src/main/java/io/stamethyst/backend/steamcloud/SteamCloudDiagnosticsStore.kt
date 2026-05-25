@@ -11,7 +11,7 @@ import java.util.concurrent.ExecutionException
 
 internal object SteamCloudDiagnosticsStore {
     private const val SUMMARY_FILE_NAME = "last-operation-summary.txt"
-    private const val FAILURE_HISTORY_DIR_NAME = "login-failures"
+    private const val FAILURE_HISTORY_DIR_NAME = "failures"
     private const val LOGIN_HISTORY_DIR_NAME = "login-history"
     private const val FAILURE_HISTORY_LIMIT = 10
     private const val LOGIN_HISTORY_LIMIT = 10
@@ -105,6 +105,11 @@ internal object SteamCloudDiagnosticsStore {
                 }"
             )
             add(
+                "Proxy/Accelerator Detected: ${
+                    if (isProxyOrAcceleratorDetected(diagnostics)) "yes" else "no"
+                }"
+            )
+            add(
                 "CM Candidate Source: ${
                     diagnostics?.candidateSourceDescription?.trim()?.takeIf { it.isNotEmpty() } ?: "<not selected>"
                 }"
@@ -174,11 +179,11 @@ internal object SteamCloudDiagnosticsStore {
         }
         val text = lines.joinToString("\n") + "\n"
         file.writeText(text, Charsets.UTF_8)
+        if (outcome.equals("FAILED", ignoreCase = true)) {
+            runCatching { writeFailureHistory(context, operation, startedAtMs, completedAtMs, text) }
+        }
         if (operation == "credentials_login") {
             runCatching { writeLoginHistory(context, startedAtMs, completedAtMs, outcome, text) }
-            if (outcome.equals("FAILED", ignoreCase = true)) {
-                runCatching { writeFailureHistory(context, startedAtMs, completedAtMs, text) }
-            }
         }
     }
 
@@ -189,15 +194,20 @@ internal object SteamCloudDiagnosticsStore {
     @Throws(IOException::class)
     private fun writeFailureHistory(
         context: Context,
+        operation: String,
         startedAtMs: Long,
         completedAtMs: Long,
         text: String,
     ) {
         val dir = failureHistoryDir(context)
         if (!dir.isDirectory && !dir.mkdirs()) {
-            throw IOException("Failed to create Steam Cloud login failure history directory: ${dir.absolutePath}")
+            throw IOException("Failed to create Steam Cloud failure history directory: ${dir.absolutePath}")
         }
-        val fileName = "login-failure-${formatFileTimestamp(startedAtMs)}-${formatFileTimestamp(completedAtMs)}.txt"
+        val safeOperation = operation.trim()
+            .lowercase(Locale.US)
+            .replace(Regex("[^a-z0-9._-]+"), "_")
+            .ifBlank { "unknown" }
+        val fileName = "failure-$safeOperation-${formatFileTimestamp(startedAtMs)}-${formatFileTimestamp(completedAtMs)}.txt"
         File(dir, fileName).writeText(text, Charsets.UTF_8)
         pruneFailureHistory(dir)
     }
@@ -221,7 +231,7 @@ internal object SteamCloudDiagnosticsStore {
     }
 
     private fun pruneFailureHistory(dir: File) {
-        val files = dir.listFiles { file -> file.isFile && file.name.startsWith("login-failure-") }
+        val files = dir.listFiles { file -> file.isFile && file.name.startsWith("failure-") }
             ?.sortedByDescending { it.lastModified() }
             ?: return
         files.drop(FAILURE_HISTORY_LIMIT).forEach { it.delete() }
@@ -261,6 +271,15 @@ internal object SteamCloudDiagnosticsStore {
             current = next
             depth++
         }
+    }
+
+    private fun isProxyOrAcceleratorDetected(diagnostics: SteamCloudClient.DiagnosticsSnapshot?): Boolean {
+        if (diagnostics == null) {
+            return false
+        }
+        return diagnostics.wattAccelerationDescription.equals("enabled", ignoreCase = true) ||
+            SteamCloudNetworkEnvironment.isProxyOrAcceleratorEndpoint(diagnostics.resolvedServerDescription) ||
+            SteamCloudNetworkEnvironment.isProxyOrAcceleratorEndpoint(diagnostics.candidateSourceDescription)
     }
 
     private fun describeFailure(error: Throwable?): String {

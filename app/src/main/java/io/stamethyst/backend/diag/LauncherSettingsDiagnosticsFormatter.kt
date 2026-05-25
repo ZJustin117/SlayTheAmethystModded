@@ -97,7 +97,8 @@ internal object LauncherSettingsDiagnosticsFormatter {
                             touchscreenInputMode.touchscreenEnabled
                         ),
                         "touchIndicatorEnabled" to formatBoolean(
-                            touchscreenInputMode.touchscreenEnabled
+                            touchscreenInputMode.touchscreenEnabled &&
+                                LauncherConfig.readTouchIndicatorEnabled(context)
                         ),
                         "touchscreenPolicy" to if (touchscreenInputMode.nativeTouchscreenAllowlistEnabled) {
                             "vanilla_allowlist"

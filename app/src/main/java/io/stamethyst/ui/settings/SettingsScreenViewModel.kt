@@ -26,6 +26,7 @@ import io.stamethyst.backend.steamcloud.SteamCloudLoginChallenge
 import io.stamethyst.backend.steamcloud.SteamCloudLoginChallengeKind
 import io.stamethyst.backend.steamcloud.SteamCloudManifestSnapshot
 import io.stamethyst.backend.steamcloud.SteamCloudManifestStore
+import io.stamethyst.backend.steamcloud.SteamCloudNetworkEnvironment
 import io.stamethyst.backend.steamcloud.SteamCloudOperationMutex
 import io.stamethyst.backend.steamcloud.SteamCloudPhase0ManifestProbe
 import io.stamethyst.backend.steamcloud.SteamCloudPhase0Store
@@ -283,6 +284,7 @@ class SettingsScreenViewModel : ViewModel() {
         val glBridgeSwapHeartbeatDebugEnabled: Boolean = LauncherPreferences.DEFAULT_GLBRIDGE_SWAP_HEARTBEAT_DEBUG,
         val touchscreenInputMode: TouchscreenInputMode =
             GameplaySettingsService.DEFAULT_TOUCHSCREEN_INPUT_MODE,
+        val touchIndicatorEnabled: Boolean = GameplaySettingsService.DEFAULT_TOUCH_INDICATOR_ENABLED,
         val gameplayFontScale: Float = GameplaySettingsService.DEFAULT_FONT_SCALE,
         val gameplayLargerUiEnabled: Boolean = GameplaySettingsService.DEFAULT_LARGER_UI_ENABLED,
         val statusText: String = "",
@@ -294,6 +296,7 @@ class SettingsScreenViewModel : ViewModel() {
         val currentVersionText: String = BuildConfig.VERSION_NAME,
         val updateStatusSummary: String = "",
         val updateCheckInProgress: Boolean = false,
+        val availableUpdatePromptState: UpdatePromptState? = null,
         val updatePromptState: UpdatePromptState? = null,
         val releaseHistoryLoading: Boolean = false,
         val releaseHistoryDialogState: UpdateHistoryDialogState? = null,
@@ -471,6 +474,11 @@ class SettingsScreenViewModel : ViewModel() {
         if (uiState.updatePromptState != null) {
             uiState = uiState.copy(updatePromptState = null)
         }
+    }
+
+    fun showUpdatePrompt() {
+        val promptState = uiState.availableUpdatePromptState ?: return
+        uiState = uiState.copy(updatePromptState = promptState)
     }
 
     fun onOpenReleaseHistory(host: Activity) {
@@ -723,7 +731,7 @@ class SettingsScreenViewModel : ViewModel() {
                 result.downloadResolution.source.id
             )
         }
-        val promptState = if (decision.showPrompt) {
+        val promptState = if (result.hasUpdate) {
             buildUpdatePromptState(host, result.release, result.downloadResolution)
         } else {
             null
@@ -731,7 +739,8 @@ class SettingsScreenViewModel : ViewModel() {
         syncStoredUpdateState(
             host = host,
             updateCheckInProgress = false,
-            updatePromptState = promptState
+            availableUpdatePromptState = promptState,
+            updatePromptState = if (decision.showPrompt) promptState else null
         )
         return when (decision.message) {
             UpdateUiMessage.LATEST -> host.getString(R.string.update_check_result_latest)
@@ -839,6 +848,7 @@ class SettingsScreenViewModel : ViewModel() {
     private fun syncStoredUpdateState(
         host: Activity,
         updateCheckInProgress: Boolean = uiState.updateCheckInProgress,
+        availableUpdatePromptState: UpdatePromptState? = uiState.availableUpdatePromptState,
         updatePromptState: UpdatePromptState? = uiState.updatePromptState,
         releaseHistoryLoading: Boolean = uiState.releaseHistoryLoading,
         releaseHistoryDialogState: UpdateHistoryDialogState? = uiState.releaseHistoryDialogState,
@@ -851,6 +861,7 @@ class SettingsScreenViewModel : ViewModel() {
             currentVersionText = snapshot.currentVersionText,
             updateStatusSummary = snapshot.statusSummary,
             updateCheckInProgress = updateCheckInProgress,
+            availableUpdatePromptState = availableUpdatePromptState,
             updatePromptState = updatePromptState,
             releaseHistoryLoading = releaseHistoryLoading,
             releaseHistoryDialogState = releaseHistoryDialogState
@@ -1455,6 +1466,15 @@ class SettingsScreenViewModel : ViewModel() {
 
     fun onSteamCloudWattAccelerationChanged(host: Activity, enabled: Boolean) {
         LauncherPreferences.setSteamCloudWattAccelerationEnabled(host, enabled)
+        refreshStatus(host)
+    }
+
+    fun onClearSteamCloudNetworkCache(host: Activity) {
+        if (uiState.busy) {
+            return
+        }
+        SteamCloudNetworkEnvironment.clearNetworkCache(host)
+        showToast(host, UiText.StringResource(R.string.settings_steam_cloud_network_cache_cleared))
         refreshStatus(host)
     }
 
@@ -2631,6 +2651,15 @@ class SettingsScreenViewModel : ViewModel() {
         refreshStatus(host)
     }
 
+    fun onTouchIndicatorEnabledChanged(host: Activity, enabled: Boolean) {
+        if (uiState.busy) {
+            return
+        }
+        uiState = uiState.copy(touchIndicatorEnabled = enabled)
+        GameplaySettingsService.setTouchIndicatorEnabled(host, enabled)
+        refreshStatus(host)
+    }
+
     fun onGameplayFontScaleChanged(host: Activity, value: Float) {
         if (uiState.busy) {
             return
@@ -3103,6 +3132,7 @@ class SettingsScreenViewModel : ViewModel() {
                 nativeTouchscreenAllowlistEnabled =
                     compatibility.nativeTouchscreenAllowlistCompatEnabled
             ),
+            touchIndicatorEnabled = input.touchIndicatorEnabled,
             gameplayFontScale = input.fontScale,
             gameplayLargerUiEnabled = input.largerUiEnabled,
             workshopMaxConcurrentDownloads = market.workshopMaxConcurrentDownloads,
@@ -4690,6 +4720,9 @@ class SettingsScreenViewModel : ViewModel() {
         if (cause is CancellationException) {
             return host.getString(R.string.settings_steam_cloud_login_cancelled_summary)
         }
+        if (isSteamCloudUploadDisconnect(message)) {
+            return host.getString(R.string.settings_steam_cloud_upload_disconnect_summary)
+        }
         if (isSteamCloudAuthWatchdogDisconnect(message)) {
             return host.getString(R.string.settings_steam_cloud_login_guard_wait_timeout_summary)
         }
@@ -4705,6 +4738,13 @@ class SettingsScreenViewModel : ViewModel() {
         return normalized.contains("steam disconnected") &&
             normalized.contains("steam auth completion") &&
             normalized.contains("watchdog")
+    }
+
+    private fun isSteamCloudUploadDisconnect(message: String): Boolean {
+        val normalized = message.lowercase(Locale.US)
+        return normalized.contains("beginhttpupload") &&
+            (normalized.contains("steam disconnected") ||
+                normalized.contains("client or session is no longer active"))
     }
 
     private fun formatSettingsTimestamp(timestampMs: Long): String {

@@ -155,7 +155,7 @@ internal object DiagnosticsArchiveBuilder {
             exportedCount += writeOptionalDirectoryFiles(
                 zipOutput,
                 SteamCloudDiagnosticsStore.failureHistoryDir(context),
-                "sts/steam_cloud/phase1/login-failures"
+                "sts/steam_cloud/phase1/failures"
             )
             exportedCount += writeOptionalDirectoryFiles(
                 zipOutput,

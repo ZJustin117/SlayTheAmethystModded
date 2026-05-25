@@ -256,6 +256,9 @@ fun LauncherSettingsGameScreen(
         onTouchscreenInputModeChanged = { mode ->
             viewModel.onTouchscreenInputModeChanged(activity, mode)
         },
+        onTouchIndicatorEnabledChanged = { enabled ->
+            viewModel.onTouchIndicatorEnabledChanged(activity, enabled)
+        },
         onShowFloatingMouseWindowChanged = { enabled ->
             viewModel.onShowFloatingMouseWindowChanged(activity, enabled)
         },
@@ -303,6 +306,7 @@ fun LauncherSettingsMarketCloudScreen(
         },
         onOpenSteamCloudSaveSettings = { navigator.push(Route.SteamCloudSaveSettings) },
         onClearSteamCloudCredentials = { viewModel.onClearSteamCloudCredentials(activity) },
+        onClearSteamCloudNetworkCache = { viewModel.onClearSteamCloudNetworkCache(activity) },
         onWorkshopMaxConcurrentDownloadsChanged = { value ->
             viewModel.onWorkshopMaxConcurrentDownloadsChanged(activity, value)
         },
@@ -727,6 +731,7 @@ private fun LauncherSettingsGameScreenContent(
     onPlayerNameChanged: (String) -> Boolean = { true },
     onBackBehaviorChanged: (BackBehavior) -> Unit = {},
     onTouchscreenInputModeChanged: (TouchscreenInputMode) -> Unit = {},
+    onTouchIndicatorEnabledChanged: (Boolean) -> Unit = {},
     onShowFloatingMouseWindowChanged: (Boolean) -> Unit = {},
     onTouchMouseInteractionModeChanged: (TouchMouseInteractionMode) -> Unit = {},
     onTouchDoubleClickAsRightClickChanged: (Boolean) -> Unit = {},
@@ -767,6 +772,7 @@ private fun LauncherSettingsGameScreenContent(
                     onPlayerNameChanged = onPlayerNameChanged,
                     onBackBehaviorChanged = onBackBehaviorChanged,
                     onTouchscreenInputModeChanged = onTouchscreenInputModeChanged,
+                    onTouchIndicatorEnabledChanged = onTouchIndicatorEnabledChanged,
                     onShowFloatingMouseWindowChanged = onShowFloatingMouseWindowChanged,
                     onTouchMouseInteractionModeChanged = onTouchMouseInteractionModeChanged,
                     onTouchDoubleClickAsRightClickChanged = onTouchDoubleClickAsRightClickChanged,
@@ -789,6 +795,7 @@ private fun LauncherSettingsMarketCloudScreenContent(
     onSteamCloudWattAccelerationChanged: (Boolean) -> Unit = {},
     onOpenSteamCloudSaveSettings: () -> Unit = {},
     onClearSteamCloudCredentials: () -> Unit = {},
+    onClearSteamCloudNetworkCache: () -> Unit = {},
     onWorkshopMaxConcurrentDownloadsChanged: (Int) -> Unit = {},
     onWorkshopDownloadThreadsChanged: (Int) -> Unit = {},
     onWorkshopWattAccelerationChanged: (Boolean) -> Unit = {},
@@ -814,6 +821,7 @@ private fun LauncherSettingsMarketCloudScreenContent(
                     onSteamCloudWattAccelerationChanged = onSteamCloudWattAccelerationChanged,
                     onOpenSteamCloudSaveSettings = onOpenSteamCloudSaveSettings,
                     onClearSteamCloudCredentials = onClearSteamCloudCredentials,
+                    onClearSteamCloudNetworkCache = onClearSteamCloudNetworkCache,
                 )
             }
         }
@@ -1161,6 +1169,7 @@ private fun SettingsSteamCloudSection(
     onSteamCloudWattAccelerationChanged: (Boolean) -> Unit,
     onOpenSteamCloudSaveSettings: () -> Unit,
     onClearSteamCloudCredentials: () -> Unit,
+    onClearSteamCloudNetworkCache: () -> Unit,
 ) {
     var showLogoutConfirmDialog by rememberSaveable { mutableStateOf(false) }
     val accountName = uiState.steamCloudAccountName.ifBlank {
@@ -1204,6 +1213,14 @@ private fun SettingsSteamCloudSection(
         disabledText = stringResource(R.string.settings_steam_cloud_watt_acceleration_disabled_title),
         description = stringResource(R.string.settings_steam_cloud_watt_acceleration_desc),
         onCheckedChange = onSteamCloudWattAccelerationChanged,
+    )
+
+    Spacer(modifier = Modifier.size(8.dp))
+    SettingsActionListItem(
+        title = stringResource(R.string.settings_steam_cloud_clear_network_cache_title),
+        supportingText = stringResource(R.string.settings_steam_cloud_clear_network_cache_desc),
+        enabled = !uiState.busy,
+        onClick = onClearSteamCloudNetworkCache,
     )
 
     if (showLogoutConfirmDialog) {
@@ -3228,6 +3245,7 @@ private fun SettingsInputSection(
     onPlayerNameChanged: (String) -> Boolean,
     onBackBehaviorChanged: (BackBehavior) -> Unit,
     onTouchscreenInputModeChanged: (TouchscreenInputMode) -> Unit,
+    onTouchIndicatorEnabledChanged: (Boolean) -> Unit,
     onShowFloatingMouseWindowChanged: (Boolean) -> Unit,
     onTouchMouseInteractionModeChanged: (TouchMouseInteractionMode) -> Unit,
     onTouchDoubleClickAsRightClickChanged: (Boolean) -> Unit,
@@ -3246,6 +3264,7 @@ private fun SettingsInputSection(
             onPlayerNameChanged = onPlayerNameChanged,
             onBackBehaviorChanged = onBackBehaviorChanged,
             onTouchscreenInputModeChanged = onTouchscreenInputModeChanged,
+            onTouchIndicatorEnabledChanged = onTouchIndicatorEnabledChanged,
             onTouchDoubleClickAsRightClickChanged = onTouchDoubleClickAsRightClickChanged,
             onHapticFeedbackChanged = onHapticFeedbackChanged,
             onGamePerformanceOverlayChanged = onGamePerformanceOverlayChanged,
@@ -3273,6 +3292,7 @@ internal fun SettingsInputBasicsSection(
     onPlayerNameChanged: (String) -> Boolean,
     onBackBehaviorChanged: (BackBehavior) -> Unit,
     onTouchscreenInputModeChanged: (TouchscreenInputMode) -> Unit,
+    onTouchIndicatorEnabledChanged: (Boolean) -> Unit,
     onTouchDoubleClickAsRightClickChanged: (Boolean) -> Unit,
     onHapticFeedbackChanged: (Boolean) -> Unit,
     onGamePerformanceOverlayChanged: (Boolean) -> Unit,
@@ -3315,6 +3335,15 @@ internal fun SettingsInputBasicsSection(
         optionLabel = { mode -> mode.displayName() },
         optionDescription = { mode -> mode.description() },
         onOptionSelected = onTouchscreenInputModeChanged
+    )
+
+    SwitchSettingRow(
+        checked = uiState.touchIndicatorEnabled,
+        enabled = !uiState.busy && uiState.touchscreenInputMode.touchscreenEnabled,
+        enabledText = stringResource(R.string.settings_touch_indicator_enabled),
+        disabledText = stringResource(R.string.settings_touch_indicator_disabled),
+        description = stringResource(R.string.settings_touch_indicator_desc),
+        onCheckedChange = onTouchIndicatorEnabledChanged
     )
 
     SwitchSettingRow(
