@@ -73,7 +73,7 @@ public final class CompatRuntimeState {
             }
             startupConfigurationLogged = true;
             System.out.println(
-                "[amethyst-runtime-compat] init version=1.0.24 guardedDynamicCache=true "
+                "[amethyst-runtime-compat] init version=1.0.28 guardedDynamicCache=true "
                     + "duelistBaseValueShortcuts=true "
                     + "fontScale="
                     + (hasConfiguredFontScale()
@@ -173,6 +173,10 @@ public final class CompatRuntimeState {
 
     public static boolean resolveTouchIndicatorFlag(boolean originalValue) {
         return originalValue || TOUCH_INDICATOR_ENABLED;
+    }
+
+    public static boolean shouldSuppressTouchIndicatorRender() {
+        return NATIVE_TOUCHSCREEN_ENABLED && !TOUCH_INDICATOR_ENABLED;
     }
 
     public static boolean resolveMainMenuTouchLayoutTouchscreenFlag(boolean originalValue) {

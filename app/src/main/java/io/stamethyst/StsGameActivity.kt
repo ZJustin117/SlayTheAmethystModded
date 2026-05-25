@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.media.AudioManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
@@ -14,6 +15,7 @@ import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
 import android.widget.FrameLayout
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import io.stamethyst.backend.audio.GameAudioController
 import io.stamethyst.backend.diag.MemoryDiagnosticsLogger
@@ -22,7 +24,9 @@ import io.stamethyst.backend.render.DisplayPerformanceController
 import io.stamethyst.backend.launch.StsLaunchSpec
 import io.stamethyst.config.BackBehavior
 import io.stamethyst.config.LauncherConfig
+import io.stamethyst.config.RuntimePaths
 import io.stamethyst.input.GameInputHandler
+import java.io.FileOutputStream
 import java.util.UUID
 
 class StsGameActivity : AppCompatActivity() {
@@ -67,6 +71,13 @@ class StsGameActivity : AppCompatActivity() {
     private val launchGuardToken: String = UUID.randomUUID().toString()
     private val launchGuardLock = Any()
     private var launchGuardAcquired = false
+    private var pendingFilePickerRequestId: String? = null
+
+    private val filePickerLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        handleFilePickerResult(uri)
+    }
 
     private val gameBackPressedCallback = object : OnBackPressedCallback(true) {
         override fun handleOnBackPressed() {
@@ -322,6 +333,60 @@ class StsGameActivity : AppCompatActivity() {
             return
         }
         bootOverlayKeepScreenOn = enabled
+    }
+
+    fun requestInGameFileSelection(requestId: String, mimeType: String) {
+        if (requestId.isBlank()) {
+            return
+        }
+        if (pendingFilePickerRequestId != null) {
+            writeFilePickerResult(requestId, "ERROR", "picker_busy")
+            return
+        }
+        pendingFilePickerRequestId = requestId
+        try {
+            filePickerLauncher.launch(arrayOf(mimeType.ifBlank { "*/*" }))
+        } catch (throwable: Throwable) {
+            pendingFilePickerRequestId = null
+            writeFilePickerResult(requestId, "ERROR", throwable.javaClass.simpleName)
+        }
+    }
+
+    private fun handleFilePickerResult(uri: Uri?) {
+        val requestId = pendingFilePickerRequestId ?: return
+        pendingFilePickerRequestId = null
+        if (uri == null) {
+            writeFilePickerResult(requestId, "CANCEL", "")
+            return
+        }
+        try {
+            val selectedFile = RuntimePaths.inGameFilePickerSelectionFile(this)
+            selectedFile.parentFile?.mkdirs()
+            contentResolver.openInputStream(uri).use { input ->
+                if (input == null) {
+                    throw IllegalStateException("openInputStream returned null")
+                }
+                FileOutputStream(selectedFile, false).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            writeFilePickerResult(requestId, "OK", selectedFile.absolutePath)
+        } catch (throwable: Throwable) {
+            writeFilePickerResult(requestId, "ERROR", throwable.javaClass.simpleName)
+        }
+    }
+
+    private fun writeFilePickerResult(requestId: String, status: String, payload: String) {
+        try {
+            val resultFile = RuntimePaths.inGameFilePickerResultFile(this)
+            resultFile.parentFile?.mkdirs()
+            resultFile.writeText(
+                requestId + "\n" +
+                    status + "\n" +
+                    payload + "\n"
+            )
+        } catch (_: Throwable) {
+        }
     }
 
     @SuppressLint("ClickableViewAccessibility")

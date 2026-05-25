@@ -1084,6 +1084,7 @@ private fun LauncherDockPager(
         )
     }
     val workshopUpdateCheckState by WorkshopUpdateCheckCoordinator.uiState.collectAsState()
+    val currentDockRoute = pagerState.currentLauncherDockRoute()
 
     LaunchedEffect(context) {
         WorkshopUpdateCheckCoordinator.bind(context.applicationContext)
@@ -1121,6 +1122,7 @@ private fun LauncherDockPager(
                         onOpenFeedbackUpdates = onOpenFeedbackUpdates,
                         onOpenFeedbackSubscriptions = onOpenFeedbackSubscriptions,
                         onUpdateNoticeClick = settingsViewModel::showUpdatePrompt,
+                        showSteamCloudBottomSheetHost = currentDockRoute == Route.Main,
                     )
                 }
 
@@ -1135,6 +1137,7 @@ private fun LauncherDockPager(
                         onOpenFeedbackUpdates = onOpenFeedbackUpdates,
                         workshopUpdateCheckState = workshopUpdateCheckState,
                         onBatchSelectionModeChange = onBatchSelectionModeChange,
+                        showSteamCloudBottomSheetHost = currentDockRoute == Route.Mods,
                         onCheckWorkshopUpdates = {
                             WorkshopUpdateCheckCoordinator.requestCheck(
                                 context = context.applicationContext,

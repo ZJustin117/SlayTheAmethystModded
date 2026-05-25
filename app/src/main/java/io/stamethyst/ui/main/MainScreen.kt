@@ -798,11 +798,11 @@ private fun LauncherUpdateNoticeCard(
                     ),
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                Text(
-                    text = stringResource(R.string.main_update_notice_card_summary),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+//                Text(
+//                    text = stringResource(R.string.main_update_notice_card_summary),
+//                    style = MaterialTheme.typography.bodySmall,
+//                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+//                )
             }
         }
     }
@@ -1309,6 +1309,7 @@ internal fun LauncherGameScreenContent(
     onOpenFeedbackUpdates: () -> Unit = {},
     onOpenFeedbackSubscriptions: () -> Unit = {},
     onUpdateNoticeClick: () -> Unit = {},
+    showSteamCloudBottomSheetHost: Boolean = true,
 ) {
     LauncherMainScreenContent(
         modifier = modifier,
@@ -1321,6 +1322,7 @@ internal fun LauncherGameScreenContent(
         onOpenFeedbackUpdates = onOpenFeedbackUpdates,
         onOpenFeedbackSubscriptions = onOpenFeedbackSubscriptions,
         onUpdateNoticeClick = onUpdateNoticeClick,
+        showSteamCloudBottomSheetHost = showSteamCloudBottomSheetHost,
     )
 }
 
@@ -1336,6 +1338,7 @@ internal fun LauncherModsScreenContent(
     workshopUpdateCheckState: WorkshopUpdateCheckUiState = WorkshopUpdateCheckUiState(),
     onBatchSelectionModeChange: (Boolean) -> Unit = {},
     onCheckWorkshopUpdates: () -> Unit = {},
+    showSteamCloudBottomSheetHost: Boolean = true,
 ) {
     LauncherMainScreenContent(
         modifier = modifier,
@@ -1349,6 +1352,7 @@ internal fun LauncherModsScreenContent(
         workshopUpdateCheckState = workshopUpdateCheckState,
         onBatchSelectionModeChange = onBatchSelectionModeChange,
         onCheckWorkshopUpdates = onCheckWorkshopUpdates,
+        showSteamCloudBottomSheetHost = showSteamCloudBottomSheetHost,
     )
 }
 
@@ -1369,6 +1373,7 @@ private fun LauncherMainScreenContent(
     workshopUpdateCheckState: WorkshopUpdateCheckUiState = WorkshopUpdateCheckUiState(),
     onBatchSelectionModeChange: (Boolean) -> Unit = {},
     onCheckWorkshopUpdates: () -> Unit = {},
+    showSteamCloudBottomSheetHost: Boolean = true,
 ) {
     val density = LocalDensity.current
     var showCreateFolderDialog by remember { mutableStateOf(false) }
@@ -1388,7 +1393,8 @@ private fun LauncherMainScreenContent(
         .filter { it.enabled }
         .map { mod -> mod.name.ifBlank { mod.modId } }
     val steamCloudIndicator = uiState.steamCloudIndicator
-    val steamCloudBottomSheetVisible = showSteamCloudBottomSheet && steamCloudIndicator.visible
+    val steamCloudBottomSheetVisible =
+        showSteamCloudBottomSheetHost && showSteamCloudBottomSheet && steamCloudIndicator.visible
     val steamCloudBottomSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var batchEditBarState by remember { mutableStateOf<BatchEditBarState?>(null) }
     var batchEditBarHeightPx by remember { mutableIntStateOf(0) }

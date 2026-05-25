@@ -1,8 +1,10 @@
 package io.stamethyst.compatmod;
 
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.evacipated.cardcrawl.modthespire.lib.SpirePrefixPatch;
 import com.evacipated.cardcrawl.modthespire.lib.SpireInstrumentPatch;
 import com.evacipated.cardcrawl.modthespire.lib.SpirePatch2;
+import com.evacipated.cardcrawl.modthespire.lib.SpireReturn;
 import com.megacrit.cardcrawl.blights.AbstractBlight;
 import com.megacrit.cardcrawl.characters.AbstractPlayer;
 import com.megacrit.cardcrawl.core.GameCursor;
@@ -29,6 +31,14 @@ public final class NativeTouchscreenAllowlistPatches {
         paramtypez = {SpriteBatch.class}
     )
     public static class GameCursorRenderPatch {
+        @SpirePrefixPatch
+        public static SpireReturn<Void> Prefix() {
+            if (CompatRuntimeState.shouldSuppressTouchIndicatorRender()) {
+                return SpireReturn.Return();
+            }
+            return SpireReturn.Continue();
+        }
+
         @SpireInstrumentPatch
         public static ExprEditor Instrument() {
             return createTouchscreenFieldEditor(

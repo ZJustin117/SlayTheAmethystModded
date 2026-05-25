@@ -20,6 +20,9 @@ object RuntimePaths {
     private const val JVM_SIGNAL_DUMP_FILE_NAME = "last_signal_dump.txt"
     private const val EXPECTED_GAME_EXIT_MARKER_FILE_NAME = ".expected_game_exit_marker"
     private const val IN_GAME_KEYBOARD_REQUEST_FILE_NAME = ".in_game_keyboard_request"
+    private const val IN_GAME_FILE_PICKER_REQUEST_FILE_NAME = ".in_game_file_picker_request"
+    private const val IN_GAME_FILE_PICKER_RESULT_FILE_NAME = ".in_game_file_picker_result"
+    private const val IN_GAME_FILE_PICKER_SELECTION_FILE_NAME = ".in_game_file_picker_selection"
     private const val JVM_HISTOGRAM_DIR_NAME = "jvm_histograms"
     private const val LOGCAT_DIR_NAME = "logcat"
     private const val LEGACY_LOGCAT_CAPTURE_FILE_NAME = "logcat_capture.log"
@@ -162,6 +165,18 @@ object RuntimePaths {
 
     @JvmStatic
     fun inGameKeyboardRequestFile(context: Context): File = File(stsRoot(context), IN_GAME_KEYBOARD_REQUEST_FILE_NAME)
+
+    @JvmStatic
+    fun inGameFilePickerRequestFile(context: Context): File =
+        File(stsRoot(context), IN_GAME_FILE_PICKER_REQUEST_FILE_NAME)
+
+    @JvmStatic
+    fun inGameFilePickerResultFile(context: Context): File =
+        File(stsRoot(context), IN_GAME_FILE_PICKER_RESULT_FILE_NAME)
+
+    @JvmStatic
+    fun inGameFilePickerSelectionFile(context: Context): File =
+        File(stsRoot(context), IN_GAME_FILE_PICKER_SELECTION_FILE_NAME)
 
     @JvmStatic
     fun latestLog(context: Context): File = File(stsRoot(context), LATEST_LOG_FILE_NAME)

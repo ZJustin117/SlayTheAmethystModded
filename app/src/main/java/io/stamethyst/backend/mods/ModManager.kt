@@ -179,17 +179,6 @@ object ModManager {
 
     @JvmStatic
     @Throws(IOException::class)
-    fun resolveStorageFileForImportedModReplacement(context: Context, requestedFileName: String): File {
-        OptionalModStorageCoordinator.ensureOptionalModLibraryReady(context)
-        val targetName = sanitizeImportedJarFileName(requestedFileName)
-        if (isReservedJarName(targetName)) {
-            throw IOException("Reserved mod file name: $targetName")
-        }
-        return File(RuntimePaths.optionalModsLibraryDir(context), targetName)
-    }
-
-    @JvmStatic
-    @Throws(IOException::class)
     fun removeExistingOptionalModsForImport(
         context: Context,
         normalizedModId: String,

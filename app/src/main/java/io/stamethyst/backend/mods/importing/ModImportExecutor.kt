@@ -276,18 +276,8 @@ internal object ModImportExecutor {
             } else {
                 DuplicateReusePlan()
             }
-            val targetName = reuse.targetFileName
-                ?.takeIf { it.isNotBlank() }
-                ?: item.source.displayName.ifBlank { "${item.normalizedModId}.jar" }
-            val target = if (
-                replaceExisting &&
-                decisions.reusePreviousFileNameOnReplace &&
-                !reuse.targetFileName.isNullOrBlank()
-            ) {
-                ModManager.resolveStorageFileForImportedModReplacement(context, reuse.targetFileName)
-            } else {
-                ModManager.resolveStorageFileForImportedMod(context, targetName)
-            }
+            val targetName = item.source.displayName.ifBlank { "${item.normalizedModId}.jar" }
+            val target = ModManager.resolveStorageFileForImportedMod(context, targetName)
             commitMarker = importCommitMarker(target)
             writeImportCommitMarker(commitMarker, target)
             progress.step(

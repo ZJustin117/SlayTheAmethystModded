@@ -36,6 +36,7 @@ internal class GameSessionCoordinator(
         private const val BACK_FORCE_KILL_FALLBACK_MS = 1500L
         private const val CRASH_LAUNCHER_RESTART_DELAY_MS = 320L
         private const val KEYBOARD_REQUEST_POLL_MS = 120L
+        private const val FILE_PICKER_REQUEST_POLL_MS = 120L
         private val FOREGROUND_AUDIO_RESTORE_DELAYS_MS = longArrayOf(150L, 400L, 1000L, 2200L)
     }
 
@@ -57,7 +58,9 @@ internal class GameSessionCoordinator(
     private var waitingLandscapeSinceMs = -1L
     private var startCheckPosted = false
     private var lastKeyboardRequestPayload = ""
+    private var lastFilePickerRequestPayload = ""
     private var keyboardRequestPollStarted = false
+    private var filePickerRequestPollStarted = false
     @Volatile
     private var destroyed = false
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -78,6 +81,14 @@ internal class GameSessionCoordinator(
             pollInGameKeyboardRequest()
             if (!destroyed && keyboardRequestPollStarted) {
                 mainHandler.postDelayed(this, KEYBOARD_REQUEST_POLL_MS)
+            }
+        }
+    }
+    private val filePickerRequestPollRunnable = object : Runnable {
+        override fun run() {
+            pollInGameFilePickerRequest()
+            if (!destroyed && filePickerRequestPollStarted) {
+                mainHandler.postDelayed(this, FILE_PICKER_REQUEST_POLL_MS)
             }
         }
     }
@@ -122,6 +133,7 @@ internal class GameSessionCoordinator(
                 applyForegroundWindowState()
                 updateFloatingMouseVisibility()
                 startKeyboardRequestPolling()
+                startFilePickerRequestPolling()
                 updatePerformanceOverlayVisibility()
                 updateSystemGameState()
                 trySchedulePostBootSurfaceSoftRefresh("runtime_ready")
@@ -165,6 +177,7 @@ internal class GameSessionCoordinator(
         cancelStartCheck()
         cancelBackExitForceRestart()
         stopKeyboardRequestPolling()
+        stopFilePickerRequestPolling()
         cancelForegroundAudioRestoreRetries()
         activityResumed = false
         pendingAudioDeviceRecovery = false
@@ -813,9 +826,26 @@ internal class GameSessionCoordinator(
         mainHandler.post(keyboardRequestPollRunnable)
     }
 
+    private fun startFilePickerRequestPolling() {
+        if (filePickerRequestPollStarted) {
+            return
+        }
+        filePickerRequestPollStarted = true
+        lastFilePickerRequestPayload = ""
+        RuntimePaths.inGameFilePickerRequestFile(activity).delete()
+        RuntimePaths.inGameFilePickerResultFile(activity).delete()
+        RuntimePaths.inGameFilePickerSelectionFile(activity).delete()
+        mainHandler.post(filePickerRequestPollRunnable)
+    }
+
     private fun stopKeyboardRequestPolling() {
         keyboardRequestPollStarted = false
         mainHandler.removeCallbacks(keyboardRequestPollRunnable)
+    }
+
+    private fun stopFilePickerRequestPolling() {
+        filePickerRequestPollStarted = false
+        mainHandler.removeCallbacks(filePickerRequestPollRunnable)
     }
 
     private fun pollInGameKeyboardRequest() {
@@ -833,6 +863,28 @@ internal class GameSessionCoordinator(
         }
         lastKeyboardRequestPayload = payload
         inputHandler.requestSoftKeyboardForGameTextInput("game_text_input")
+    }
+
+    private fun pollInGameFilePickerRequest() {
+        if (!jvmLaunchController.runtimeLifecycleReady || backExitRequested) {
+            return
+        }
+        val requestFile = RuntimePaths.inGameFilePickerRequestFile(activity)
+        val payload = try {
+            if (requestFile.isFile) requestFile.readText().trim() else ""
+        } catch (_: Throwable) {
+            ""
+        }
+        if (payload.isEmpty() || payload == lastFilePickerRequestPayload) {
+            return
+        }
+        lastFilePickerRequestPayload = payload
+        val lines = payload.lineSequence().map { it.trim() }.toList()
+        val requestId = lines.getOrNull(0).orEmpty()
+        val mimeType = lines.getOrNull(1)?.takeIf { it.isNotEmpty() } ?: "*/*"
+        if (requestId.isNotEmpty()) {
+            activity.requestInGameFileSelection(requestId, mimeType)
+        }
     }
 
     private fun trySchedulePostBootSurfaceSoftRefresh(triggerReason: String) {

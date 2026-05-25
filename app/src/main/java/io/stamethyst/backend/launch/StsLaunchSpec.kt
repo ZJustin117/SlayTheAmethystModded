@@ -182,6 +182,8 @@ object StsLaunchSpec {
         args.add("-Duser.dir=${stsRoot.absolutePath}")
         args.add("-Damethyst.expected_exit_marker=${RuntimePaths.expectedGameExitMarker(context).absolutePath}")
         args.add("-Damethyst.in_game_keyboard_request=${RuntimePaths.inGameKeyboardRequestFile(context).absolutePath}")
+        args.add("-Damethyst.in_game_file_picker_request=${RuntimePaths.inGameFilePickerRequestFile(context).absolutePath}")
+        args.add("-Damethyst.in_game_file_picker_result=${RuntimePaths.inGameFilePickerResultFile(context).absolutePath}")
         val touchscreenInputMode = LauncherConfig.readTouchscreenInputMode(context)
         args.add(
             "-Damethyst.touchscreen_enabled=" +
@@ -329,9 +331,13 @@ object StsLaunchSpec {
                 }
         )
         val runtimeDownscalePolicy = CompatibilitySettings.readRuntimeDownscaleMaterialPolicy(context)
+        val texturePressureDownscaleEnabled = resolveTexturePressureDownscaleEnabled(
+            ramSaverEnabled = ramSaverEnabled,
+            configuredEnabled = CompatibilitySettings.isLargeTextureDownscaleCompatEnabled(context)
+        )
         args.add(
             "-Damethyst.gdx.texture_pressure_downscale=" +
-                if (CompatibilitySettings.isLargeTextureDownscaleCompatEnabled(context)) "true" else "false"
+                if (texturePressureDownscaleEnabled) "true" else "false"
         )
         args.add(
             "-Damethyst.gdx.texture_residency_manager=" +
@@ -371,7 +377,10 @@ object StsLaunchSpec {
             "-Damethyst.gdx.texture_pressure_downscale.allow_spine=" +
                 if (runtimeDownscalePolicy.spineTextures) "true" else "false"
         )
-        val gpuResourceGuardianMode = LauncherConfig.readGpuResourceGuardianMode(context)
+        val gpuResourceGuardianMode = resolveGpuResourceGuardianModeForLaunch(
+            ramSaverEnabled = ramSaverEnabled,
+            configuredMode = LauncherConfig.readGpuResourceGuardianMode(context)
+        )
         args.add(
             "-Damethyst.gdx.gpu_resource_guardian=" +
                 gpuResourceGuardianMode.runtimePropertyValue
@@ -406,8 +415,11 @@ object StsLaunchSpec {
         )
         args.add(
             "-Damethyst.gdx.fbo_pressure_downscale=" +
-                if (CompatibilitySettings.isFboPressureDownscaleCompatEnabled(context) &&
-                    runtimeDownscalePolicy.offscreenFrameBuffers
+                if (resolveFboPressureDownscaleEnabled(
+                        ramSaverEnabled = ramSaverEnabled,
+                        configuredEnabled = CompatibilitySettings.isFboPressureDownscaleCompatEnabled(context),
+                        offscreenFrameBuffersEnabled = runtimeDownscalePolicy.offscreenFrameBuffers
+                    )
                 ) "true" else "false"
         )
         args.add(
@@ -507,6 +519,28 @@ object StsLaunchSpec {
             builder.append(value)
         }
         return builder.toString()
+    }
+
+    internal fun resolveTexturePressureDownscaleEnabled(
+        ramSaverEnabled: Boolean,
+        configuredEnabled: Boolean
+    ): Boolean {
+        return !ramSaverEnabled && configuredEnabled
+    }
+
+    internal fun resolveGpuResourceGuardianModeForLaunch(
+        ramSaverEnabled: Boolean,
+        configuredMode: GpuResourceGuardianMode
+    ): GpuResourceGuardianMode {
+        return if (ramSaverEnabled) GpuResourceGuardianMode.OFF else configuredMode
+    }
+
+    internal fun resolveFboPressureDownscaleEnabled(
+        ramSaverEnabled: Boolean,
+        configuredEnabled: Boolean,
+        offscreenFrameBuffersEnabled: Boolean
+    ): Boolean {
+        return !ramSaverEnabled && configuredEnabled && offscreenFrameBuffersEnabled
     }
 
     private fun addDebugGpuGuardianTestProperties(context: Context, args: MutableList<String>) {

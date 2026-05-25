@@ -631,7 +631,7 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="mod_import_wizard_duplicate_replace">Replace existing</string>
     <string name="mod_import_wizard_duplicate_keep_multiple">Keep multiple files</string>
     <string name="mod_import_wizard_duplicate_skip">Skip this import</string>
-    <string name="mod_import_wizard_reuse_previous_file_name">When replacing, reuse previous file name</string>
+    <string name="mod_import_wizard_reuse_previous_file_name">When replacing, automatically rename to the previous file name</string>
     <string name="mod_import_wizard_reuse_previous_folder">When replacing, reuse previous folder</string>
     <string name="mod_import_wizard_patches_intro">Review compatibility patches that can be applied during import.</string>
     <string name="mod_import_wizard_atlas_downscale_level">Atlas downscale level</string>
@@ -1393,7 +1393,7 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="settings_touchscreen_mode_hybrid">Hybrid mode</string>
     <string name="settings_touchscreen_mode_mobile">Mobile mode</string>
     <string name="settings_touchscreen_mode_desktop_desc">Shows the mouse cursor and uses full desktop click behavior. This has the best click compatibility, but some operations are not suitable for mobile.</string>
-    <string name="settings_touchscreen_mode_hybrid_desc">Recommended. Keeps the touch input UI and touch indicator, and enables touchscreen logic only for vanilla screens. This can fix cases where mod buttons cannot be tapped under native touch.</string>
+    <string name="settings_touchscreen_mode_hybrid_desc">Recommended. Keeps the touch input UI, shows the touch indicator by default, and enables touchscreen logic only for vanilla screens. This can fix cases where mod buttons cannot be tapped under native touch.</string>
     <string name="settings_touchscreen_mode_mobile_desc">Restores global native touchscreen semantics. Closest to vanilla mobile touch behavior, but more likely to trigger mod UI issues.</string>
     <string name="settings_touch_indicator_enabled">Touch indicator: Shown</string>
     <string name="settings_touch_indicator_disabled">Touch indicator: Hidden</string>

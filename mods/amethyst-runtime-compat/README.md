@@ -64,6 +64,15 @@ Cancels the current combat targeted-card selection when a native touchscreen bla
 20. `DisplaySettingsPromptCompatPatches`
 Replaces the base game's display-settings restart prompt with a launcher-specific warning telling players not to change graphics quality in-game and to use launcher settings instead, keeps the warning visible with rhythmic pulsing text while the settings page remains open, and clears it when leaving the settings page. This addresses the symptom where changing quality-related options in the in-game settings shows the misleading vanilla message that a game restart is enough for display-setting changes to take effect, and where the warning can disappear before the player closes settings even though Amethyst-managed graphics options should be adjusted before launch. Type: compatibility workaround implemented by `DisplaySettingsPromptCompatPatches`.
 
+21. `NativeTouchscreenAllowlistPatches` touch-indicator switch
+Extends the existing `GameCursor.render` patch so the launcher can disable the native touch indicator without changing hybrid/mobile touch input semantics. This addresses the symptom where tapping the screen in hybrid touchscreen mode always shows the small fading circle from `GameCursor.render`, which is triggered after `InputHelper.updateFirst` raises `CardCrawlGame.cursor.color.a` on touch down. The launcher forwards `amethyst.touch_indicator_enabled`; when it is disabled the patch skips only the touch-indicator render path while leaving tap handling and allowlisted touchscreen flows intact. Type: compatibility workaround implemented by `NativeTouchscreenAllowlistPatches`.
+
+22. `AndroidFilePickerBridge`
+Provides a reusable launcher bridge from JVM-side compatibility patches to Android's native document picker. The JVM side writes a generic file-picker request with a MIME type, waits for the Android activity to copy the selected document into a JVM-readable temporary file, and returns that file to the calling compatibility patch. This addresses Android file-selection needs for desktop-oriented mods without patching `java.awt` classes directly, which the JVM rejects because `java.*` package instrumentation can fail with `SecurityException: Prohibited package name`. Type: generic bridge implemented by `AndroidFilePickerBridge` with Android-side handling in the launcher.
+
+23. `CardImageReplacerFileDialogMimePatches`
+Specializes the generic Android file-picker bridge for CardImageReplacer's in-game "Replace the card image" button by requesting `image/*` from Android's native document picker and then calling CardImageReplacer's own `FileChooserCallBack`, preserving its original resize, mask, save, reload, and popup-refresh behavior without modifying the third-party jar. This addresses CardImageReplacer's image replacement workflow while keeping the underlying file-picker bridge reusable for future mod-specific file-picker integrations. Type: mod-specific integration on top of the generic file-picker bridge implemented by `CardImageReplacerFileDialogMimePatches`.
+
 ## Maintenance rule
 
 If you add another fix through this mod, update this README in the same change and describe:
