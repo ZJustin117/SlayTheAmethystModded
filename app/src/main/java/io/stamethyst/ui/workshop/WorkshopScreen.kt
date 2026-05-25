@@ -436,6 +436,10 @@ internal fun WorkshopScreen(
             modTitle = pending.details.summary.title,
             missingDependencies = pending.missingDependencies,
             onDismiss = { viewModel.dismissPendingDependencyDownload() },
+            onDownloadCurrentOnly = {
+                requestNotificationPermissionIfNeeded()
+                viewModel.downloadPendingCurrentOnly(context.applicationContext)
+            },
             onConfirm = {
                 requestNotificationPermissionIfNeeded()
                 viewModel.confirmPendingDependencyDownload(context.applicationContext)
@@ -1096,6 +1100,7 @@ internal fun MissingWorkshopDependenciesDialog(
     modTitle: String,
     missingDependencies: List<WorkshopItemSummary>,
     onDismiss: () -> Unit,
+    onDownloadCurrentOnly: () -> Unit,
     onConfirm: () -> Unit,
 ) {
     AlertDialog(
@@ -1113,7 +1118,7 @@ internal fun MissingWorkshopDependenciesDialog(
             }
         },
         confirmButton = { Button(onClick = onConfirm) { Text(stringResource(R.string.workshop_action_install_and_download)) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.main_folder_dialog_cancel)) } },
+        dismissButton = { TextButton(onClick = onDownloadCurrentOnly) { Text(stringResource(R.string.workshop_action_download_without_dependencies)) } },
     )
 }
 

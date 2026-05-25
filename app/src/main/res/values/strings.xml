@@ -15,9 +15,9 @@
     <string name="settings_market_download_threads_desc">Controls Workshop chunk download concurrency for each mod.</string>
     <string name="settings_market_workshop_acceleration_enabled_title">Workshop acceleration: Enabled</string>
     <string name="settings_market_workshop_acceleration_disabled_title">Workshop acceleration: Disabled</string>
-    <string name="settings_market_workshop_acceleration_desc">Uses Watt Toolkit routes for Steam Workshop, Store/CDN, and preview image requests.</string>
+    <string name="settings_market_workshop_acceleration_desc">Uses preferred routes for Steam Workshop, Store/CDN, and preview image requests.</string>
     <string name="settings_market_workshop_language_title">Workshop language</string>
-    <string name="settings_market_workshop_language_desc">Controls Steam Workshop browse/search language and SteamPipe metadata language.</string>
+    <string name="settings_market_workshop_language_desc">Steam Workshop browse/search language</string>
     <string name="settings_market_workshop_auto_import_enabled_title">Workshop auto import: Enabled</string>
     <string name="settings_market_workshop_auto_import_disabled_title">Workshop auto import: Disabled</string>
     <string name="settings_market_workshop_auto_import_desc">Automatically imports downloaded Workshop jar mods. If disabled, downloaded jars stay in the Workshop card until you import them manually.</string>
@@ -41,7 +41,7 @@
     <string name="settings_baidu_translation_credentials_saved">Baidu translation credentials saved.</string>
     <string name="settings_baidu_translation_credentials_cleared">Baidu translation credentials cleared.</string>
     <string name="settings_baidu_translation_credentials_incomplete">Saved current fields, but translation requires both AppID and API Key.</string>
-    <string name="settings_baidu_translation_credentials_page_configured_desc">Complete credentials are saved. Saving changes will overwrite the local values. Save with both fields blank to clear them.</string>
+    <string name="settings_baidu_translation_credentials_page_configured_desc">Configured</string>
     <string name="settings_baidu_translation_credentials_page_not_configured_desc">Fill both AppID and API Key for Baidu AI text translation. Save with both fields blank to clear the local configuration.</string>
     <string name="settings_baidu_translation_notice_title">Translation setup required</string>
     <string name="settings_baidu_translation_test_action">Test translation</string>
@@ -59,7 +59,7 @@
     <string name="sts_normal_exit">Game process exited unexpectedly, exit code %1$d.</string>
     <string name="sts_signal_exit">Game process crashed and exited due to signal %1$d.</string>
     <string name="sts_oom_exit">OutOfMemoryError detected (JVM heap exhausted). The game automatically returned to the launcher. JVM heap size may be too large or too small; adjust the JVM heap max in Settings.</string>
-    <string name="sts_process_exit_detected">The previous game session ended abnormally and did not return a crash report before the launcher restarted. This is very likely caused by the device being under too much pressure and unable to handle an overly large mod setup. Reduce the number of mods and try again.</string>
+    <string name="sts_process_exit_detected">The previous game session ended abnormally and did not return a crash report before the launcher restarted. This is very likely caused by the device being under too much pressure and unable to handle an overly large mod setup. Suggestions: 1. Reduce the number of mods and try again. 2. Re-import large mods and choose a lower-clarity pre-downscale option. 3. Raise the GPU guardian level in Settings, or enable the legacy GPU guardian.</string>
     <string name="sts_process_exit_reason">Android process exit reason: %1$s</string>
     <string name="sts_process_exit_status">Android process exit status: %1$d</string>
     <string name="sts_process_exit_signal">Android exit signal: %1$d</string>
@@ -76,7 +76,7 @@
     <string name="sts_crash_page_subtitle">The game was interrupted unexpectedly</string>
     <string name="sts_crash_page_capture_title">Crash captured</string>
     <string name="sts_crash_page_guidance_default">It is recommended to troubleshoot the issue first. You can hand the logs to AI analysis to confirm whether the problem comes from the launcher itself or from a mod. If you can confirm that the launcher is the problem, you can use the feedback page to report it to the developer.</string>
-    <string name="sts_crash_page_guidance_oom">This run likely exhausted JVM heap memory. Before retrying, consider opening recovery settings and raising the JVM heap max, or trim recently enabled mods if memory pressure stays high.</string>
+    <string name="sts_crash_page_guidance_oom">This run likely exhausted JVM heap memory. Before retrying, open Settings and raise the JVM heap max;</string>
     <string name="sts_crash_page_guidance_launch_preparation_process_disconnected">Do not leave the app, switch to another app, or let the system clean up this app during the patch process. Keep the launcher in the foreground.</string>
     <string name="sts_crash_page_actions_title">Quick actions</string>
     <string name="sts_crash_page_actions_desc">You can retry immediately, or open recovery settings first before starting again. The crash text below supports selection and copying, and is also more convenient for long screenshots.</string>
@@ -121,19 +121,19 @@
     <string name="compat_vupshion_mod_compat_title">VUPShionMod import compatibility patch</string>
     <string name="compat_vupshion_mod_compat_desc">When enabled, importing vupshionmod automatically patches VUPShionMod/ui/WebButton to remove the Steam workshop subscription gate that can break main-menu background initialization. If disabled, newly imported VUPShionMod jars are left untouched.</string>
     <string name="compat_fragment_shader_precision_compat_title">Shader source compatibility patch</string>
-    <string name="compat_fragment_shader_precision_compat_desc">When enabled, shaders launched through the patched desktop jar automatically strip desktop GLSL version headers and fragment shaders receive missing default precision declarations on GLES/ANGLE paths, reducing errors like \"shader version mismatch\" and \"no default precision defined for variable\". This is a runtime compatibility switch and takes effect on next launch.</string>
+    <string name="compat_fragment_shader_precision_compat_desc">When enabled, shaders launched through the patched desktop jar automatically strip desktop GLSL version headers and fragment shaders receive missing default precision declarations on GLES/ANGLE paths, reducing errors like \"shader version mismatch\" and \"no default precision defined for variable\".</string>
     <string name="compat_runtime_texture_compat_title">Runtime texture compatibility patch</string>
     <string name="compat_runtime_texture_compat_desc">Used to fix black blocks caused by dynamically created runtime textures. If you see missing materials/textures, consider enabling it. Pros: continues fixing black blocks not covered during import-time patching. Cons: increases startup CPU/GPU overhead from managed texture scanning, and runtime Linear/Clamp fallback may make some textures blurrier. Default is OFF to prioritize performance.</string>
     <string name="compat_main_menu_preview_reuse_title">Main-menu character preview reuse</string>
     <string name="compat_main_menu_preview_reuse_desc">When enabled, main-menu character previews reuse existing character instances when safe, and cache the button/portrait textures used by modded character options to avoid rebuilding and reloading them every time you return to the main menu. This reduces return-to-menu stutter and makes related diagnostics easier to read. If you are investigating character-select compatibility regressions, temporarily disable it to keep behavior closer to the original mod stack.</string>
     <string name="compat_native_touchscreen_allowlist_title">Native touchscreen compatibility allowlist</string>
-    <string name="compat_native_touchscreen_allowlist_desc">When enabled, the launcher stops exposing native touchscreen semantics globally to mods and only re-enables verified vanilla touchscreen confirm flows such as the shop and boss relic confirm paths, while keeping the touch indicator visible. This reduces modded screens getting trapped in untested touchscreen state machines. Disable it if you want to restore the original global native touchscreen semantics. This is a runtime compatibility switch and takes effect on the next launch.</string>
+    <string name="compat_native_touchscreen_allowlist_desc">When enabled, the launcher stops exposing native touchscreen semantics globally to mods and only re-enables verified vanilla touchscreen confirm flows such as the shop and boss relic confirm paths, while keeping the touch indicator visible. This reduces modded screens getting trapped in untested touchscreen state machines. Disable it if you want to restore the original global native touchscreen semantics. This is a runtime compatibility switch.</string>
     <string name="compat_large_texture_downscale_title">Runtime texture pressure downscale</string>
     <string name="compat_large_texture_downscale_desc">Read-only status. This runtime path can be active in Legacy GPU guardian mode or when Guardian pressure downscale is enabled in performance settings. It resamples large file-backed texture uploads under pressure and does not rewrite mod jars. Changes apply on the next launch.</string>
     <string name="compat_texture_residency_manager_title">Legacy texture leak watchdog</string>
     <string name="compat_texture_residency_manager_desc">Locked. This legacy texture reclaim path is enabled only when GPU resource guardian is set to Legacy.</string>
     <string name="compat_gpu_resource_guardian_title">GPU resource guardian</string>
-    <string name="compat_gpu_resource_guardian_desc">Controls the unified low-overhead GPU resource guard for tracked textures and FrameBuffers. Safe mode only reads counters in normal frames and uses bounded slice reclaim under sustained pressure. This takes effect on the next launch.</string>
+    <string name="compat_gpu_resource_guardian_desc">Controls the unified low-overhead GPU resource guard for tracked textures and FrameBuffers. Safe mode only reads counters in normal frames and uses bounded slice reclaim under sustained pressure.</string>
     <string name="compat_gpu_resource_guardian_mode_off">Off</string>
     <string name="compat_gpu_resource_guardian_mode_safe">Safe</string>
     <string name="compat_gpu_resource_guardian_mode_aggressive">Aggressive</string>
@@ -149,7 +149,7 @@
     <string name="compat_force_linear_mipmap_filter_title">Force linear mipmap filter fallback</string>
     <string name="compat_force_linear_mipmap_filter_desc">When enabled, mipmap-dependent min filters are downgraded to Linear at runtime to avoid black blocks caused by incomplete mip chains in some mods. Example fix: Ring of Fate character models turning into black blocks.</string>
     <string name="compat_hina_character_render_title">Hina 3D character render compatibility</string>
-    <string name="compat_hina_character_render_desc">When enabled, the Blue Archive Hina 3D helper keeps the original logical camera scale while switching to a mobile-safe offscreen FrameBuffer and a simpler final blit path. This fixes blank or incorrectly scaled Hina character renders on Android-compatible runtimes. Disable it if you need the original mod behavior for comparison. This takes effect on the next launch.</string>
+    <string name="compat_hina_character_render_desc">When enabled, the Blue Archive Hina 3D helper keeps the original logical camera scale while switching to a mobile-safe offscreen FrameBuffer and a simpler final blit path. This fixes blank or incorrectly scaled Hina character renders on Android-compatible runtimes. Disable it if you need the original mod behavior for comparison. This is a runtime compatibility switch.</string>
     <string name="compat_non_renderable_fbo_format_compat_title">Non-renderable FBO format fallback</string>
     <string name="compat_non_renderable_fbo_format_compat_desc">When enabled, FrameBuffer formats that cannot be used as color attachments on GLES (Alpha/Intensity/LuminanceAlpha) are automatically upgraded to RGBA8888 to avoid startup crashes such as \"frame buffer could not be constructed: incomplete attachment\". Disabling this is closer to original mod behavior, but may reintroduce startup crashes. If your Haberdashery relic display mod has issues, consider enabling this option.</string>
     <string name="compat_fbo_manager_title">Legacy global FBO manager</string>
@@ -205,7 +205,7 @@
     <string name="status_touch_mouse_interaction_format">Touch mouse interaction mode: %1$s</string>
     <string name="settings_built_in_soft_keyboard_enabled">Built-in in-game keyboard: Enabled</string>
     <string name="settings_built_in_soft_keyboard_disabled">Built-in in-game keyboard: Disabled</string>
-    <string name="settings_built_in_soft_keyboard_desc">When enabled, the floating menu keyboard button opens a built-in full-width keyboard instead of the system keyboard. Disable this if you need the system IME again. Takes effect the next time the game launches.</string>
+    <string name="settings_built_in_soft_keyboard_desc">When enabled, the floating menu keyboard button opens a built-in keyboard instead of the system keyboard. Disable this if you need the system IME again.</string>
     <string name="settings_haptic_feedback_enabled">Vibration feedback: Enabled</string>
     <string name="settings_haptic_feedback_disabled">Vibration feedback: Disabled</string>
     <string name="settings_haptic_feedback_desc">Controls launcher and in-game overlay vibration feedback, including taps, switches, sliders, and mod toggles.</string>
@@ -213,7 +213,7 @@
     <string name="status_haptic_feedback_format">Vibration feedback: %1$s</string>
     <string name="settings_compendium_upgrade_touch_fix_enabled">Compendium upgrade toggle touch fix: Enabled</string>
     <string name="settings_compendium_upgrade_touch_fix_disabled">Compendium upgrade toggle touch fix: Disabled</string>
-    <string name="settings_compendium_upgrade_touch_fix_desc">In touchscreen mode, enlarges the Compendium card popup &quot;View Upgrades&quot; tap target and applies the toggle on touch-down so it is easier to hit. Takes effect the next time the game launches.</string>
+    <string name="settings_compendium_upgrade_touch_fix_desc">When enabled in touchscreen mode, enlarges the Compendium card popup &quot;View Upgrades&quot; tap area and switches directly on touch-down, reducing misses caused by swipes or slight finger drift.</string>
     <string name="touch_mouse_floating_menu_collapse">Hide</string>
     <string name="touch_mouse_floating_menu_keyboard">Open keyboard</string>
     <string name="touch_mouse_builtin_keyboard_shift">Shift</string>
@@ -234,7 +234,7 @@
     <string name="settings_render_surface_backend_texture_view">TextureView (compatibility fallback, usually steadier but heavier)</string>
     <string name="settings_render_surface_backend_surface_view_short">SurfaceView</string>
     <string name="settings_render_surface_backend_texture_view_short">TextureView</string>
-    <string name="settings_render_surface_backend_desc">Controls which Android view hosts the game surface. Changes take effect the next time the game launches. If SurfaceView stutters on some ROMs or becomes smoother when screen recording is enabled, try TextureView.</string>
+    <string name="settings_render_surface_backend_desc">Controls which Android view hosts the game surface. If SurfaceView stutters on some systems or becomes noticeably smoother when screen recording is enabled, try TextureView.</string>
     <string name="boot_overlay_button_close">Close loading overlay</string>
     <string name="boot_overlay_button_enter_game">Enter game</string>
     <string name="boot_overlay_logs_placeholder">Waiting for JVM log output...</string>
@@ -305,7 +305,7 @@
     <string name="startup_progress_loading_desktop_patch_files">Loading desktop patch files...</string>
     <string name="startup_progress_checking_desktop_patch_state">Checking desktop patch state...</string>
     <string name="startup_progress_rewriting_desktop_jar_for_mts">Rewriting desktop-1.0.jar for MTS...</string>
-    <string name="startup_progress_rewriting_desktop_jar_for_mts_percent">Rewriting desktop-1.0.jar for MTS... %1$d%%</string>
+    <string name="startup_progress_rewriting_desktop_jar_for_mts_percent">Patching the game files. This step may take a while and only runs once, so please wait. Do not exit or perform other actions... %1$d%%</string>
     <string name="startup_progress_verifying_patched_desktop_jar">Verifying patched desktop-1.0.jar...</string>
     <string name="startup_progress_finishing_desktop_jar_patch">Finishing desktop-1.0.jar patch...</string>
     <string name="startup_progress_patched_desktop_jar_ready">Patched desktop-1.0.jar ready</string>
@@ -368,8 +368,8 @@
     <string name="main_launch_unread_suggestions_message_outro">It is recommended to open the circled exclamation mark on each mod card and read the notice first. You can cancel this launch, or continue anyway.</string>
     <string name="main_launch_unread_suggestions_cancel">Cancel launch</string>
     <string name="main_launch_unread_suggestions_continue">Launch anyway</string>
-    <string name="main_launch_enabled_mod_size_warning_title">Enabled mods are too large</string>
-    <string name="main_launch_enabled_mod_size_warning_message">The currently enabled mods total about %1$s. Too many large mods are very likely to put excessive pressure on this device.
+    <string name="main_launch_enabled_mod_size_warning_title">Warning</string>
+    <string name="main_launch_enabled_mod_size_warning_message">The currently enabled mods total about %1$s. Too many large mods are very likely to put excessive pressure on this device, causing crashes, stutter, and other issues.
 
 Do you still want to continue?</string>
     <string name="main_launch_enabled_mod_size_warning_cancel">Cancel launch</string>
@@ -503,7 +503,7 @@ Do you still want to continue?</string>
     <string name="mod_import_dialog_duplicate_replace_move_to_previous_folder">Move this mod back to the previous folder automatically</string>
     <string name="mod_import_dialog_duplicate_replace_rename_to_previous_file_name">Rename this mod to the old file name automatically</string>
     <string name="mod_import_cancelled">Import cancelled</string>
-    <string name="mod_import_dialog_atlas_downscale_confirm_title">Offline atlas pre-downscale detected</string>
+    <string name="mod_import_dialog_atlas_downscale_confirm_title">Current mod can be pre-downscaled</string>
     <string name="mod_import_dialog_atlas_downscale_confirm_apply">Import with selected strategy</string>
     <string name="mod_import_dialog_atlas_downscale_confirm_skip">Import without downscale</string>
     <string name="mod_import_dialog_atlas_patched_title">Atlas patched offline</string>
@@ -620,7 +620,7 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="mod_import_wizard_title_executing">Importing mods</string>
     <string name="mod_import_wizard_title_result">Import result</string>
     <string name="mod_import_wizard_action_start_import">Start import</string>
-    <string name="mod_import_wizard_scanning_message">Reading selected files and building an import plan.</string>
+    <string name="mod_import_wizard_scanning_message">Parsing mod files</string>
     <string name="mod_import_wizard_no_plan">No import plan available.</string>
     <string name="mod_import_wizard_review_summary">Ready: %1$d, blocked: %2$d, skipped: %3$d</string>
     <string name="mod_import_wizard_version">Version: %1$s</string>
@@ -659,10 +659,10 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="mod_import_patch_category_safety">Safety</string>
     <string name="mod_import_block_archive_detail">Compressed archives must be extracted before importing mod jars.</string>
     <string name="mod_import_block_unsupported_detail">Selected file is not a readable mod jar.</string>
-    <string name="mod_import_block_modthespire_core_detail">ModTheSpire is a launcher-managed core component.</string>
+    <string name="mod_import_block_modthespire_core_detail">ModTheSpire is a launcher-managed core component. Do not import it.</string>
     <string name="mod_import_block_manifest_read_failed">Could not read ModTheSpire.json</string>
     <string name="mod_import_block_missing_modid_detail">ModTheSpire.json did not contain a usable modid.</string>
-    <string name="mod_import_block_reserved_core_detail">%1$s is a launcher-managed core component.</string>
+    <string name="mod_import_block_reserved_core_detail">%1$s is a launcher-managed core component. Do not import it.</string>
     <string name="mod_import_result_skipped_duplicate_decision">Skipped by duplicate decision.</string>
     <string name="mod_import_progress_importing">Importing %1$s</string>
     <string name="mod_import_progress_prepare_working_copy">Preparing working copy: %1$s</string>
@@ -757,10 +757,10 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="settings_theme_mode_dark">Dark</string>
     <string name="settings_theme_color_title">Theme color</string>
     <string name="settings_theme_color_desc">Choose the launcher accent color. The same color palette is automatically adapted for light and dark mode.</string>
-    <string name="settings_theme_color_zhanshige">Zhanshige</string>
-    <string name="settings_theme_color_liebao">Liebao</string>
-    <string name="settings_theme_color_jibao">Jibao</string>
-    <string name="settings_theme_color_guanjie">Guanjie</string>
+    <string name="settings_theme_color_zhanshige">Ironclad</string>
+    <string name="settings_theme_color_liebao">Silent</string>
+    <string name="settings_theme_color_jibao">Defect</string>
+    <string name="settings_theme_color_guanjie">Watcher</string>
     <string name="settings_theme_color_colorless">Colorless</string>
     <string name="update_section_title">Updates</string>
     <string name="update_auto_check_enabled">Auto-check updates: Enabled</string>
@@ -803,11 +803,15 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="update_dialog_action_quark_download">Quark Download</string>
     <string name="update_dialog_action_download">Download</string>
     <string name="update_dialog_download_option_direct">GitHub Release (Direct)</string>
-    <string name="update_download_choice_dialog_title">Choose download method</string>
-    <string name="update_download_choice_dialog_message">Direct downloads come from GitHub Releases and may not have stable speeds. If you want to support development, use Quark Download instead; the developer earns revenue from each download.</string>
-    <string name="update_download_choice_dialog_source_label">Download URL (one-time)</string>
+    <string name="update_download_choice_dialog_title">Choose update method</string>
+    <string name="update_download_choice_dialog_message">Development costs are too high, and tokens are no longer affordable 😭😭😭\nFor long-term maintenance, future downloads are moving to Quark (downloads may be a little slower, but should be more stable). Because Quark rate limiting can be mysterious, if the download really will not finish, join our group chat; releases will be posted in the group files. Users who can access GitHub can also download from Github Release. Thank you for the support!</string>
+    <string name="update_download_choice_dialog_image_description">Update download notice image</string>
+    <string name="update_download_choice_dialog_source_label">Download source</string>
     <string name="update_download_choice_dialog_action_direct_download">Direct Download</string>
     <string name="update_download_choice_dialog_action_back">Back</string>
+    <string name="update_download_choice_dialog_action_github_download">Github Download</string>
+    <string name="update_download_choice_dialog_action_join_group">Join group</string>
+    <string name="update_download_choice_dialog_github_releases_url">https://github.com/ModinMobileSTS/SlayTheAmethystModded/releases/</string>
     <string name="update_dialog_quark_download_url">https://pan.quark.cn/s/2ffa884df03f</string>
     <string name="settings_author_info_title">Project info</string>
     <string name="settings_author_repo_label">Repository URL</string>
@@ -830,7 +834,7 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="settings_author_special_thanks_item_2">2. Design ideas from this project predecessor (mobile build).</string>
     <string name="settings_author_special_thanks_item_3">3. Help from Butterfly Is Larva and friends in their fan group.</string>
     <string name="settings_author_special_thanks_footer">Many thanks to all friends above for their hard work.</string>
-    <string name="settings_author_release_notice">Official releases are distributed only through non-throttled cloud storage or Github Release.</string>
+    <string name="settings_author_release_notice">Official releases will include at least one non-throttled download source and will also be published on GitHub Releases.</string>
     <string name="settings_author_report_notice">If you downloaded this project from other sources, it is unauthorized third-party redistribution.</string>
     <string name="settings_author_follow_notice">Follow official release channels for the latest builds and announcements.</string>
     <string name="settings_author_qq_group_prefix">欢迎加入官方互助交流QQ群：</string>
@@ -838,7 +842,7 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="settings_author_qq_group_url">mqqapi://card/show_pslcard?src_type=internal&amp;version=1&amp;uin=1029305387&amp;card_type=group&amp;source=qrcode</string>
     <string name="settings_unplayable_mods_entry_title">Some mods not playable?</string>
     <string name="settings_unplayable_mods_dialog_title">Report unplayable mods</string>
-    <string name="settings_unplayable_mods_dialog_message">This sheet tracks mods that are currently unplayable and their fix status. You can directly edit the sheet to add unplayable mod details and help us finish compatibility fixes faster.</string>
+    <string name="settings_unplayable_mods_dialog_message">Tap &quot;Report new issue&quot; at the top of the page and attach information about unplayable mods to help us finish compatibility fixes faster.</string>
     <string name="settings_unplayable_mods_dialog_open">Go to sheet</string>
     <string name="settings_unplayable_mods_sheet_url">https://docs.qq.com/sheet/DS0xtV2FsVUVUSXhr?u=3f6b432cd4f7498b8388829a3a5e1555</string>
     <string name="settings_logcat_capture_enabled">Game logcat diagnostics capture: Enabled</string>
@@ -860,7 +864,7 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="common_busy_preparing_jvm_log_bundle">Preparing JVM log bundle...</string>
     <string name="main_feedback_updates_content_description">Feedback updates available</string>
     <string name="main_feedback_reply_card_title">Feedback issues have new replies</string>
-    <string name="main_feedback_reply_card_single">A feedback issue you follow has a new reply. Open your followed issues to check progress.</string>
+    <string name="main_feedback_reply_card_single">A feedback issue you follow has a new reply</string>
     <string name="main_feedback_reply_card_multiple">%1$d feedback issues you follow have new replies. Open your followed issues to check progress.</string>
     <string name="main_feedback_reply_card_action">View</string>
     <string name="main_enabled_mods_count">%1$d / %2$d mods enabled</string>
@@ -987,7 +991,7 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="settings_native_library_market_title">Native library market</string>
     <string name="settings_native_library_market_desc">Download optional native libraries such as `gdx-video`.</string>
     <string name="settings_native_library_market_dialog_title">Native library market</string>
-    <string name="settings_native_library_market_dialog_desc">The launcher fetches optional native libraries from the SlayTheAmethystResource market repository through the currently selected mirror source. Installed libraries are saved in a separate directory, so app updates will not overwrite them.</string>
+    <string name="settings_native_library_market_dialog_desc">Some mods use native libraries beyond the ones used by the original Slay the Spire. Native libraries must be compiled for each platform, so desktop native libraries cannot simply be copied over. To keep the launcher package smaller and improve mod compatibility, the launcher maintainers compiled native libraries required by some mods and publish them here so you can install them as needed.</string>
     <string name="settings_native_library_market_empty">No native library packages are currently available from the market metadata.</string>
     <string name="settings_native_library_market_status_installed">Status: installed from market</string>
     <string name="settings_native_library_market_status_not_installed">Status: not installed</string>
@@ -1021,10 +1025,10 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="settings_busy_reset_defaults">Restoring default settings…</string>
     <string name="settings_reset_defaults_succeeded">Default settings restored.</string>
     <string name="settings_reset_defaults_failed">Failed to restore default settings: %1$s</string>
-    <string name="settings_steam_cloud_title">Steam Cloud (Experimental)</string>
+    <string name="settings_steam_cloud_title">Steam Cloud saves</string>
     <string name="settings_steam_cloud_experimental_desc">Steam Cloud integration for manual Phase 2 sync. This build supports account login, manifest refresh, manifest viewing, upload planning/conflict review, manual upload of safe local-only changes, full pull for `preferences/` and `saves/`, and the launcher cloud button workflow for checking, syncing, and resolving conflicts.</string>
-    <string name="settings_steam_cloud_watt_acceleration_enabled_title">Steam Cloud accelerated connection on</string>
-    <string name="settings_steam_cloud_watt_acceleration_disabled_title">Steam Cloud accelerated connection off</string>
+    <string name="settings_steam_cloud_watt_acceleration_enabled_title">Steam accelerated connection on</string>
+    <string name="settings_steam_cloud_watt_acceleration_disabled_title">Steam accelerated connection off</string>
     <string name="settings_steam_cloud_watt_acceleration_desc">Access Steam through forwarding rules for better speed. If Steam cannot be accessed normally, turn this off and enable an accelerator.</string>
     <string name="settings_steam_cloud_intro">Switch between independent local saves and Steam Cloud saves. Use the launcher cloud button to check status, sync changes, and resolve conflicts.</string>
     <string name="settings_steam_cloud_account_signed_in">Current Steam account</string>
@@ -1194,7 +1198,7 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="main_steam_cloud_action_cancel_check">Cancel check</string>
     <string name="main_steam_cloud_check_cancelled_summary">Check cancelled. Your current saves are not synced.</string>
     <string name="main_steam_cloud_sync_cancelled_summary">Steam Cloud upload cancelled. Your current saves are not synced.</string>
-    <string name="main_steam_cloud_conflict_choice_hint">Direct conflicts were found. Choose which side should win for the conflicting save files.</string>
+    <string name="main_steam_cloud_conflict_choice_hint">Your local saves and cloud saves conflict. Choose which save version to keep; the unselected save will be overwritten.</string>
     <string name="main_steam_cloud_conflict_card_local_title">Local progress</string>
     <string name="main_steam_cloud_conflict_card_cloud_title">Steam Cloud progress</string>
     <string name="main_steam_cloud_conflict_card_conflicting_files">Conflicting files: %1$d</string>
@@ -1385,7 +1389,7 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="settings_gameplay_larger_ui_disabled">Larger UI: Disabled</string>
     <string name="settings_gameplay_larger_ui_desc">Uses larger layout sizing. If mods display incorrectly after enabling it, turn this option off.</string>
     <string name="settings_gpu_resource_guardian_title">GPU resource guardian</string>
-    <string name="settings_gpu_resource_guardian_desc">Controls the low-overhead GPU resource guard for tracked textures and FrameBuffers. Devices with 12 GB RAM or less default to Aggressive; devices above 12 GB default to Safe. Legacy disables the new guardian and enables the locked legacy compatibility paths. This takes effect on the next launch.</string>
+    <string name="settings_gpu_resource_guardian_desc">Controls the low-overhead GPU resource guard for tracked textures and FrameBuffers. Devices with 12 GB RAM or less default to Aggressive; devices above 12 GB default to Safe. Legacy disables the new guardian and enables the locked legacy compatibility paths.</string>
     <string name="settings_gpu_resource_guardian_mode_off">Off</string>
     <string name="settings_gpu_resource_guardian_mode_safe">Safe</string>
     <string name="settings_gpu_resource_guardian_mode_aggressive">Aggressive</string>
@@ -1454,7 +1458,7 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="settings_save_exported">Save archive exported (%1$d files)</string>
     <string name="settings_save_export_failed_prefix">Save export failed</string>
     <string name="settings_game_mode_name_unavailable">Unavailable</string>
-    <string name="settings_game_mode_desc_api_unavailable">Android 12 and below do not provide the Game Mode API.</string>
+    <string name="settings_game_mode_desc_api_unavailable">Systems below Android 12 do not provide the Game Mode API.</string>
     <string name="settings_game_mode_desc_service_unavailable">GameManager service is not available on this device.</string>
     <string name="settings_game_mode_name_standard">STANDARD</string>
     <string name="settings_game_mode_desc_standard">The system is using the standard game mode. The launcher will run at your configured target FPS.</string>
@@ -1526,14 +1530,14 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="feedback_email_label">Notification email</string>
     <string name="feedback_submission_confirmation_title">Before you continue</string>
     <string name="feedback_acknowledgement_continue">Start filling the report</string>
-    <string name="feedback_submission_acknowledgement_1">I understand that confusing issue descriptions will slow down the resolution process.</string>
+    <string name="feedback_submission_acknowledgement_1">I understand that if the issue description does not contain enough information, the issue cannot be solved. I confirm I have described it in as much detail as possible.</string>
     <string name="feedback_submission_acknowledgement_2">I understand that the launcher will not provide fixes for conflicts caused between mods.</string>
     <string name="feedback_submission_acknowledgement_3">I confirm that before submitting this feedback, I already tried to fix the problem, but still could not solve it, or only partially located the cause.</string>
-    <string name="feedback_submission_acknowledgement_4">I understand that the developer is not customer support and is not obligated to solve problems for me.</string>
+    <string name="feedback_submission_acknowledgement_4">I understand that the developer is not customer support, is not obligated to solve my problem, and solving issues takes a lot of effort.</string>
     <string name="feedback_submission_acknowledgement_5">I understand that the developer has probably never played the mod that is failing, and my description is clear enough for someone unfamiliar with it to understand.</string>
     <string name="feedback_submission_acknowledgement_6">I have carefully read all the instructions, and I should not check this checkbox.</string>
     <string name="feedback_submission_attention_warning_title">Please read all notices carefully.</string>
-    <string name="feedback_submission_attention_warning_message">Every issue takes substantial effort to locate. Confirm the basic notices first so neither side wastes time.</string>
+    <string name="feedback_submission_attention_warning_message">Every issue takes a lot of effort to locate. Seeing this popup means you did not read the notices carefully. Please read them carefully to avoid wasting time for both sides!</string>
     <string name="feedback_submission_attention_warning_close_countdown">Close (%1$ds)</string>
     <string name="feedback_submit">Submit feedback</string>
     <string name="feedback_busy_syncing_subscriptions">Syncing tracked issues...</string>
@@ -1635,7 +1639,7 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="feedback_busy_unsubscribing">Unfollowing issue...</string>
     <string name="feedback_unsubscribed">Unfollowed Issue #%1$d.</string>
     <string name="feedback_filter_all">All issues</string>
-    <string name="feedback_filter_open">Open only</string>
+    <string name="feedback_filter_open">In progress only</string>
     <string name="feedback_filter_closed">Resolved only</string>
     <string name="feedback_busy_following_issue">Following issue...</string>
     <string name="feedback_follow_success">Now following Issue #%1$d. You can continue tracking it from Tracked issues.</string>
@@ -1660,21 +1664,21 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="feedback_system_event_reopened">Reopened this issue</string>
     <string name="quick_start_title">Quick start</string>
     <string name="quick_start_title_done">Import complete</string>
-    <string name="quick_start_subtitle">On first launch, you need to import `desktop-1.0.jar` before entering the main screen.</string>
-    <string name="quick_start_welcome_title">Welcome to SlayTheAmethyst</string>
-    <string name="quick_start_welcome_subtitle">Choose how to prepare the game files for this launcher.</string>
+    <string name="quick_start_subtitle">On first launch, import the game files first</string>
+    <string name="quick_start_welcome_title">Welcome</string>
+    <string name="quick_start_welcome_subtitle">Choose how to install Slay the Spire</string>
     <string name="quick_start_start_from_file_title">Start with game file</string>
-    <string name="quick_start_start_from_file_subtitle">Already downloaded desktop-1.0.jar; import it directly, then log in to Steam later.</string>
+    <string name="quick_start_start_from_file_subtitle">Install the game by importing a local desktop-1.0.jar first. Later, you can configure Steam sign-in in Settings to use advanced features.</string>
     <string name="quick_start_start_from_steam_title">Start with Steam login</string>
-    <string name="quick_start_start_from_steam_subtitle">After login, download game files from Steam and enable full cloud save and Workshop support.</string>
+    <string name="quick_start_start_from_steam_subtitle">After sign-in, download game files from Steam and enable full cloud save and Workshop support. Steam credentials are saved locally and are not uploaded to a server.</string>
     <string name="quick_start_steam_download_connecting">Connecting to Steam...</string>
     <string name="quick_start_steam_download_resolving">Preparing Steam game file download...</string>
-    <string name="quick_start_steam_downloading_with_total">Downloading desktop-1.0.jar from Steam: %1$s / %2$s</string>
+    <string name="quick_start_steam_downloading_with_total">Downloading desktop-1.0.jar from Steam</string>
     <string name="quick_start_steam_downloading_without_total">Downloading desktop-1.0.jar from Steam: %1$s</string>
     <string name="quick_start_steam_importing_jar">Importing downloaded desktop-1.0.jar...</string>
     <string name="quick_start_steam_download_failed">Steam download failed: %1$s</string>
-    <string name="quick_start_steam_download_page_title">Downloading Steam game file</string>
-    <string name="quick_start_steam_download_page_subtitle">Keep this page open while desktop-1.0.jar is downloaded and imported automatically.</string>
+    <string name="quick_start_steam_download_page_title">Downloading. Please wait</string>
+    <string name="quick_start_steam_download_page_subtitle">Do not leave this page</string>
     <string name="quick_start_steam_acceleration_enabled_title">Steam acceleration link: On</string>
     <string name="quick_start_steam_acceleration_disabled_title">Steam acceleration link: Off</string>
     <string name="quick_start_steam_acceleration_desc">Changing this during download pauses the current request, switches source, then resumes downloading.</string>
@@ -1693,8 +1697,8 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="quick_start_missing_jar_title">Can\'t find desktop-1.0.jar?</string>
     <string name="quick_start_missing_jar_intro">`desktop-1.0.jar` comes from the PC installation directory of Slay the Spire.</string>
     <string name="quick_start_missing_jar_howto">How to get it</string>
-    <string name="quick_start_missing_jar_step1">1. Copy `desktop-1.0.jar` from the game install directory on your PC</string>
-    <string name="quick_start_missing_jar_step2">2. Common path: `SteamLibrary/common/SlayTheSpire/desktop-1.0.jar`</string>
+    <string name="quick_start_missing_jar_step1">1. Copy desktop-1.0.jar from the game install directory on your PC. Common path: SteamLibrary/common/SlayTheSpire/desktop-1.0.jar</string>
+    <string name="quick_start_missing_jar_step2">2. Download from the provided cloud drive</string>
     <string name="quick_start_missing_jar_download_link">Download link: %1$s</string>
     <string name="quick_start_acknowledge">Got it</string>
     <string name="main_feedback_notice_title">Your feedback has updates</string>
@@ -1951,9 +1955,9 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="workshop_subscriptions_title">Subscribed mods</string>
     <string name="workshop_subscriptions_subtitle">View Workshop mods subscribed by the current Steam account</string>
     <string name="workshop_download_center_title">Download center</string>
-    <string name="workshop_download_center_subtitle">View Workshop download progress and task details</string>
+    <string name="workshop_download_center_subtitle">Download progress and task details</string>
     <string name="workshop_market_title">Mod market</string>
-    <string name="workshop_market_subtitle">Browse and download Workshop mods</string>
+    <string name="workshop_market_subtitle">Browse and download mods</string>
     <string name="workshop_section_browse">Workshop list</string>
     <string name="workshop_section_loading">Loading</string>
     <string name="workshop_section_no_results">No results</string>
@@ -1987,6 +1991,7 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="workshop_missing_dependencies_message">%1$s requires the following missing dependencies. Add them to the download queue too?</string>
     <string name="workshop_dependency_fallback_title">Workshop ID %1$s</string>
     <string name="workshop_action_install_and_download">Install and download</string>
+    <string name="workshop_action_download_without_dependencies">Skip dependencies</string>
     <string name="workshop_error_loading_title">Loading failed</string>
     <string name="workshop_empty_title">No entries found</string>
     <string name="workshop_empty_description">Try another keyword, or refresh Steam Workshop later.</string>

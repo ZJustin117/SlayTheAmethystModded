@@ -297,6 +297,10 @@ internal fun WorkshopDetailScreen(
             modTitle = pending.details.summary.title,
             missingDependencies = pending.missingDependencies,
             onDismiss = { viewModel.dismissPendingDependencyDownload() },
+            onDownloadCurrentOnly = {
+                requestNotificationPermissionIfNeeded()
+                viewModel.downloadPendingCurrentOnly(context.applicationContext)
+            },
             onConfirm = {
                 requestNotificationPermissionIfNeeded()
                 viewModel.confirmPendingDependencyDownload(context.applicationContext)

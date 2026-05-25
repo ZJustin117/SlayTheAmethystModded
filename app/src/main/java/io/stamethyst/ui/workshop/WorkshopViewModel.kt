@@ -710,6 +710,12 @@ internal class WorkshopViewModel : ViewModel() {
         startDownload(context, pending.details.summary, pending.details)
     }
 
+    fun downloadPendingCurrentOnly(context: Context) {
+        val pending = uiState.pendingDependencyDownload ?: return
+        uiState = uiState.copy(pendingDependencyDownload = null)
+        startDownload(context, pending.details.summary, pending.details)
+    }
+
     fun dismissPendingDependencyDownload() {
         uiState = uiState.copy(pendingDependencyDownload = null)
     }

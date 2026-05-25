@@ -1,5 +1,11 @@
 package io.stamethyst.ui
 
+import android.content.ActivityNotFoundException
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.fadeIn
@@ -11,6 +17,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -49,6 +56,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInteropFilter
+import androidx.compose.ui.layout.ContentScale
 import androidx.activity.compose.LocalActivity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -58,11 +66,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
@@ -73,7 +78,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import dev.chrisbanes.haze.HazeState
@@ -137,6 +141,7 @@ import kotlinx.coroutines.launch
 
 private const val PAGE_TRANSITION_DURATION_MS = 420
 private const val DOCK_VISIBILITY_ANIMATION_MS = 220
+private const val QUARK_BROWSER_PACKAGE_NAME = "com.quark.browser"
 internal const val LAUNCHER_DOCK_ITEM_TAG_PREFIX = "launcher_dock_item_"
 private val LauncherDockRoutes = listOf(
     Route.Main,
@@ -154,7 +159,6 @@ fun LauncherContent(
 ) {
     val activity = requireNotNull(LocalActivity.current)
     val navigator = rememberAppNavigator(initialRoute)
-    val uriHandler = LocalUriHandler.current
     val transientNoticeHostState = remember { SnackbarHostState() }
     var showBasicTutorialNotice by remember(activity) {
         mutableStateOf(!LauncherPreferences.isBasicTutorialNoticeDismissed(activity))
@@ -839,30 +843,23 @@ fun LauncherContent(
                 )
                 settingsUiState.updatePromptState?.let { promptState ->
                     val quarkDownloadUrl = stringResource(R.string.update_dialog_quark_download_url)
+                    val qqGroupNumber = stringResource(R.string.settings_author_qq_group_number)
+                    val qqGroupUrl = stringResource(R.string.settings_author_qq_group_url)
                     var showDownloadChoiceDialog by remember(promptState) {
                         mutableStateOf(false)
                     }
-                    var downloadMenuExpanded by remember(promptState) {
-                        mutableStateOf(false)
-                    }
-                    var selectedDownloadSourceId by remember(promptState) {
-                        mutableStateOf(promptState.defaultDownloadSourceId)
-                    }
-                    val selectedDownloadOption = promptState.downloadOptions.firstOrNull {
-                        it.source.id == selectedDownloadSourceId
-                    } ?: promptState.downloadOptions.firstOrNull()
                     if (showDownloadChoiceDialog) {
                         AlertDialog(
-                            onDismissRequest = {
-                                downloadMenuExpanded = false
-                                showDownloadChoiceDialog = false
-                            },
+                            onDismissRequest = { showDownloadChoiceDialog = false },
                             title = {
                                 Text(stringResource(R.string.update_download_choice_dialog_title))
                             },
                             text = {
                                 Column(
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(max = 460.dp)
+                                        .verticalScroll(rememberScrollState()),
                                     verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
                                     Text(
@@ -871,86 +868,50 @@ fun LauncherContent(
                                         ),
                                         style = MaterialTheme.typography.bodySmall
                                     )
-                                    Text(
-                                        text = stringResource(
-                                            R.string.update_download_choice_dialog_source_label
+                                    Image(
+                                        painter = painterResource(
+                                            R.drawable.update_download_choice_notice
                                         ),
-                                        style = MaterialTheme.typography.bodyMedium
+                                        contentDescription = stringResource(
+                                            R.string.update_download_choice_dialog_image_description
+                                        ),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(max = 180.dp)
+                                            .clip(RoundedCornerShape(16.dp)),
+                                        contentScale = ContentScale.Fit
                                     )
-                                    Box(modifier = Modifier.fillMaxWidth()) {
-                                        OutlinedButton(
-                                            onClick = { downloadMenuExpanded = true },
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text(selectedDownloadOption?.label.orEmpty())
-                                                Text(if (downloadMenuExpanded) "▲" else "▼")
-                                            }
-                                        }
-                                        DropdownMenu(
-                                            expanded = downloadMenuExpanded,
-                                            onDismissRequest = { downloadMenuExpanded = false }
-                                        ) {
-                                            promptState.downloadOptions.forEach { option ->
-                                                DropdownMenuItem(
-                                                    text = { Text(option.label) },
-                                                    onClick = {
-                                                        selectedDownloadSourceId = option.source.id
-                                                        downloadMenuExpanded = false
-                                                    }
-                                                )
-                                            }
-                                        }
-                                    }
                                 }
                             },
                             confirmButton = {
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
                                     TextButton(
                                         onClick = {
-                                            downloadMenuExpanded = false
                                             showDownloadChoiceDialog = false
                                             settingsViewModel.dismissUpdatePrompt()
-                                            uriHandler.openUri(quarkDownloadUrl)
-                                        }
-                                    ) {
-                                        Text(stringResource(R.string.update_dialog_action_quark_download))
-                                    }
-                                    TextButton(
-                                        enabled = selectedDownloadOption != null,
-                                        onClick = {
-                                            val targetUrl = selectedDownloadOption?.url
-                                                ?: return@TextButton
-                                            downloadMenuExpanded = false
-                                            showDownloadChoiceDialog = false
-                                            settingsViewModel.dismissUpdatePrompt()
-                                            uriHandler.openUri(targetUrl)
+                                            copyQqGroupAndOpen(activity, qqGroupNumber, qqGroupUrl)
                                         }
                                     ) {
                                         Text(
                                             stringResource(
-                                                R.string.update_download_choice_dialog_action_direct_download
+                                                R.string.update_download_choice_dialog_action_join_group
                                             )
                                         )
                                     }
-                                }
-                            },
-                            dismissButton = {
-                                TextButton(
-                                    onClick = {
-                                        downloadMenuExpanded = false
-                                        showDownloadChoiceDialog = false
+                                    Box(modifier = Modifier.weight(1f))
+                                    Button(
+                                        onClick = {
+                                            showDownloadChoiceDialog = false
+                                            settingsViewModel.dismissUpdatePrompt()
+                                            copyAndOpenQuarkDownload(activity, quarkDownloadUrl)
+                                        }
+                                    ) {
+                                        Text(stringResource(R.string.update_dialog_action_quark_download))
                                     }
-                                ) {
-                                    Text(
-                                        stringResource(
-                                            R.string.update_download_choice_dialog_action_back
-                                        )
-                                    )
                                 }
                             }
                         )
@@ -1402,6 +1363,43 @@ private fun Route.launcherDockTagSuffix(): String = when (this) {
     Route.Workshop -> "Workshop"
     Route.Settings -> "Settings"
     else -> this::class.simpleName.orEmpty()
+}
+
+private fun copyAndOpenQuarkDownload(context: Context, url: String) {
+    copyToClipboard(context, "quark-download-url", url)
+    val quarkIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        .setPackage(QUARK_BROWSER_PACKAGE_NAME)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    if (!tryStartActivity(context, quarkIntent)) {
+        openExternalUrl(context, url)
+    }
+}
+
+private fun copyQqGroupAndOpen(context: Context, groupNumber: String, groupUrl: String) {
+    copyToClipboard(context, "qq-group", groupNumber)
+    openExternalUrl(context, groupUrl)
+}
+
+private fun openExternalUrl(context: Context, url: String) {
+    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    tryStartActivity(context, intent)
+}
+
+private fun tryStartActivity(context: Context, intent: Intent): Boolean = try {
+    context.startActivity(intent)
+    true
+} catch (_: ActivityNotFoundException) {
+    false
+} catch (_: SecurityException) {
+    false
+} catch (_: IllegalArgumentException) {
+    false
+}
+
+private fun copyToClipboard(context: Context, label: String, value: String) {
+    val clipboard = context.getSystemService(ClipboardManager::class.java) ?: return
+    clipboard.setPrimaryClip(ClipData.newPlainText(label, value))
 }
 
 @Composable
