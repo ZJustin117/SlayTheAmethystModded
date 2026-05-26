@@ -107,6 +107,9 @@ object RuntimePaths {
         File(modsDir(context), "AmethystRuntimeCompat.jar")
 
     @JvmStatic
+    fun importedRamSaverJar(context: Context): File = File(modsDir(context), "RamSaver.jar")
+
+    @JvmStatic
     fun enabledModsConfig(context: Context): File = File(stsRoot(context), "enabled_mods.txt")
 
     @JvmStatic

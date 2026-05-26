@@ -5,37 +5,37 @@ import org.junit.Test
 
 class LauncherConfigGpuResourceGuardianModeTest {
     @Test
-    fun gpuResourceGuardian_highMemoryDefaultSafe() {
+    fun gpuResourceGuardian_highMemoryDefaultOff() {
         assertEquals(
-            GpuResourceGuardianMode.SAFE,
+            GpuResourceGuardianMode.OFF,
             LauncherConfig.resolveDefaultGpuResourceGuardianMode(13L * 1024L * 1024L * 1024L)
         )
     }
 
     @Test
-    fun gpuResourceGuardian_veryLowMemoryDefaultLegacy() {
+    fun gpuResourceGuardian_veryLowMemoryDefaultOff() {
         assertEquals(
-            GpuResourceGuardianMode.LEGACY,
+            GpuResourceGuardianMode.OFF,
             LauncherConfig.resolveDefaultGpuResourceGuardianMode(8L * 1024L * 1024L * 1024L)
         )
     }
 
     @Test
-    fun gpuResourceGuardian_lowMemoryDefaultAggressive() {
+    fun gpuResourceGuardian_lowMemoryDefaultOff() {
         assertEquals(
-            GpuResourceGuardianMode.AGGRESSIVE,
+            GpuResourceGuardianMode.OFF,
             LauncherConfig.resolveDefaultGpuResourceGuardianMode(9L * 1024L * 1024L * 1024L)
         )
         assertEquals(
-            GpuResourceGuardianMode.AGGRESSIVE,
+            GpuResourceGuardianMode.OFF,
             LauncherConfig.resolveDefaultGpuResourceGuardianMode(12L * 1024L * 1024L * 1024L)
         )
     }
 
     @Test
-    fun gpuResourceGuardian_unknownMemoryDefaultSafe() {
+    fun gpuResourceGuardian_unknownMemoryDefaultOff() {
         assertEquals(
-            GpuResourceGuardianMode.SAFE,
+            GpuResourceGuardianMode.OFF,
             LauncherConfig.resolveDefaultGpuResourceGuardianMode(-1L)
         )
     }

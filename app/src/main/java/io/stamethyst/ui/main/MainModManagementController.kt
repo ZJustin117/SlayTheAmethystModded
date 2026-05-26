@@ -1500,6 +1500,9 @@ internal class MainModManagementController(
             ModManager.MOD_ID_STSLIB ->
                 RuntimePaths.importedStsLibJar(host).exists() || hasBundledAsset(host, "components/mods/StSLib.jar")
 
+            ModManager.MOD_ID_RAM_SAVER ->
+                RuntimePaths.importedRamSaverJar(host).exists() || hasBundledAsset(host, "components/mods/RamSaver.jar")
+
             else -> true
         }
     }

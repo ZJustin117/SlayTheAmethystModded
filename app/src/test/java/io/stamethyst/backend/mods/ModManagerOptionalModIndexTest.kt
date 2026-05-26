@@ -109,7 +109,7 @@ class ModManagerOptionalModIndexTest {
         )
 
         assertEquals(
-            listOf("basemod", "stslib", "amethystruntimecompat", "alpha"),
+            listOf("basemod", "stslib", "amethystruntimecompat", "ramsaver", "alpha"),
             ModManager.resolveLaunchModIds(context)
         )
 
@@ -122,7 +122,7 @@ class ModManagerOptionalModIndexTest {
         )
 
         assertEquals(
-            listOf("basemod", "stslib", "amethystruntimecompat", "beta"),
+            listOf("basemod", "stslib", "amethystruntimecompat", "ramsaver", "beta"),
             ModManager.resolveLaunchModIds(context)
         )
     }
@@ -163,7 +163,7 @@ class ModManagerOptionalModIndexTest {
         )
 
         assertEquals(
-            listOf("basemod", "stslib", "amethystruntimecompat", "beta", "alpha", "gamma"),
+            listOf("basemod", "stslib", "amethystruntimecompat", "ramsaver", "beta", "alpha", "gamma"),
             ModManager.resolveLaunchModIds(context)
         )
 
@@ -176,6 +176,36 @@ class ModManagerOptionalModIndexTest {
         assertEquals(0, optionalModsById.getValue("beta").effectivePriority)
         assertEquals(2, optionalModsById.getValue("gamma").explicitPriority)
         assertEquals(2, optionalModsById.getValue("gamma").effectivePriority)
+    }
+
+    @Test
+    fun resolveLaunchModIds_ignoresOptionalRamSaverWhenBundledRamSaverIsRequired() {
+        val roots = TestRoots.create("mod-manager-skip-optional-ramsaver")
+        val context = roots.context
+        installRequiredLaunchMods(context)
+        val optionalRamSaverJar = writeOptionalModJar(
+            file = File(RuntimePaths.optionalModsLibraryDir(context), "OldRamSaver.jar"),
+            modId = "ramsaver",
+            name = "Ram Saver",
+            lastModified = 13_000L
+        )
+        val alphaJar = writeOptionalModJar(
+            file = File(RuntimePaths.optionalModsLibraryDir(context), "Alpha.jar"),
+            modId = "alpha",
+            name = "Alpha",
+            lastModified = 14_000L
+        )
+
+        RuntimePaths.stsRoot(context).mkdirs()
+        RuntimePaths.enabledModsConfig(context).writeText(
+            listOf(optionalRamSaverJar.absolutePath, alphaJar.absolutePath).joinToString("\n"),
+            StandardCharsets.UTF_8
+        )
+
+        assertEquals(
+            listOf("basemod", "stslib", "amethystruntimecompat", "ramsaver", "alpha"),
+            ModManager.resolveLaunchModIds(context)
+        )
     }
 
     private fun installRequiredLaunchMods(context: Context) {
@@ -196,6 +226,12 @@ class ModManagerOptionalModIndexTest {
             modId = "amethystruntimecompat",
             name = "Amethyst Runtime Compat",
             lastModified = 7_000L
+        )
+        writeOptionalModJar(
+            file = RuntimePaths.importedRamSaverJar(context),
+            modId = "ramsaver",
+            name = "Ram Saver",
+            lastModified = 8_000L
         )
     }
 

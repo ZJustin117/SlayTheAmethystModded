@@ -247,8 +247,7 @@
     <string name="boot_overlay_status_game_ready_tap_close">Game is ready. Tap Close loading overlay to enter.</string>
     <string name="boot_overlay_status_game_frame_ready">Game frame is ready</string>
     <string name="boot_overlay_oom_detail_with_reason">OutOfMemoryError detected (JVM heap exhausted). %1$s</string>
-    <string name="boot_overlay_title_loading_mods">Loading mods...</string>
-    <string name="boot_overlay_title_jvm_logs">JVM Logs</string>
+    <string name="boot_overlay_title_starting">Starting</string>
     <string name="boot_overlay_stage_jvm_bootstrapped">JVM initialization completed</string>
     <string name="boot_overlay_stage_begin_patching">Starting to apply patches...</string>
     <string name="boot_overlay_stage_patching_enums">Processing enum extensions...</string>
@@ -400,6 +399,7 @@ Do you still want to continue?</string>
     <string name="main_dependency_basemod_description">Core prerequisite mod required by most modded Slay the Spire setups.</string>
     <string name="main_dependency_stslib_description">Shared library prerequisite used by many mods.</string>
     <string name="main_dependency_runtime_compat_description">Bundled runtime compat mod that caches expensive Duelist Guarded dynamic-value lookups and shortcuts expensive Duelist tribute/summon base-value rendering paths on mobile.</string>
+    <string name="main_dependency_ram_saver_description">Bundled RAM-saving mod that lazily materializes textures and includes Amethyst diagnostics for texture churn.</string>
     <string name="main_no_mods_hint">No mods yet. Download from Workshop, then import with the bottom-left button.</string>
     <string name="main_storage_issue_title">External mod directory unavailable</string>
     <string name="main_storage_issue_message">The launcher can\'t access %1$s right now. Mods may appear empty, and launch/export actions are temporarily disabled.</string>
@@ -548,7 +548,7 @@ Choosing &quot;%1$s&quot; cancels this import; choosing &quot;%2$s&quot; continu
     <string name="mod_import_reserved_message_intro">The following built-in core components were blocked from import:
 </string>
     <string name="mod_import_reserved_message_outro">
-BaseMod, StSLib, and ModTheSpire are bundled and managed by the launcher. Do not import them manually.</string>
+These components are bundled and managed by the launcher. Do not import them manually.</string>
     <string name="mod_import_summary_item_title">%1$s (modid: %2$s)</string>
     <string name="mod_import_atlas_message_none">No atlas files needed offline patching in this import.</string>
     <string name="mod_import_atlas_message_intro">The following mods had atlas filter settings patched during import:
@@ -1405,7 +1405,7 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="settings_gameplay_larger_ui_disabled">Larger UI: Disabled</string>
     <string name="settings_gameplay_larger_ui_desc">Uses larger layout sizing. If mods display incorrectly after enabling it, turn this option off.</string>
     <string name="settings_gpu_resource_guardian_title">GPU resource guardian</string>
-    <string name="settings_gpu_resource_guardian_desc">Controls the low-overhead GPU resource guard for tracked textures and FrameBuffers. Devices with 12 GB RAM or less default to Aggressive; devices above 12 GB default to Safe. Legacy disables the new guardian and enables the locked legacy compatibility paths.</string>
+    <string name="settings_gpu_resource_guardian_desc">Controls the low-overhead GPU resource guard for tracked textures and FrameBuffers. Off by default; enable only when investigating GPU memory pressure or severe mod-related resource growth. Legacy disables the new guardian and enables the locked legacy compatibility paths.</string>
     <string name="settings_gpu_resource_guardian_mode_off">Off</string>
     <string name="settings_gpu_resource_guardian_mode_safe">Safe</string>
     <string name="settings_gpu_resource_guardian_mode_aggressive">Aggressive</string>
@@ -1433,7 +1433,7 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="settings_jvm_logcat_mirror_desc">Mirrors appended content from `latest.log` to logcat. Disabled by default.</string>
     <string name="settings_gpu_resource_diag_enabled">GPU resource diagnostics: Enabled</string>
     <string name="settings_gpu_resource_diag_disabled">GPU resource diagnostics: Disabled</string>
-    <string name="settings_gpu_resource_diag_desc">Controls the extra `[gdx-diag]` per-resource trace logs, stack samples, and large-texture upload diagnostics. The always-on runtime memory summaries and menu-cycle texture owner/source attribution are separate. Disabled by default because this switch increases log volume and a small amount of runtime overhead.</string>
+    <string name="settings_gpu_resource_diag_desc">Controls extra `[gdx-diag]` per-resource trace logs, stack samples, large-texture upload diagnostics, runtime memory diagnostics, and menu-cycle texture owner/source attribution. Disabled by default because this switch increases log volume and a small amount of runtime overhead.</string>
     <string name="settings_gdx_pad_cursor_debug_enabled">GDX gamepad cursor log: Enabled</string>
     <string name="settings_gdx_pad_cursor_debug_disabled">GDX gamepad cursor log: Disabled</string>
     <string name="settings_gdx_pad_cursor_debug_desc">Controls `[gdx-pad-debug]` setCursorPosition output. Disabled by default to reduce log spam.</string>

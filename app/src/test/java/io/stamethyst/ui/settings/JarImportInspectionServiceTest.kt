@@ -73,6 +73,34 @@ class JarImportInspectionServiceTest {
     }
 
     @Test
+    fun inspectPreparedModJar_marksReservedRamSaverComponent() {
+        val tempDir = Files.createTempDirectory("jar-import-inspection-ram-saver")
+        val jarFile = tempDir.resolve("RamSaver.jar").toFile()
+        writeJar(
+            jarFile,
+            linkedMapOf(
+                "ModTheSpire.json" to """
+                    {
+                      "modid": "ramsaver",
+                      "name": "Ram Saver"
+                    }
+                """.trimIndent().toByteArray(StandardCharsets.UTF_8)
+            )
+        )
+
+        val inspection = JarImportInspectionService.inspectPreparedModJar(
+            jarFile = jarFile,
+            displayName = "RamSaver.jar",
+            manifestRootCompatEnabled = false
+        )
+
+        assertNotNull(inspection.manifest)
+        assertEquals("ramsaver", inspection.normalizedModId)
+        assertEquals(JarImportInspectionService.RESERVED_COMPONENT_RAM_SAVER, inspection.reservedComponent)
+        assertNull(inspection.parseError)
+    }
+
+    @Test
     fun inspectPreparedModJar_reportsParseErrorWhenManifestMissing() {
         val tempDir = Files.createTempDirectory("jar-import-inspection-invalid")
         val jarFile = tempDir.resolve("Broken.jar").toFile()

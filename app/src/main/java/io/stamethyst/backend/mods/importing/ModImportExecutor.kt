@@ -26,7 +26,6 @@ import io.stamethyst.ui.main.MainFolderStateStore
 import io.stamethyst.ui.main.ModAliasStore
 import io.stamethyst.ui.main.NewlyImportedModHighlightStore
 import io.stamethyst.ui.main.resolveModStoragePathCandidates
-import io.stamethyst.ui.main.resolveModFileNameWithoutJar
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -421,16 +420,13 @@ internal object ModImportExecutor {
         reuse: DuplicateReusePlan,
         decisions: ModImportDecisions
     ) {
+        val existingAliases = ModAliasStore.loadAliases(context)
+        val alias = reuse.sourceStoragePaths.firstNotNullOfOrNull { sourcePath ->
+            ModAliasStore.resolveAlias(sourcePath, existingAliases).trim().ifEmpty { null }
+        }.orEmpty()
         reuse.sourceStoragePaths.forEach { sourcePath ->
             ModAliasStore.setAlias(context, sourcePath, "")
         }
-        if (!decisions.reusePreviousFileNameOnReplace) {
-            return
-        }
-        val alias = reuse.targetFileName
-            ?.let { fileName -> resolveModFileNameWithoutJar(fileName) }
-            ?.trim()
-            .orEmpty()
         if (alias.isNotEmpty()) {
             ModAliasStore.setAlias(context, targetPath, alias)
         }

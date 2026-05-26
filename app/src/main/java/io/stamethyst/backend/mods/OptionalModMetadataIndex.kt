@@ -346,6 +346,7 @@ internal object OptionalModMetadataIndex {
         val normalized = fileName.lowercase(Locale.ROOT)
         return normalized == "basemod.jar" ||
             normalized == "stslib.jar" ||
-            normalized == "amethystruntimecompat.jar"
+            normalized == "amethystruntimecompat.jar" ||
+            normalized == "ramsaver.jar"
     }
 }

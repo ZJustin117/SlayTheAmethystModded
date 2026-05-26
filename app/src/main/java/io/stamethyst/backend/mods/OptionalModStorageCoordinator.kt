@@ -293,7 +293,8 @@ internal object OptionalModStorageCoordinator {
         val normalized = fileName.lowercase(Locale.ROOT)
         return "basemod.jar" == normalized ||
             "stslib.jar" == normalized ||
-            "amethystruntimecompat.jar" == normalized
+            "amethystruntimecompat.jar" == normalized ||
+            "ramsaver.jar" == normalized
     }
 
     private fun sanitizeImportedJarFileName(requestedFileName: String?): String {

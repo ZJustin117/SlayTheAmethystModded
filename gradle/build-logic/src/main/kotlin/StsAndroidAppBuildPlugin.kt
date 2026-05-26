@@ -239,7 +239,7 @@ private fun Project.registerRuntimeAssetTasks(
     }
 
     val installBundledModJars = tasks.register<Sync>("installBundledModJars") {
-        val bundledModProjectPaths = listOf(":mods:amethyst-runtime-compat")
+        val bundledModProjectPaths = listOf(":mods:amethyst-runtime-compat", ":mods:ram-saver")
         dependsOn(bundledModProjectPaths.map { projectPath -> "$projectPath:jar" })
         bundledModProjectPaths.forEach { projectPath ->
             from(project(projectPath).layout.buildDirectory.dir("libs")) {

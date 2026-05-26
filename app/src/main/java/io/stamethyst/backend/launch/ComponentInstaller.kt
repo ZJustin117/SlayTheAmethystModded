@@ -295,6 +295,15 @@ object ComponentInstaller {
             validator = ModJarSupport::validateAmethystRuntimeCompatJar,
             replaceExisting = forceReplaceExisting
         )
+        ensureBundledMod(
+            context = context,
+            modLabel = "RamSaver.jar",
+            assets = assets,
+            assetPath = "components/mods/RamSaver.jar",
+            targetFile = RuntimePaths.importedRamSaverJar(context),
+            validator = ModJarSupport::validateRamSaverJar,
+            replaceExisting = forceReplaceExisting
+        )
         logDiagnostic(
             context = context,
             event = "component_install_bundled_mods_completed",
@@ -303,7 +312,8 @@ object ComponentInstaller {
                     RuntimePaths.importedMtsJar(context),
                     RuntimePaths.importedBaseModJar(context),
                     RuntimePaths.importedStsLibJar(context),
-                    RuntimePaths.importedAmethystRuntimeCompatJar(context)
+                    RuntimePaths.importedAmethystRuntimeCompatJar(context),
+                    RuntimePaths.importedRamSaverJar(context)
                 ).map(::buildFileState)
             )
         )

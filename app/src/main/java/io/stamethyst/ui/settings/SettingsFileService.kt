@@ -36,7 +36,6 @@ import io.stamethyst.ui.main.MainFolderStateStore
 import io.stamethyst.ui.main.ModAliasStore
 import io.stamethyst.ui.main.normalizeModExportFileName
 import io.stamethyst.ui.main.resolveAssignedFolderId
-import io.stamethyst.ui.main.resolveModFileNameWithoutJar
 import io.stamethyst.ui.main.resolveModStoragePathCandidates
 import java.io.File
 import java.io.FileInputStream
@@ -1053,6 +1052,7 @@ internal object SettingsFileService {
             uniqueComponents.add(JarImportInspectionService.RESERVED_COMPONENT_STSLIB)
             uniqueComponents.add(JarImportInspectionService.RESERVED_COMPONENT_MTS)
             uniqueComponents.add(JarImportInspectionService.RESERVED_COMPONENT_AMETHYST_RUNTIME_COMPAT)
+            uniqueComponents.add(JarImportInspectionService.RESERVED_COMPONENT_RAM_SAVER)
         }
 
         return buildString {
@@ -1705,16 +1705,13 @@ internal object SettingsFileService {
         duplicateReusePlan: DuplicateModImportReusePlan,
         options: DuplicateModImportReplaceOptions
     ) {
+        val existingAliases = ModAliasStore.loadAliases(host)
+        val alias = duplicateReusePlan.sourceStoragePaths.firstNotNullOfOrNull { sourcePath ->
+            ModAliasStore.resolveAlias(sourcePath, existingAliases).trim().ifEmpty { null }
+        }.orEmpty()
         duplicateReusePlan.sourceStoragePaths.forEach { sourcePath ->
             ModAliasStore.setAlias(host, sourcePath, "")
         }
-        if (!options.renameToPreviousFileName) {
-            return
-        }
-        val alias = duplicateReusePlan.targetFileName
-            ?.let { fileName -> resolveModFileNameWithoutJar(fileName) }
-            ?.trim()
-            .orEmpty()
         if (alias.isNotEmpty()) {
             ModAliasStore.setAlias(host, targetStoragePath, alias)
         }
@@ -2145,6 +2142,10 @@ internal object SettingsFileService {
             ModManager.MOD_ID_AMETHYST_RUNTIME_COMPAT ->
                 JarImportInspectionService.RESERVED_COMPONENT_AMETHYST_RUNTIME_COMPAT
 
+            JarImportInspectionService.RESERVED_COMPONENT_RAM_SAVER.lowercase(Locale.ROOT),
+            "ramsaver.jar",
+            ModManager.MOD_ID_RAM_SAVER -> JarImportInspectionService.RESERVED_COMPONENT_RAM_SAVER
+
             else -> rawComponent.trim()
         }
     }
@@ -2224,6 +2225,11 @@ internal object SettingsFileService {
             "AmethystRuntimeCompat.jar",
             "components/mods/AmethystRuntimeCompat.jar",
             RuntimePaths.importedAmethystRuntimeCompatJar(host)
+        )
+        addAssetIfMissing(
+            "RamSaver.jar",
+            "components/mods/RamSaver.jar",
+            RuntimePaths.importedRamSaverJar(host)
         )
 
         return sources.values.toList()

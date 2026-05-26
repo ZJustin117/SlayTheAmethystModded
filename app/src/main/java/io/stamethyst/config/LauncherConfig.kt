@@ -1,6 +1,5 @@
 package io.stamethyst.config
 
-import android.app.ActivityManager
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
@@ -175,11 +174,6 @@ object LauncherConfig {
     private const val PREF_KEY_EXPECTED_BACK_EXIT_AT_MS = "expected_back_exit_at_ms"
     private const val PREF_KEY_EXPECTED_BACK_EXIT_RESTART_AT_MS = "expected_back_exit_restart_at_ms"
     private const val EXPECTED_BACK_EXIT_VALID_WINDOW_MS = 30_000L
-    private const val GPU_RESOURCE_GUARDIAN_LEGACY_MAX_MEMORY_BYTES =
-        8L * 1024L * 1024L * 1024L
-    private const val GPU_RESOURCE_GUARDIAN_AGGRESSIVE_MAX_MEMORY_BYTES =
-        12L * 1024L * 1024L * 1024L
-
     const val DEFAULT_BACK_IMMEDIATE_EXIT = true
     val DEFAULT_BACK_BEHAVIOR: BackBehavior = BackBehavior.EXIT_TO_LAUNCHER
     const val DEFAULT_MANUAL_DISMISS_BOOT_OVERLAY = false
@@ -266,12 +260,8 @@ object LauncherConfig {
     const val DEFAULT_TEXTURE_PRESSURE_DOWNSCALE_DIVISOR = 2
     const val MIN_TEXTURE_PRESSURE_DOWNSCALE_DIVISOR = 2
     const val MAX_TEXTURE_PRESSURE_DOWNSCALE_DIVISOR = 4
-    val DEFAULT_GPU_RESOURCE_GUARDIAN_MODE: GpuResourceGuardianMode = GpuResourceGuardianMode.SAFE
-    const val DEFAULT_GPU_RESOURCE_GUARDIAN_PRESSURE_DOWNSCALE_ENABLED = true
-    val DEFAULT_LEGACY_GPU_RESOURCE_GUARDIAN_MODE: GpuResourceGuardianMode =
-        GpuResourceGuardianMode.LEGACY
-    val DEFAULT_LOW_MEMORY_GPU_RESOURCE_GUARDIAN_MODE: GpuResourceGuardianMode =
-        GpuResourceGuardianMode.AGGRESSIVE
+    val DEFAULT_GPU_RESOURCE_GUARDIAN_MODE: GpuResourceGuardianMode = GpuResourceGuardianMode.OFF
+    const val DEFAULT_GPU_RESOURCE_GUARDIAN_PRESSURE_DOWNSCALE_ENABLED = false
     const val DEFAULT_HINA_CHARACTER_RENDER_COMPAT_ENABLED = true
     const val DEFAULT_FBO_MANAGER_COMPAT_ENABLED = false
     const val DEFAULT_FBO_IDLE_RECLAIM_COMPAT_ENABLED = false
@@ -1033,29 +1023,14 @@ object LauncherConfig {
         }
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun resolveDefaultGpuResourceGuardianMode(context: Context): GpuResourceGuardianMode {
-        return resolveDefaultGpuResourceGuardianMode(readTotalMemoryBytes(context))
+        return DEFAULT_GPU_RESOURCE_GUARDIAN_MODE
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun resolveDefaultGpuResourceGuardianMode(totalMemoryBytes: Long): GpuResourceGuardianMode {
-        return when {
-            totalMemoryBytes <= 0L -> DEFAULT_GPU_RESOURCE_GUARDIAN_MODE
-            totalMemoryBytes <= GPU_RESOURCE_GUARDIAN_LEGACY_MAX_MEMORY_BYTES ->
-                DEFAULT_LEGACY_GPU_RESOURCE_GUARDIAN_MODE
-            totalMemoryBytes <= GPU_RESOURCE_GUARDIAN_AGGRESSIVE_MAX_MEMORY_BYTES ->
-                DEFAULT_LOW_MEMORY_GPU_RESOURCE_GUARDIAN_MODE
-            else -> DEFAULT_GPU_RESOURCE_GUARDIAN_MODE
-        }
-    }
-
-    private fun readTotalMemoryBytes(context: Context): Long {
-        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
-            ?: return -1L
-        val memoryInfo = ActivityManager.MemoryInfo()
-        return runCatching {
-            activityManager.getMemoryInfo(memoryInfo)
-            memoryInfo.totalMem
-        }.getOrDefault(-1L)
+        return DEFAULT_GPU_RESOURCE_GUARDIAN_MODE
     }
 
     fun isForceLinearMipmapFilterEnabled(context: Context): Boolean {

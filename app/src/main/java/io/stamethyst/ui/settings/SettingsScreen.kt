@@ -233,12 +233,6 @@ fun LauncherSettingsGameScreen(
         onVirtualResolutionModeChanged = { mode ->
             viewModel.onVirtualResolutionModeChanged(activity, mode)
         },
-        onGpuResourceGuardianModeChanged = { mode ->
-            viewModel.onGpuResourceGuardianModeChanged(activity, mode)
-        },
-        onGpuResourceGuardianPressureDownscaleChanged = { enabled ->
-            viewModel.onGpuResourceGuardianPressureDownscaleChanged(activity, enabled)
-        },
         onDisplayCutoutAvoidanceChanged = { enabled ->
             viewModel.onDisplayCutoutAvoidanceChanged(activity, enabled)
         },
@@ -455,6 +449,12 @@ fun LauncherDeveloperSettingsScreen(
         onOpenMobileGluesSettings = { navigator.push(Route.MobileGluesSettings) },
         onRenderSurfaceBackendChanged = { backend ->
             viewModel.onRenderSurfaceBackendChanged(activity, backend)
+        },
+        onGpuResourceGuardianModeChanged = { mode ->
+            viewModel.onGpuResourceGuardianModeChanged(activity, mode)
+        },
+        onGpuResourceGuardianPressureDownscaleChanged = { enabled ->
+            viewModel.onGpuResourceGuardianPressureDownscaleChanged(activity, enabled)
         },
         onJvmHeapMaxSelected = { value -> viewModel.onJvmHeapMaxSelected(activity, value) },
         onJvmCompressedPointersChanged = { enabled ->
@@ -722,8 +722,6 @@ private fun LauncherSettingsGameScreenContent(
     onRenderScaleSelected: (Float) -> Unit = {},
     onTargetFpsSelected: (Int) -> Unit = {},
     onVirtualResolutionModeChanged: (VirtualResolutionMode) -> Unit = {},
-    onGpuResourceGuardianModeChanged: (GpuResourceGuardianMode) -> Unit = {},
-    onGpuResourceGuardianPressureDownscaleChanged: (Boolean) -> Unit = {},
     onDisplayCutoutAvoidanceChanged: (Boolean) -> Unit = {},
     onScreenBottomCropChanged: (Boolean) -> Unit = {},
     onGameplayFontScaleChanged: (Float) -> Unit = {},
@@ -755,9 +753,6 @@ private fun LauncherSettingsGameScreenContent(
                     onRenderScaleSelected = onRenderScaleSelected,
                     onTargetFpsSelected = onTargetFpsSelected,
                     onVirtualResolutionModeChanged = onVirtualResolutionModeChanged,
-                    onGpuResourceGuardianModeChanged = onGpuResourceGuardianModeChanged,
-                    onGpuResourceGuardianPressureDownscaleChanged =
-                        onGpuResourceGuardianPressureDownscaleChanged,
                     onDisplayCutoutAvoidanceChanged = onDisplayCutoutAvoidanceChanged,
                     onScreenBottomCropChanged = onScreenBottomCropChanged,
                     onGameplayFontScaleChanged = onGameplayFontScaleChanged,
@@ -2438,6 +2433,8 @@ private fun LauncherDeveloperSettingsScreenContent(
     onManualRendererBackendChanged: (RendererBackend) -> Unit = {},
     onOpenMobileGluesSettings: () -> Unit = {},
     onRenderSurfaceBackendChanged: (RenderSurfaceBackend) -> Unit = {},
+    onGpuResourceGuardianModeChanged: (GpuResourceGuardianMode) -> Unit = {},
+    onGpuResourceGuardianPressureDownscaleChanged: (Boolean) -> Unit = {},
     onJvmHeapMaxSelected: (Int) -> Unit = {},
     onJvmCompressedPointersChanged: (Boolean) -> Unit = {},
     onJvmStringDeduplicationChanged: (Boolean) -> Unit = {},
@@ -2491,6 +2488,9 @@ private fun LauncherDeveloperSettingsScreenContent(
                     onManualRendererBackendChanged = onManualRendererBackendChanged,
                     onOpenMobileGluesSettings = onOpenMobileGluesSettings,
                     onRenderSurfaceBackendChanged = onRenderSurfaceBackendChanged,
+                    onGpuResourceGuardianModeChanged = onGpuResourceGuardianModeChanged,
+                    onGpuResourceGuardianPressureDownscaleChanged =
+                        onGpuResourceGuardianPressureDownscaleChanged,
                     onJvmHeapMaxSelected = onJvmHeapMaxSelected,
                     onJvmCompressedPointersChanged = onJvmCompressedPointersChanged,
                     onJvmStringDeduplicationChanged = onJvmStringDeduplicationChanged,
@@ -2708,8 +2708,6 @@ internal fun SettingsPerformanceSection(
     onRenderScaleSelected: (Float) -> Unit,
     onTargetFpsSelected: (Int) -> Unit,
     onVirtualResolutionModeChanged: (VirtualResolutionMode) -> Unit,
-    onGpuResourceGuardianModeChanged: (GpuResourceGuardianMode) -> Unit,
-    onGpuResourceGuardianPressureDownscaleChanged: (Boolean) -> Unit,
     onDisplayCutoutAvoidanceChanged: (Boolean) -> Unit,
     onScreenBottomCropChanged: (Boolean) -> Unit,
     onGameplayFontScaleChanged: (Float) -> Unit,
@@ -2718,7 +2716,6 @@ internal fun SettingsPerformanceSection(
     val view = LocalView.current
     var showTargetFpsDialog by rememberSaveable { mutableStateOf(false) }
     var showVirtualResolutionModeDialog by rememberSaveable { mutableStateOf(false) }
-    var showGpuResourceGuardianModeDialog by rememberSaveable { mutableStateOf(false) }
     var renderScaleSliderValue by remember(uiState.selectedRenderScale) {
         mutableFloatStateOf(uiState.selectedRenderScale)
     }
@@ -2781,34 +2778,6 @@ internal fun SettingsPerformanceSection(
     Text(
         text = virtualResolutionModeDescription(uiState.virtualResolutionMode),
         style = MaterialTheme.typography.bodySmall
-    )
-
-    SettingsActionListItem(
-        title = stringResource(R.string.settings_gpu_resource_guardian_title),
-        supportingText = gpuResourceGuardianModeDisplayName(uiState.gpuResourceGuardianMode),
-        enabled = !uiState.busy,
-        onClick = { showGpuResourceGuardianModeDialog = true }
-    )
-    Text(
-        text = stringResource(R.string.settings_gpu_resource_guardian_desc),
-        style = MaterialTheme.typography.bodySmall
-    )
-
-    SwitchSettingRow(
-        checked = uiState.gpuResourceGuardianPressureDownscaleEnabled,
-        enabled = !uiState.busy &&
-            uiState.gpuResourceGuardianMode != GpuResourceGuardianMode.OFF &&
-            uiState.gpuResourceGuardianMode != GpuResourceGuardianMode.LEGACY,
-        enabledText = stringResource(
-            R.string.settings_gpu_resource_guardian_pressure_downscale_enabled
-        ),
-        disabledText = stringResource(
-            R.string.settings_gpu_resource_guardian_pressure_downscale_disabled
-        ),
-        description = stringResource(
-            R.string.settings_gpu_resource_guardian_pressure_downscale_desc
-        ),
-        onCheckedChange = onGpuResourceGuardianPressureDownscaleChanged
     )
 
     SwitchSettingRow(
@@ -2932,37 +2901,6 @@ internal fun SettingsPerformanceSection(
         )
     }
 
-    if (showGpuResourceGuardianModeDialog) {
-        AlertDialog(
-            onDismissRequest = { showGpuResourceGuardianModeDialog = false },
-            title = { Text(stringResource(R.string.settings_gpu_resource_guardian_title)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    GpuResourceGuardianMode.entries.forEach { mode ->
-                        SettingsRadioOptionRow(
-                            selected = uiState.gpuResourceGuardianMode == mode,
-                            enabled = !uiState.busy,
-                            text = gpuResourceGuardianModeDisplayName(mode),
-                            onSelect = {
-                                onGpuResourceGuardianModeChanged(mode)
-                                showGpuResourceGuardianModeDialog = false
-                            }
-                        )
-                        Text(
-                            text = gpuResourceGuardianModeDescription(mode),
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(start = 48.dp)
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                HapticTextButton(onClick = { showGpuResourceGuardianModeDialog = false }) {
-                    Text(stringResource(R.string.main_folder_dialog_confirm))
-                }
-            }
-        )
-    }
 }
 
 @Composable
@@ -3040,6 +2978,7 @@ private fun SettingsDeveloperRuntimeSection(
             }
         )
     }
+
 }
 
 @Composable
@@ -3049,12 +2988,15 @@ private fun SettingsAdvancedRenderSection(
     onManualRendererBackendChanged: (RendererBackend) -> Unit,
     onOpenMobileGluesSettings: () -> Unit,
     onRenderSurfaceBackendChanged: (RenderSurfaceBackend) -> Unit,
+    onGpuResourceGuardianModeChanged: (GpuResourceGuardianMode) -> Unit,
+    onGpuResourceGuardianPressureDownscaleChanged: (Boolean) -> Unit,
     onJvmHeapMaxSelected: (Int) -> Unit,
     onJvmCompressedPointersChanged: (Boolean) -> Unit,
     onJvmStringDeduplicationChanged: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
     val view = LocalView.current
+    var showGpuResourceGuardianModeDialog by rememberSaveable { mutableStateOf(false) }
     var heapSliderValue by remember(uiState.selectedJvmHeapMaxMb) {
         mutableFloatStateOf(uiState.selectedJvmHeapMaxMb.toFloat())
     }
@@ -3170,6 +3112,34 @@ private fun SettingsAdvancedRenderSection(
         onOptionSelected = onRenderSurfaceBackendChanged
     )
 
+    SettingsActionListItem(
+        title = stringResource(R.string.settings_gpu_resource_guardian_title),
+        supportingText = gpuResourceGuardianModeDisplayName(uiState.gpuResourceGuardianMode),
+        enabled = !uiState.busy,
+        onClick = { showGpuResourceGuardianModeDialog = true }
+    )
+    Text(
+        text = stringResource(R.string.settings_gpu_resource_guardian_desc),
+        style = MaterialTheme.typography.bodySmall
+    )
+
+    SwitchSettingRow(
+        checked = uiState.gpuResourceGuardianPressureDownscaleEnabled,
+        enabled = !uiState.busy &&
+            uiState.gpuResourceGuardianMode != GpuResourceGuardianMode.OFF &&
+            uiState.gpuResourceGuardianMode != GpuResourceGuardianMode.LEGACY,
+        enabledText = stringResource(
+            R.string.settings_gpu_resource_guardian_pressure_downscale_enabled
+        ),
+        disabledText = stringResource(
+            R.string.settings_gpu_resource_guardian_pressure_downscale_disabled
+        ),
+        description = stringResource(
+            R.string.settings_gpu_resource_guardian_pressure_downscale_desc
+        ),
+        onCheckedChange = onGpuResourceGuardianPressureDownscaleChanged
+    )
+
     Text(
         text = stringResource(R.string.settings_jvm_heap_title),
         style = MaterialTheme.typography.bodyMedium
@@ -3221,6 +3191,38 @@ private fun SettingsAdvancedRenderSection(
         description = stringResource(R.string.settings_jvm_string_dedup_desc),
         onCheckedChange = onJvmStringDeduplicationChanged
     )
+
+    if (showGpuResourceGuardianModeDialog) {
+        AlertDialog(
+            onDismissRequest = { showGpuResourceGuardianModeDialog = false },
+            title = { Text(stringResource(R.string.settings_gpu_resource_guardian_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GpuResourceGuardianMode.entries.forEach { mode ->
+                        SettingsRadioOptionRow(
+                            selected = uiState.gpuResourceGuardianMode == mode,
+                            enabled = !uiState.busy,
+                            text = gpuResourceGuardianModeDisplayName(mode),
+                            onSelect = {
+                                onGpuResourceGuardianModeChanged(mode)
+                                showGpuResourceGuardianModeDialog = false
+                            }
+                        )
+                        Text(
+                            text = gpuResourceGuardianModeDescription(mode),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(start = 48.dp)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                HapticTextButton(onClick = { showGpuResourceGuardianModeDialog = false }) {
+                    Text(stringResource(R.string.main_folder_dialog_confirm))
+                }
+            }
+        )
+    }
 }
 
 private fun renderScaleToStep(value: Float): Int {

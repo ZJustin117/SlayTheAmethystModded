@@ -928,6 +928,12 @@ class SettingsScreenViewModel : ViewModel() {
                     importedJar = RuntimePaths.importedAmethystRuntimeCompatJar(host),
                     bundledAssetPath = "components/mods/AmethystRuntimeCompat.jar"
                 )
+                val coreRamSaverStatus = resolveCoreDependencyStatus(
+                    host = host,
+                    label = "Ram Saver",
+                    importedJar = RuntimePaths.importedRamSaverJar(host),
+                    bundledAssetPath = "components/mods/RamSaver.jar"
+                )
                 val deviceRuntimeStatus = collectDeviceRuntimeStatus(host)
                 val steamCloudAuthSnapshot = runCatching {
                     SteamCloudAuthStore.readSnapshot(host)
@@ -992,6 +998,7 @@ class SettingsScreenViewModel : ViewModel() {
                     coreBaseModStatus = coreBaseModStatus,
                     coreStsLibStatus = coreStsLibStatus,
                     coreRuntimeCompatStatus = coreRuntimeCompatStatus,
+                    coreRamSaverStatus = coreRamSaverStatus,
                     deviceRuntimeStatus = deviceRuntimeStatus
                 )
                 val steamCloudStatusText = buildSteamCloudStatusText(
@@ -3477,6 +3484,7 @@ class SettingsScreenViewModel : ViewModel() {
         coreBaseModStatus: CoreDependencyStatus,
         coreStsLibStatus: CoreDependencyStatus,
         coreRuntimeCompatStatus: CoreDependencyStatus,
+        coreRamSaverStatus: CoreDependencyStatus,
         deviceRuntimeStatus: DeviceRuntimeStatus
     ): String {
         val rendering = snapshot.rendering
@@ -3496,6 +3504,7 @@ class SettingsScreenViewModel : ViewModel() {
         lines += formatCoreDependencyLine(host, coreBaseModStatus)
         lines += formatCoreDependencyLine(host, coreStsLibStatus)
         lines += formatCoreDependencyLine(host, coreRuntimeCompatStatus)
+        lines += formatCoreDependencyLine(host, coreRamSaverStatus)
         lines += host.getString(
             R.string.settings_status_optional_mods,
             optionalEnabled,

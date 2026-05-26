@@ -28,6 +28,7 @@ internal object JarImportInspectionService {
     internal const val RESERVED_COMPONENT_STSLIB = "StSLib"
     internal const val RESERVED_COMPONENT_MTS = "ModTheSpire"
     internal const val RESERVED_COMPONENT_AMETHYST_RUNTIME_COMPAT = "Amethyst Runtime Compat"
+    internal const val RESERVED_COMPONENT_RAM_SAVER = "Ram Saver"
     private const val MTS_LOADER_ENTRY = "com/evacipated/cardcrawl/modthespire/Loader.class"
 
     @Throws(IOException::class)
@@ -93,6 +94,7 @@ internal object JarImportInspectionService {
             ModManager.MOD_ID_STSLIB -> RESERVED_COMPONENT_STSLIB
             "modthespire" -> RESERVED_COMPONENT_MTS
             ModManager.MOD_ID_AMETHYST_RUNTIME_COMPAT -> RESERVED_COMPONENT_AMETHYST_RUNTIME_COMPAT
+            ModManager.MOD_ID_RAM_SAVER -> RESERVED_COMPONENT_RAM_SAVER
             else -> null
         }
     }

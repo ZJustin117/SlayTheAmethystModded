@@ -9,6 +9,7 @@ import android.util.Log
 import io.stamethyst.backend.crash.ProcessExitInfoCapture
 import io.stamethyst.backend.crash.ProcessExitSummary
 import io.stamethyst.backend.launch.JvmRuntimeMemorySnapshot
+import io.stamethyst.config.LauncherConfig
 import io.stamethyst.config.RuntimePaths
 import java.io.File
 import java.io.FileInputStream
@@ -36,7 +37,7 @@ internal object MemoryDiagnosticsLogger {
 
     @JvmStatic
     fun install(context: Context) {
-        if (!shouldLogCurrentProcess(context)) {
+        if (!shouldRecordDiagnostics(context)) {
             return
         }
         synchronized(installLock) {
@@ -68,7 +69,7 @@ internal object MemoryDiagnosticsLogger {
         extras: Map<String, Any?> = emptyMap(),
         includeMemorySnapshot: Boolean = true
     ) {
-        if (!shouldLogCurrentProcess(context)) {
+        if (!shouldRecordDiagnostics(context)) {
             return
         }
         runCatching {
@@ -346,6 +347,10 @@ internal object MemoryDiagnosticsLogger {
         return processName == packageName ||
             processName == "$packageName:game" ||
             processName == "$packageName:prep"
+    }
+
+    private fun shouldRecordDiagnostics(context: Context): Boolean {
+        return shouldLogCurrentProcess(context) && LauncherConfig.isGpuResourceDiagEnabled(context)
     }
 
     private fun resolveProcessName(context: Context): String {

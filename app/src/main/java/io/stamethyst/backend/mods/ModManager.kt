@@ -30,7 +30,8 @@ object ModManager {
         listOf(
             MOD_ID_BASEMOD,
             MOD_ID_STSLIB,
-            MOD_ID_AMETHYST_RUNTIME_COMPAT
+            MOD_ID_AMETHYST_RUNTIME_COMPAT,
+            MOD_ID_RAM_SAVER
         )
     )
 
@@ -150,6 +151,9 @@ object ModManager {
         if (MOD_ID_AMETHYST_RUNTIME_COMPAT == normalized) {
             return hasBundledAsset(context, "components/mods/AmethystRuntimeCompat.jar")
         }
+        if (MOD_ID_RAM_SAVER == normalized) {
+            return hasBundledAsset(context, "components/mods/RamSaver.jar")
+        }
         return false
     }
 
@@ -164,6 +168,9 @@ object ModManager {
         }
         if (MOD_ID_AMETHYST_RUNTIME_COMPAT == normalized) {
             return RuntimePaths.importedAmethystRuntimeCompatJar(context)
+        }
+        if (MOD_ID_RAM_SAVER == normalized) {
+            return RuntimePaths.importedRamSaverJar(context)
         }
         OptionalModStorageCoordinator.ensureOptionalModLibraryReady(context)
         return File(RuntimePaths.optionalModsLibraryDir(context), "${sanitizeFileName(normalized)}.jar")
@@ -481,6 +488,14 @@ object ModManager {
                 RuntimePaths.importedAmethystRuntimeCompatJar(context)
             )
         )
+        result.add(
+            buildRequiredEntry(
+                context,
+                MOD_ID_RAM_SAVER,
+                "Ram Saver",
+                RuntimePaths.importedRamSaverJar(context)
+            )
+        )
 
         val optionalModFiles = findOptionalModFiles(context)
         val rawSelection = readEnabledOptionalModKeysSafely(context)
@@ -550,6 +565,11 @@ object ModManager {
 
     @JvmStatic
     fun isRamSaverEnabled(context: Context): Boolean {
+        if (RuntimePaths.importedRamSaverJar(context).isFile ||
+            hasBundledRequiredModAsset(context, MOD_ID_RAM_SAVER)
+        ) {
+            return true
+        }
         val optionalModFiles = findOptionalModFiles(context)
         if (optionalModFiles.isEmpty()) {
             return false
@@ -581,6 +601,11 @@ object ModManager {
             MOD_ID_AMETHYST_RUNTIME_COMPAT,
             "AmethystRuntimeCompat.jar"
         )
+        val ramSaverId = resolveRequiredLaunchModId(
+            RuntimePaths.importedRamSaverJar(context),
+            MOD_ID_RAM_SAVER,
+            "RamSaver.jar"
+        )
 
         val optionalModFiles = findOptionalModFiles(context)
         val rawSelection = readEnabledOptionalModKeys(context)
@@ -594,10 +619,14 @@ object ModManager {
         launchModIds.add(baseModId)
         launchModIds.add(stsLibId)
         launchModIds.add(runtimeCompatId)
+        launchModIds.add(ramSaverId)
 
         val enabledOptionalEntries = ArrayList<OptionalModLaunchEntry>()
         optionalModFiles.forEachIndexed { index, entry ->
             if (!enabledSelection.contains(entry.storageKey)) {
+                return@forEachIndexed
+            }
+            if (isRamSaverOptionalMod(entry)) {
                 return@forEachIndexed
             }
             val launchError = entry.launchValidationError.trim()
@@ -744,7 +773,8 @@ object ModManager {
         val normalized = fileName.lowercase(Locale.ROOT)
         return "basemod.jar" == normalized ||
             "stslib.jar" == normalized ||
-            "amethystruntimecompat.jar" == normalized
+            "amethystruntimecompat.jar" == normalized ||
+            "ramsaver.jar" == normalized
     }
 
     private fun listJarFilesInOptionalModLibrary(context: Context): List<File> {

@@ -1091,7 +1091,7 @@ private fun WorkshopRatingStar(
         Icon(
             painter = painterResource(R.drawable.ic_workshop_rating_star),
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.surfaceVariant,
+            tint = MaterialTheme.colorScheme.outlineVariant,
             modifier = Modifier.size(iconSize),
         )
         Box(
@@ -1101,12 +1101,18 @@ private fun WorkshopRatingStar(
                 .clipToBounds(),
         ) {
             Icon(
-                painter = painterResource(R.drawable.ic_workshop_rating_star),
+                painter = painterResource(R.drawable.ic_workshop_rating_star_fill),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(iconSize),
             )
         }
+        Icon(
+            painter = painterResource(R.drawable.ic_workshop_rating_star),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(iconSize),
+        )
     }
 }
 

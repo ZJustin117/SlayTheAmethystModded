@@ -12,6 +12,7 @@ import java.util.zip.ZipFile
 
 object ModJarSupport {
     private const val EXPECTED_AMETHYST_RUNTIME_COMPAT_VERSION = "1.0.28"
+    private const val EXPECTED_RAM_SAVER_VERSION = "0.3.1-amethyst.2"
 
     class ModManifestInfo(
         @JvmField val modId: String,
@@ -93,6 +94,33 @@ object ModJarSupport {
             throw IOException(
                 "Invalid AmethystRuntimeCompat.jar: version is $version, " +
                     "expected $EXPECTED_AMETHYST_RUNTIME_COMPAT_VERSION"
+            )
+        }
+    }
+
+    @JvmStatic
+    @Throws(IOException::class)
+    fun validateRamSaverJar(jarFile: File?) {
+        if (jarFile == null || !jarFile.isFile) {
+            throw IOException("RamSaver.jar not found")
+        }
+        ZipFile(jarFile).use { zipFile ->
+            if (zipFile.getEntry("optispire/RamSaver.class") == null) {
+                throw IOException("Invalid RamSaver.jar: missing Ram Saver entry class")
+            }
+            if (zipFile.getEntry("com/badlogic/gdx/graphics/Texture.class") == null) {
+                throw IOException("Invalid RamSaver.jar: missing texture replacement class")
+            }
+        }
+        val modId = ModJarManifestParser.normalizeModId(resolveModId(jarFile))
+        if (ModManager.MOD_ID_RAM_SAVER != modId) {
+            throw IOException("Invalid RamSaver.jar: modid is $modId")
+        }
+        val version = readModManifest(jarFile).version.trim()
+        if (version != EXPECTED_RAM_SAVER_VERSION) {
+            throw IOException(
+                "Invalid RamSaver.jar: version is $version, " +
+                    "expected $EXPECTED_RAM_SAVER_VERSION"
             )
         }
     }

@@ -147,6 +147,7 @@ class MainScreenViewModel : ViewModel() {
         val optionalMods: List<ModItemUi> = emptyList(),
         val storageIssue: StorageIssueUi? = null,
         val crashRecovery: CrashRecoveryState? = null,
+        val expectedBackExitNoticeVisible: Boolean = false,
         val controlsEnabled: Boolean = true,
         val gameProcessRunning: Boolean = false,
         val launchInFlight: Boolean = false,
@@ -265,6 +266,7 @@ class MainScreenViewModel : ViewModel() {
             hasBaseMod = dependencyAvailability.hasBaseMod,
             hasStsLib = dependencyAvailability.hasStsLib,
             hasRuntimeCompat = dependencyAvailability.hasRuntimeCompat,
+            hasRamSaver = dependencyAvailability.hasRamSaver,
             storageIssue = storageIssue
         )
     }
@@ -1084,6 +1086,13 @@ class MainScreenViewModel : ViewModel() {
         uiState = uiState.copy(crashRecovery = null)
     }
 
+    fun dismissExpectedBackExitNotice() {
+        if (!uiState.expectedBackExitNoticeVisible) {
+            return
+        }
+        uiState = uiState.copy(expectedBackExitNoticeVisible = false)
+    }
+
     fun retryLaunchAfterCrash(host: Activity) {
         dismissCrashRecovery()
         onLaunch(host)
@@ -1238,7 +1247,8 @@ class MainScreenViewModel : ViewModel() {
         val hasMts: Boolean,
         val hasBaseMod: Boolean,
         val hasStsLib: Boolean,
-        val hasRuntimeCompat: Boolean
+        val hasRuntimeCompat: Boolean,
+        val hasRamSaver: Boolean
     )
 
     private fun resolveDependencyAvailability(host: Activity): DependencyAvailabilitySnapshot {
@@ -1255,7 +1265,8 @@ class MainScreenViewModel : ViewModel() {
                 hasBundledAsset(host, "components/mods/ModTheSpire.jar"),
             hasBaseMod = isRequiredModAvailable(host, ModManager.MOD_ID_BASEMOD),
             hasStsLib = isRequiredModAvailable(host, ModManager.MOD_ID_STSLIB),
-            hasRuntimeCompat = isRequiredModAvailable(host, ModManager.MOD_ID_AMETHYST_RUNTIME_COMPAT)
+            hasRuntimeCompat = isRequiredModAvailable(host, ModManager.MOD_ID_AMETHYST_RUNTIME_COMPAT),
+            hasRamSaver = isRequiredModAvailable(host, ModManager.MOD_ID_RAM_SAVER)
         )
     }
 
@@ -1378,7 +1389,7 @@ class MainScreenViewModel : ViewModel() {
                 suppressFutureProcessExitCrashFallback(host, launchStartedAtMs)
                 clearLaunchInFlightState()
                 dismissCrashRecovery()
-                showExpectedBackExitDialog(host)
+                showExpectedBackExitNotice()
                 true
             }
 
@@ -1475,7 +1486,8 @@ class MainScreenViewModel : ViewModel() {
         hasMts: Boolean,
         hasBaseMod: Boolean,
         hasStsLib: Boolean,
-        hasRuntimeCompat: Boolean
+        hasRuntimeCompat: Boolean,
+        hasRamSaver: Boolean
     ): List<ModItemUi> {
         val requiredModsById = requiredMods.associateBy { normalizeModId(it.modId) }
         val baseMod = requiredModsById[ModManager.MOD_ID_BASEMOD]
@@ -1526,6 +1538,22 @@ class MainScreenViewModel : ViewModel() {
                 description = host.getString(R.string.main_dependency_runtime_compat_description),
                 installed = hasRuntimeCompat
             )
+        val ramSaver = requiredModsById[ModManager.MOD_ID_RAM_SAVER]
+            ?.copy(enabled = hasRamSaver)
+            ?: buildSyntheticDependencyMod(
+                storageKey = "__dependency__/RamSaver.jar",
+                modId = ModManager.MOD_ID_RAM_SAVER,
+                displayName = "RamSaver.jar",
+                version = host.getString(
+                    if (hasRamSaver) {
+                        R.string.settings_status_available
+                    } else {
+                        R.string.settings_status_missing
+                    }
+                ),
+                description = host.getString(R.string.main_dependency_ram_saver_description),
+                installed = hasRamSaver
+            )
         return listOf(
             buildSyntheticDependencyMod(
                 storageKey = "__dependency__/desktop-1.0.jar",
@@ -1557,7 +1585,8 @@ class MainScreenViewModel : ViewModel() {
             ),
             baseMod,
             stsLib,
-            runtimeCompat
+            runtimeCompat,
+            ramSaver
         )
     }
 
@@ -2037,7 +2066,7 @@ class MainScreenViewModel : ViewModel() {
         if (!CompatibilitySettings.isTextureResidencyManagerCompatEnabled(host)) {
             return false
         }
-        return modManagementController.currentOptionalMods().any(::isEnabledRamSaverMod)
+        return ModManager.isRamSaverEnabled(host)
     }
 
     private fun showRamSaverResidencyLaunchDialog(
@@ -2517,12 +2546,8 @@ class MainScreenViewModel : ViewModel() {
             lower.contains("gc overhead limit exceeded")
     }
 
-    private fun showExpectedBackExitDialog(host: Activity) {
-        AlertDialog.Builder(host)
-            .setTitle(R.string.main_expected_back_exit_title)
-            .setMessage(host.getString(R.string.main_expected_back_exit_message))
-            .setPositiveButton(android.R.string.ok, null)
-            .show()
+    private fun showExpectedBackExitNotice() {
+        uiState = uiState.copy(expectedBackExitNoticeVisible = true)
     }
 
     private fun resolveModDisplayName(mod: ModItemUi): String {
@@ -2554,6 +2579,7 @@ class MainScreenViewModel : ViewModel() {
             hasBaseMod = dependencyAvailability.hasBaseMod,
             hasStsLib = dependencyAvailability.hasStsLib,
             hasRuntimeCompat = dependencyAvailability.hasRuntimeCompat,
+            hasRamSaver = dependencyAvailability.hasRamSaver,
             storageIssue = detectStorageIssue(host)
         )
     }
@@ -2565,6 +2591,7 @@ class MainScreenViewModel : ViewModel() {
         hasBaseMod: Boolean,
         hasStsLib: Boolean,
         hasRuntimeCompat: Boolean,
+        hasRamSaver: Boolean,
         storageIssue: StorageIssueUi?
     ) {
         val snapshot = modManagementController.snapshot()
@@ -2587,7 +2614,8 @@ class MainScreenViewModel : ViewModel() {
                 hasMts = hasMts,
                 hasBaseMod = hasBaseMod,
                 hasStsLib = hasStsLib,
-                hasRuntimeCompat = hasRuntimeCompat
+                hasRuntimeCompat = hasRuntimeCompat,
+                hasRamSaver = hasRamSaver
             ),
             optionalMods = snapshot.optionalMods,
             storageIssue = storageIssue,
@@ -2691,6 +2719,9 @@ class MainScreenViewModel : ViewModel() {
             ModManager.MOD_ID_AMETHYST_RUNTIME_COMPAT ->
                 RuntimePaths.importedAmethystRuntimeCompatJar(host).exists() ||
                     hasBundledAsset(host, "components/mods/AmethystRuntimeCompat.jar")
+
+            ModManager.MOD_ID_RAM_SAVER ->
+                RuntimePaths.importedRamSaverJar(host).exists() || hasBundledAsset(host, "components/mods/RamSaver.jar")
 
             else -> true
         }

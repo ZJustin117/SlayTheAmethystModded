@@ -6,7 +6,6 @@ import androidx.annotation.StringRes
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -15,15 +14,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -41,6 +39,7 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.stamethyst.config.LauncherConfig
 import io.stamethyst.config.RuntimePaths
@@ -664,93 +663,65 @@ private fun BootOverlayPanel(
             .padding(24.dp)
     ) {
         val contentBottomPadding = if (manualDismissBootOverlay) 72.dp else 0.dp
-        Surface(
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.Center)
+                .fillMaxSize()
                 .padding(bottom = contentBottomPadding),
-            shape = RoundedCornerShape(28.dp),
-            color = colorScheme.surfaceContainerHigh.copy(alpha = 0.94f),
-            contentColor = colorScheme.onSurface,
-            tonalElevation = 6.dp,
-            shadowElevation = 18.dp,
-            border = BorderStroke(
-                width = 1.dp,
-                color = colorScheme.outlineVariant.copy(alpha = 0.48f)
-            )
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Column(
+            Spacer(modifier = Modifier.weight(0.28f))
+            Text(
+                text = stringResource(R.string.boot_overlay_title_starting),
+                color = colorScheme.onSurface,
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+            LinearProgressIndicator(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(22.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .clip(RoundedCornerShape(999.dp)),
+                progress = { animatedProgress },
+                color = colorScheme.primary,
+                trackColor = colorScheme.primaryContainer.copy(alpha = 0.42f)
+            )
+            Text(
+                text = uiState.statusText,
+                color = colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+            val logScrollState = rememberScrollState()
+            LaunchedEffect(uiState.jvmLogText) {
+                val target = logScrollState.maxValue
+                if (target != logScrollState.value) {
+                    logScrollState.animateScrollTo(
+                        value = target,
+                        animationSpec = tween(
+                            durationMillis = 240,
+                            easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
+                        )
+                    )
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(top = 6.dp)
             ) {
                 Text(
-                    text = stringResource(R.string.boot_overlay_title_loading_mods),
-                    color = colorScheme.onSurface,
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold
-                )
-                LinearProgressIndicator(
-                    progress = { animatedProgress },
+                    text = uiState.jvmLogText,
+                    color = colorScheme.onSurfaceVariant.copy(alpha = 0.88f),
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(999.dp)),
-                    color = colorScheme.primary,
-                    trackColor = colorScheme.primaryContainer.copy(alpha = 0.42f)
+                        .verticalScroll(logScrollState)
                 )
-                Text(
-                    text = uiState.statusText,
-                    color = colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Text(
-                    text = stringResource(R.string.boot_overlay_title_jvm_logs),
-                    color = colorScheme.onSurface,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                val logScrollState = rememberScrollState()
-                LaunchedEffect(uiState.jvmLogText) {
-                    val target = logScrollState.maxValue
-                    if (target != logScrollState.value) {
-                        logScrollState.animateScrollTo(
-                            value = target,
-                            animationSpec = tween(
-                                durationMillis = 240,
-                                easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
-                            )
-                        )
-                    }
-                }
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 120.dp, max = 220.dp),
-                    shape = RoundedCornerShape(18.dp),
-                    color = colorScheme.surfaceContainerHighest.copy(alpha = 0.72f),
-                    border = BorderStroke(
-                        width = 1.dp,
-                        color = colorScheme.outlineVariant.copy(alpha = 0.42f)
-                    )
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .verticalScroll(logScrollState)
-                            .padding(12.dp)
-                    ) {
-                        Text(
-                            text = uiState.jvmLogText,
-                            color = colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                }
             }
         }
         if (manualDismissBootOverlay) {

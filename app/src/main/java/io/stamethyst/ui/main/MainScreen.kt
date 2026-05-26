@@ -1198,6 +1198,19 @@ internal fun LauncherMainRoute(
         )
     }
 
+    if (uiState.expectedBackExitNoticeVisible) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = viewModel::dismissExpectedBackExitNotice,
+            title = { Text(text = stringResource(R.string.main_expected_back_exit_title)) },
+            text = { Text(text = stringResource(R.string.main_expected_back_exit_message)) },
+            confirmButton = {
+                TextButton(onClick = viewModel::dismissExpectedBackExitNotice) {
+                    Text(text = stringResource(R.string.common_action_confirm))
+                }
+            }
+        )
+    }
+
     content(
         modifier,
         uiState,
@@ -1516,14 +1529,7 @@ private fun LauncherMainScreenContent(
                             onUpdateNoticeClick = onUpdateNoticeClick,
                             onEnabledModsClick = { showEnabledModsDialog = true },
                             onSteamCloudClick = {
-                                if (steamCloudIndicator.visible) {
-                                    if (steamCloudIndicator.state ==
-                                        MainScreenViewModel.SteamCloudIndicatorState.HIDDEN
-                                    ) {
-                                        requestSteamCloudNetworkAction(SteamCloudNetworkPromptAction.REFRESH)
-                                    }
-                                    showSteamCloudBottomSheet = true
-                                }
+                                requestSteamCloudNetworkAction(SteamCloudNetworkPromptAction.REFRESH)
                             },
                             onLaunch = {
                                 if (actions.onLaunch() == LaunchRequestAction.OPEN_STEAM_CLOUD_SHEET) {
