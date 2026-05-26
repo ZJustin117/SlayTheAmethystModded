@@ -9,6 +9,7 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -25,7 +26,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -69,8 +69,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
@@ -494,8 +498,8 @@ private fun WorkshopHeaderPinnedContent(
         modifier = Modifier
             .fillMaxWidth()
             .statusBarsPadding()
-            .padding(start = 16.dp, top = 18.dp, end = 16.dp, bottom = 0.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(start = 16.dp, top = 18.dp, end = 16.dp, bottom = 12.dp),
+//        horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Surface(
@@ -1087,34 +1091,37 @@ private fun WorkshopRatingStar(
     modifier: Modifier = Modifier,
 ) {
     val iconSize = 18.dp
+    val fillProgress = progress.coerceIn(0f, 1f)
+    val fillColor = MaterialTheme.colorScheme.primary
+    val outlineColor = MaterialTheme.colorScheme.primary
+    val starInteriorPath = remember { PathParser().parsePathString(WorkshopRatingStarInteriorPathData).toPath() }
     Box(modifier = modifier.size(iconSize)) {
-        Icon(
-            painter = painterResource(R.drawable.ic_workshop_rating_star),
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.outlineVariant,
-            modifier = Modifier.size(iconSize),
-        )
-        Box(
-            modifier = Modifier
-                .width(iconSize * progress.coerceIn(0f, 1f))
-                .size(iconSize)
-                .clipToBounds(),
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_workshop_rating_star_fill),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(iconSize),
-            )
+        Canvas(modifier = Modifier.size(iconSize)) {
+            val scaleX = size.width / WorkshopRatingStarViewportSize
+            val scaleY = size.height / WorkshopRatingStarViewportSize
+            withTransform({ scale(scaleX, scaleY, pivot = Offset.Zero) }) {
+                clipPath(starInteriorPath) {
+                    drawRect(
+                        color = fillColor,
+                        topLeft = Offset.Zero,
+                        size = Size(WorkshopRatingStarViewportSize * fillProgress, WorkshopRatingStarViewportSize),
+                    )
+                }
+            }
         }
         Icon(
             painter = painterResource(R.drawable.ic_workshop_rating_star),
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
+            tint = outlineColor,
             modifier = Modifier.size(iconSize),
         )
     }
 }
+
+private const val WorkshopRatingStarViewportSize = 1024f
+
+private const val WorkshopRatingStarInteriorPathData =
+    "M512,150.25664c7.1424,0 20.224,2.2272 27.59168,17.152l81.24416,164.61312a82.0224,82.0224 0,0 0,61.78816,44.91264l181.69344,26.40384c16.46592,2.39104 22.6304,14.14656 24.83712,20.9408 2.20672,6.79424 4.13184,19.92192 -7.7824,31.5392l-131.48672,128.16384a82.03776,82.03776 0,0 0,-23.58272,72.61184l31.03744,180.96128c1.6128,9.41568 -0.54272,17.72032 -6.40512,24.6784 -6.08256,7.21408 -15.01696,11.52 -23.90016,11.52 -4.83328,0 -9.5232,-1.2288 -14.336,-3.7632l-162.49856,-85.43232a82.35008,82.35008 0,0 0,-38.19008,-9.43104c-13.25056,0 -26.45504,3.26144 -38.17984,9.42592L311.31648,869.9904c-4.75136,2.49856 -9.5744,3.7632 -14.336,3.7632 -8.88832,0 -17.8176,-4.30592 -23.90016,-11.51488 -5.8624,-6.95808 -8.01792,-15.26272 -6.40512,-24.6784l31.03744,-180.95104a82.03264,82.03264 0,0 0,-23.59808,-72.6272l-131.4816,-128.16896c-11.91424,-11.61728 -9.99424,-24.74496 -7.7824,-31.5392 2.20672,-6.79424 8.36608,-18.54464 24.83712,-20.9408l181.69344,-26.39872a81.9968,81.9968 0,0 0,61.7728,-44.88192l81.25952,-164.64384c7.36256,-14.9248 20.44416,-17.152 27.58656,-17.152z"
 
 @Composable
 internal fun WorkshopDownloadActionButton(

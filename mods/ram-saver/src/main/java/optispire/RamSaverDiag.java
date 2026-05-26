@@ -107,6 +107,10 @@ public final class RamSaverDiag {
         return formatMillis(Math.max(0L, System.nanoTime() - startedNanos));
     }
 
+    public static String formatElapsedMillis(long elapsedNanos) {
+        return formatMillis(Math.max(0L, elapsedNanos));
+    }
+
     public static String describeObject(Object value) {
         if (value == null) {
             return "null";

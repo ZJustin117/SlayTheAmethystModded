@@ -37,6 +37,12 @@ Keeps shared fake-texture state per file path, including cached dimensions, supp
 11. `optispire.RamSaverDiag` and `optispire.RamSaver`
 Stops treating RAM Saver fake wrappers as live GPU textures in Amethyst's GDX diagnostic counters and samples render-path creation stacks only at low-frequency milestones once a path is known to be repeated. This addresses the symptom where GPU diagnostics amplify bad render-path texture construction by logging thousands of fake-wrapper `GLTexture construct_repeat` stacks and by repeatedly calling `Thread.getStackTrace` on the render thread. Type: diagnostic/performance mitigation implemented by `RamSaverDiag.markFakeTextureWrapperConstructed`, `RamSaver.recordFakeTextureCreate`, and `RamSaver.findRenderTextureCreationSignature`.
 
+12. `optispire.RamSaver`
+Extends the default rotating-bucket aging window from the original aggressive 5 seconds to a configurable 15 seconds (`ramsaver.age.tick_seconds`) so ordinary cached assets are not released and reloaded as quickly. This addresses heat and stutter caused by short-term UI, map, reward, and scene textures being repeatedly disposed and synchronously decoded/uploaded again during normal play. Type: performance/thermal mitigation implemented by `RamSaver.update` and the configurable `TICK` value.
+
+13. `optispire.RamSaver`
+Pins hot real textures for a bounded time when they are slow to materialize or repeatedly materialized within a short window, then enforces a configurable total hot-texture budget (`ramsaver.hot.budget_mb`). This preserves correctness while reducing repeated render-thread `RealTexture` decode/upload work for frequently reused card, UI, map, reward, and effect textures. Type: performance/thermal mitigation implemented by `RamSaver.markTextureMaterialized`, `RamSaver.isHotTexturePinned`, `RamSaver.enforceHotPinBudget`, and `ManagedAsset.isHotPinned`.
+
 ## Maintenance rule
 
 If you add another runtime/gameplay fix through this mod, update this README in the same change and describe:

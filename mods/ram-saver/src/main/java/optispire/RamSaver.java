@@ -88,8 +88,13 @@ import java.util.function.Supplier;
         method = "render"
 )
 public class RamSaver {
-    private static final float TICK = 5f;
+    private static final float TICK = readFloat("ramsaver.age.tick_seconds", 15f, 1f, 120f);
     private static final int SET_LIMIT = 48;
+    private static final int HOT_LOAD_REPEAT_THRESHOLD = readInt("ramsaver.hot.repeat_loads", 2, 2, 16);
+    private static final long HOT_LOAD_WINDOW_NANOS = readLong("ramsaver.hot.repeat_window_seconds", 120L, 10L, 1800L) * 1000000000L;
+    private static final long HOT_SLOW_LOAD_NANOS = readLong("ramsaver.hot.slow_ms", 8L, 1L, 60000L) * 1000000L;
+    private static final long HOT_PIN_NANOS = readLong("ramsaver.hot.pin_seconds", 120L, 10L, 1800L) * 1000000000L;
+    private static final long HOT_PIN_BUDGET_BYTES = readLong("ramsaver.hot.budget_mb", 384L, 0L, 2048L) * 1024L * 1024L;
     private static int nextSet = 0;
     private static float timer = TICK;
 
@@ -154,6 +159,10 @@ public class RamSaver {
                     loadedAssets.remove(id);
                     set.remove(i);
                 }
+                else if (asset.isHotPinned()) {
+                    keptFreshAssets++;
+                    asset.refresh();
+                }
                 else if (!asset.isFresh()) {
                     //old news
                     disposedOldAssets++;
@@ -214,7 +223,17 @@ public class RamSaver {
     private static final int RENDER_CREATE_REPEAT_THRESHOLD = 25;
     static {
         loadedSets.add(new ArrayList<>());
-        RamSaverDiag.log("init", "tickSeconds=" + TICK + " setLimit=" + SET_LIMIT + " " + inventoryDetails());
+        RamSaverDiag.log(
+                "init",
+                "tickSeconds=" + TICK
+                        + " setLimit=" + SET_LIMIT
+                        + " hotRepeatLoads=" + HOT_LOAD_REPEAT_THRESHOLD
+                        + " hotRepeatWindowSeconds=" + (HOT_LOAD_WINDOW_NANOS / 1000000000L)
+                        + " hotSlowMs=" + (HOT_SLOW_LOAD_NANOS / 1000000L)
+                        + " hotPinSeconds=" + (HOT_PIN_NANOS / 1000000000L)
+                        + " hotBudgetMb=" + (HOT_PIN_BUDGET_BYTES / 1024L / 1024L)
+                        + " " + inventoryDetails()
+        );
     }
 
     private static final Map<String, FileTextureSupplier> textures = new HashMap<>(256);
@@ -237,10 +256,12 @@ public class RamSaver {
         @Override
         public Texture get() {
             long started = RamSaverDiag.now();
+            long loadStarted = System.nanoTime();
             try {
                 RealTexture real = new RealTexture(file, format, useMipMaps);
                 real.setFilter(this.minFilter, this.magFilter);
                 real.setWrap(this.uWrap, this.vWrap);
+                markTextureMaterialized(file.path(), real, Math.max(0L, System.nanoTime() - loadStarted));
                 RamSaverDiag.logDuration(
                         "supplier_get_real_texture",
                         file.path(),
@@ -380,6 +401,64 @@ public class RamSaver {
             state.width = width;
             state.height = height;
             state.knowSize = true;
+        }
+    }
+
+    public static boolean isHotTexturePinned(String textureID) {
+        FakeTextureState state = getFakeTextureState(textureID);
+        if (state == null) {
+            return false;
+        }
+        synchronized (state) {
+            return state.hotPinned && System.nanoTime() < state.hotPinnedUntilNanos;
+        }
+    }
+
+    public static void markTextureMaterialized(String textureID, Texture texture, long elapsedNanos) {
+        if (textureID == null || texture == null) {
+            return;
+        }
+        FakeTextureState state = getOrCreateFakeTextureState(textureID);
+        long now = System.nanoTime();
+        int width = Math.max(0, texture.getWidth());
+        int height = Math.max(0, texture.getHeight());
+        long estimatedBytes = estimateTextureBytes(width, height);
+        boolean becameHot = false;
+        boolean repeatedHot = false;
+        synchronized (state) {
+            state.materializeCount++;
+            if (state.lastMaterializedNanos > 0L && now - state.lastMaterializedNanos <= HOT_LOAD_WINDOW_NANOS) {
+                state.recentMaterializeCount++;
+            }
+            else {
+                state.recentMaterializeCount = 1;
+            }
+            state.lastMaterializedNanos = now;
+            state.lastMaterializeElapsedNanos = elapsedNanos;
+            state.estimatedBytes = estimatedBytes;
+            state.width = width;
+            state.height = height;
+            state.knowSize = width > 0 && height > 0;
+            boolean shouldPin = HOT_PIN_BUDGET_BYTES > 0L
+                    && (elapsedNanos >= HOT_SLOW_LOAD_NANOS || state.recentMaterializeCount >= HOT_LOAD_REPEAT_THRESHOLD);
+            if (shouldPin) {
+                repeatedHot = state.hotPinned;
+                state.hotPinned = true;
+                state.hotPinnedUntilNanos = now + HOT_PIN_NANOS;
+                state.hotPinnedAtNanos = now;
+                becameHot = !repeatedHot;
+            }
+        }
+        if (becameHot || repeatedHot) {
+            enforceHotPinBudget(now);
+            RamSaverDiag.logRepeat(
+                    becameHot ? "hot_texture_pinned" : "hot_texture_refreshed",
+                    textureID,
+                    "elapsedMs=" + RamSaverDiag.formatElapsedMillis(elapsedNanos)
+                            + " estimatedBytes=" + estimatedBytes
+                            + " size=" + width + "x" + height
+                            + " " + hotPinInventoryDetails(now)
+            );
         }
     }
 
@@ -783,6 +862,81 @@ public class RamSaver {
                 || renderCreateCount % 10000 == 0;
     }
 
+    private static long estimateTextureBytes(int width, int height) {
+        if (width <= 0 || height <= 0) {
+            return 0L;
+        }
+        return (long) width * (long) height * 4L;
+    }
+
+    private static void enforceHotPinBudget(long nowNanos) {
+        if (HOT_PIN_BUDGET_BYTES <= 0L) {
+            return;
+        }
+        while (true) {
+            FakeTextureState oldest = null;
+            long totalBytes = 0L;
+            int hotCount = 0;
+            synchronized (fakeTextureStates) {
+                for (FakeTextureState state : fakeTextureStates.values()) {
+                    synchronized (state) {
+                        if (!state.hotPinned) {
+                            continue;
+                        }
+                        if (nowNanos >= state.hotPinnedUntilNanos) {
+                            state.hotPinned = false;
+                            continue;
+                        }
+                        hotCount++;
+                        totalBytes += state.estimatedBytes;
+                        if (oldest == null || state.hotPinnedAtNanos < oldest.hotPinnedAtNanos) {
+                            oldest = state;
+                        }
+                    }
+                }
+            }
+            if (totalBytes <= HOT_PIN_BUDGET_BYTES || oldest == null) {
+                return;
+            }
+            String evictedId = oldest.textureID;
+            long evictedBytes;
+            synchronized (oldest) {
+                evictedBytes = oldest.estimatedBytes;
+                oldest.hotPinned = false;
+                oldest.hotPinnedUntilNanos = 0L;
+            }
+            RamSaverDiag.logRepeat(
+                    "hot_texture_unpinned_budget",
+                    evictedId,
+                    "estimatedBytes=" + evictedBytes
+                            + " totalBytes=" + totalBytes
+                            + " hotCount=" + hotCount
+                            + " budgetBytes=" + HOT_PIN_BUDGET_BYTES
+            );
+        }
+    }
+
+    private static String hotPinInventoryDetails(long nowNanos) {
+        if (!RamSaverDiag.enabled()) {
+            return "";
+        }
+        long totalBytes = 0L;
+        int hotCount = 0;
+        synchronized (fakeTextureStates) {
+            for (FakeTextureState state : fakeTextureStates.values()) {
+                synchronized (state) {
+                    if (state.hotPinned && nowNanos < state.hotPinnedUntilNanos) {
+                        hotCount++;
+                        totalBytes += state.estimatedBytes;
+                    }
+                }
+            }
+        }
+        return "hotCount=" + hotCount
+                + " hotBytes=" + totalBytes
+                + " hotBudgetBytes=" + HOT_PIN_BUDGET_BYTES;
+    }
+
     private static String findRenderTextureCreationSignature() {
         StackTraceElement[] trace = Thread.currentThread().getStackTrace();
         String creator = null;
@@ -831,6 +985,48 @@ public class RamSaver {
         return element.getClassName() + '#' + element.getMethodName() + ':' + element.getLineNumber();
     }
 
+    private static int readInt(String property, int defaultValue, int minValue, int maxValue) {
+        String raw = System.getProperty(property);
+        if (raw == null) {
+            return defaultValue;
+        }
+        try {
+            int value = Integer.parseInt(raw.trim());
+            return Math.max(minValue, Math.min(maxValue, value));
+        }
+        catch (NumberFormatException ignored) {
+            return defaultValue;
+        }
+    }
+
+    private static long readLong(String property, long defaultValue, long minValue, long maxValue) {
+        String raw = System.getProperty(property);
+        if (raw == null) {
+            return defaultValue;
+        }
+        try {
+            long value = Long.parseLong(raw.trim());
+            return Math.max(minValue, Math.min(maxValue, value));
+        }
+        catch (NumberFormatException ignored) {
+            return defaultValue;
+        }
+    }
+
+    private static float readFloat(String property, float defaultValue, float minValue, float maxValue) {
+        String raw = System.getProperty(property);
+        if (raw == null) {
+            return defaultValue;
+        }
+        try {
+            float value = Float.parseFloat(raw.trim());
+            return Math.max(minValue, Math.min(maxValue, value));
+        }
+        catch (NumberFormatException ignored) {
+            return defaultValue;
+        }
+    }
+
     private static class FakeTextureState {
         final String textureID;
         FileTextureSupplier supplier;
@@ -843,6 +1039,14 @@ public class RamSaver {
         boolean knowSize;
         int width;
         int height;
+        int materializeCount;
+        int recentMaterializeCount;
+        long lastMaterializedNanos;
+        long lastMaterializeElapsedNanos;
+        boolean hotPinned;
+        long hotPinnedUntilNanos;
+        long hotPinnedAtNanos;
+        long estimatedBytes;
 
         FakeTextureState(String textureID) {
             this.textureID = textureID;
@@ -950,6 +1154,10 @@ public class RamSaver {
 
         public boolean isFresh() {
             return parent != null ? parent.isFresh() : fresh;
+        }
+
+        public boolean isHotPinned() {
+            return type == AssetType.TEXTURE && RamSaver.isHotTexturePinned(ID);
         }
 
         public void age() {

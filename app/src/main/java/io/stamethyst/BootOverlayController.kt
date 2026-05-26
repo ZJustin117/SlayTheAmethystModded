@@ -12,10 +12,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -33,7 +35,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
@@ -650,16 +651,9 @@ private fun BootOverlayPanel(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        colorScheme.scrim.copy(alpha = 0.88f),
-                        colorScheme.primary.copy(alpha = 0.30f),
-                        colorScheme.surface.copy(alpha = 0.94f)
-                    )
-                )
-            )
+            .background(colorScheme.surface)
             .then(consumeBackgroundTapModifier)
+            .windowInsetsPadding(WindowInsets.safeDrawing)
             .padding(24.dp)
     ) {
         val contentBottomPadding = if (manualDismissBootOverlay) 72.dp else 0.dp
@@ -670,7 +664,6 @@ private fun BootOverlayPanel(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.weight(0.28f))
             Text(
                 text = stringResource(R.string.boot_overlay_title_starting),
                 color = colorScheme.onSurface,
