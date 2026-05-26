@@ -79,7 +79,7 @@ internal class WorkshopService(
 
     suspend fun browse(query: WorkshopBrowseQuery): WorkshopBrowseResult = withContext(Dispatchers.IO) {
         val page = searchWorkshop(query)
-        val items = enrichBrowseFileSizes(page.items).take(query.pageSize)
+        val items = enrichBrowseMetadata(page.items).take(query.pageSize)
         WorkshopBrowseResult(
             items = items,
             total = items.size,
@@ -595,23 +595,28 @@ internal class WorkshopService(
         }
     }
 
-    private fun enrichBrowseFileSizes(items: List<WorkshopItemSummary>): List<WorkshopItemSummary> {
-        if (items.isEmpty() || items.all { it.fileSizeBytes > 0L }) return items
+    private fun enrichBrowseMetadata(items: List<WorkshopItemSummary>): List<WorkshopItemSummary> {
+        if (items.isEmpty() || items.all { it.fileSizeBytes > 0L && it.downloadCount > 0L }) return items
         val appId = items.first().appId
-        val fileSizesById = runCatching { loadFileSizes(appId, items) }.getOrDefault(emptyMap())
-        if (fileSizesById.isEmpty()) return items
+        val metadataById = runCatching { loadBrowseMetadata(appId, items) }.getOrDefault(emptyMap())
+        if (metadataById.isEmpty()) return items
         return items.map { item ->
-            fileSizesById[item.publishedFileId]?.let { size -> item.copy(fileSizeBytes = size) } ?: item
+            metadataById[item.publishedFileId]?.let { metadata ->
+                item.copy(
+                    fileSizeBytes = metadata.fileSizeBytes ?: item.fileSizeBytes,
+                    downloadCount = metadata.downloadCount ?: item.downloadCount,
+                )
+            } ?: item
         }
     }
 
-    private fun loadFileSizes(appId: UInt, items: List<WorkshopItemSummary>): Map<ULong, Long> {
-        val missingSizeItems = items.filter { it.fileSizeBytes <= 0L }
-        if (missingSizeItems.isEmpty()) return emptyMap()
+    private fun loadBrowseMetadata(appId: UInt, items: List<WorkshopItemSummary>): Map<ULong, BrowseItemMetadata> {
+        val missingMetadataItems = items.filter { it.fileSizeBytes <= 0L || it.downloadCount <= 0L }
+        if (missingMetadataItems.isEmpty()) return emptyMap()
         val requestBody = FormBody.Builder().apply {
-            add("itemcount", missingSizeItems.size.toString())
+            add("itemcount", missingMetadataItems.size.toString())
             add("appid", appId.toString())
-            missingSizeItems.forEachIndexed { index, item ->
+            missingMetadataItems.forEachIndexed { index, item ->
                 add("publishedfileids[$index]", item.publishedFileId.toString())
             }
         }.build()
@@ -628,13 +633,24 @@ internal class WorkshopService(
                     .publishedFileDetails
                     .mapNotNull { detail ->
                         val publishedFileId = detail.publishedFileId.toULongOrNull()
-                        val fileSize = detail.fileSize
-                        if (publishedFileId != null && fileSize != null) publishedFileId to fileSize else null
+                        if (publishedFileId != null) {
+                            publishedFileId to BrowseItemMetadata(
+                                fileSizeBytes = detail.fileSize,
+                                downloadCount = detail.subscriptions,
+                            )
+                        } else {
+                            null
+                        }
                     }
                     .toMap()
             }.getOrDefault(emptyMap())
         }
     }
+
+    private data class BrowseItemMetadata(
+        val fileSizeBytes: Long?,
+        val downloadCount: Long?,
+    )
 
     private fun sanitizeFileName(value: String): String = value.replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "workshop_mod" }
 

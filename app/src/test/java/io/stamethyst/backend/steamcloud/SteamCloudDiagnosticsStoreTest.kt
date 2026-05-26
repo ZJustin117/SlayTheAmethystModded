@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.content.ContextWrapper
 import java.io.File
+import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import org.junit.Assert.assertEquals
@@ -71,12 +72,44 @@ class SteamCloudDiagnosticsStoreTest {
             assertEquals(1, loginHistoryFiles.size)
             assertEquals(1, failureHistoryFiles.size)
             assertTrue(loginHistoryFiles.single().name.startsWith("login-failed-"))
-            assertTrue(failureHistoryFiles.single().name.startsWith("login-failure-"))
+            assertTrue(failureHistoryFiles.single().name.startsWith("failure-credentials_login-"))
             assertTrue(
                 failureHistoryFiles.single()
                     .readText(StandardCharsets.UTF_8)
                     .contains("Failure Summary: auth failed")
             )
+        } finally {
+            roots.rootDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun writeSummary_includesFullFailureCauseAndStack() {
+        val roots = TestRoots.create("steam-cloud-diagnostics-full-error")
+        try {
+            val error = IllegalStateException(
+                "top level failure",
+                IOException("root network failure")
+            )
+
+            SteamCloudDiagnosticsStore.writeSummary(
+                context = roots.context,
+                operation = "manual_push",
+                outcome = "FAILED",
+                accountName = "test-user",
+                startedAtMs = 5_000L,
+                completedAtMs = 6_000L,
+                diagnostics = null,
+                error = error,
+            )
+
+            val text = SteamCloudDiagnosticsStore.summaryFile(roots.context)
+                .readText(StandardCharsets.UTF_8)
+            assertTrue(text.contains("Error Type: java.lang.IllegalStateException"))
+            assertTrue(text.contains("Error Cause Chain: java.lang.IllegalStateException: top level failure <- java.io.IOException: root network failure"))
+            assertTrue(text.contains("Exception Chain:"))
+            assertTrue(text.contains("Full Exception Stack:"))
+            assertTrue(text.contains("Caused by: java.io.IOException: root network failure"))
         } finally {
             roots.rootDir.deleteRecursively()
         }

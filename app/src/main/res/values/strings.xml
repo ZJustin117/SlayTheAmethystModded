@@ -2003,6 +2003,7 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="workshop_rating_unrated_score">No rating</string>
     <string name="workshop_rating_content_description">Rating %1$d out of %2$d</string>
     <string name="workshop_rating_unrated_content_description">No rating yet</string>
+    <string name="workshop_download_count_content_description">%1$s downloads</string>
     <string name="workshop_missing_dependencies_title">Install required mods?</string>
     <string name="workshop_missing_dependencies_message">%1$s requires the following missing dependencies. Add them to the download queue too?</string>
     <string name="workshop_dependency_fallback_title">Workshop ID %1$s</string>

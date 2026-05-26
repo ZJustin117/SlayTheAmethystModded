@@ -198,6 +198,7 @@ internal object WorkshopBrowseParser {
                     authorName = creatorSteamId?.let(creatorNames::get).orEmpty(),
                     description = item.stringValueOrNull("short_description").orEmpty(),
                     fileSizeBytes = item.longValueOrNull("file_size") ?: 0L,
+                    downloadCount = item.longValueOrNull("subscriptions") ?: 0L,
                     rating = item.objectValue("vote_data")
                         ?.floatValueOrNull("score")
                         .let(::normalizedWorkshopRating),

@@ -45,6 +45,7 @@ import in.dragonbra.javasteam.protobufs.steamclient.SteammessagesCloudSteamclien
 import in.dragonbra.javasteam.networking.steam3.ProtocolTypes;
 import in.dragonbra.javasteam.rpc.service.Cloud;
 import in.dragonbra.javasteam.protobufs.steamclient.SteammessagesAuthSteamclient.EAuthSessionGuardType;
+import in.dragonbra.javasteam.steam.authentication.AuthenticationException;
 import in.dragonbra.javasteam.steam.authentication.AuthPollResult;
 import in.dragonbra.javasteam.steam.authentication.AuthSession;
 import in.dragonbra.javasteam.steam.authentication.AuthSessionDetails;
@@ -341,18 +342,13 @@ public final class SteamCloudClient implements AutoCloseable {
         AuthPrompt prompt
     ) throws Exception {
         try {
+            String inputDiagnostics = buildCredentialsInputDiagnostics(username, password, guardData);
             recordDiagnosticEvent(
-                "credentials_auth begin account="
-                    + (isBlank(username) ? "<unknown>" : username.trim())
-                    + " guardDataConfigured="
-                    + !isBlank(guardData)
+                "credentials_auth begin " + inputDiagnostics
             );
             Log.i(
                 TAG,
-                "Starting credentials auth for account="
-                    + (isBlank(username) ? "<unknown>" : username.trim())
-                    + " guardDataConfigured="
-                    + !isBlank(guardData)
+                "Starting credentials auth. " + inputDiagnostics
             );
             AuthSessionDetails details = new AuthSessionDetails();
             details.username = username;
@@ -405,7 +401,14 @@ public final class SteamCloudClient implements AutoCloseable {
                 effectiveGuardData
             );
         } catch (Exception error) {
-            recordDiagnosticEvent("credentials_auth failed " + describeThrowable(error));
+            recordDiagnosticEvent(
+                "credentials_auth failed "
+                    + describeAuthenticationResult(error)
+                    + " "
+                    + buildCredentialsInputDiagnostics(username, password, guardData)
+                    + " "
+                    + describeThrowable(error)
+            );
             Log.e(TAG, "Credentials auth failed during " + currentStage + '.', error);
             throw error;
         }
@@ -717,6 +720,20 @@ public final class SteamCloudClient implements AutoCloseable {
                     + remotePath
                     + " bytes="
                     + fileSize
+                    + " batchId="
+                    + uploadBatchId
+                    + " sha1="
+                    + sha1Hex
+            );
+            recordDiagnosticEvent(
+                "begin_http_upload request remotePath="
+                    + remotePath
+                    + " bytes="
+                    + fileSize
+                    + " batchId="
+                    + uploadBatchId
+                    + " sha1="
+                    + sha1Hex
             );
             SteammessagesCloudSteamclient.CCloud_BeginHTTPUpload_Request request =
                 SteammessagesCloudSteamclient.CCloud_BeginHTTPUpload_Request.newBuilder()
@@ -734,6 +751,16 @@ public final class SteamCloudClient implements AutoCloseable {
 
             SteammessagesCloudSteamclient.CCloud_BeginHTTPUpload_Response.Builder body = beginResponse.getBody();
             String url = (body.getUseHttps() ? "https://" : "http://") + body.getUrlHost() + body.getUrlPath();
+            recordDiagnosticEvent(
+                "begin_http_upload response remotePath="
+                    + remotePath
+                    + " host="
+                    + body.getUrlHost()
+                    + " pathLength="
+                    + body.getUrlPath().length()
+                    + " headers="
+                    + body.getRequestHeadersCount()
+            );
             Request.Builder requestBuilder = new Request.Builder()
                 .url(url)
                 .put(RequestBody.create(sourceFile, null));
@@ -751,6 +778,12 @@ public final class SteamCloudClient implements AutoCloseable {
                 if (!response.isSuccessful()) {
                     throw new IOException("HTTP " + response.code() + " when uploading " + remotePath);
                 }
+                recordDiagnosticEvent(
+                    "http_upload transfer_success remotePath="
+                        + remotePath
+                        + " httpCode="
+                        + response.code()
+                );
             }
 
             boolean committed = commitHttpUpload(true, appId, sha1Hex, remotePath);
@@ -758,8 +791,19 @@ public final class SteamCloudClient implements AutoCloseable {
                 throw new IllegalStateException("Steam did not commit uploaded file: " + remotePath);
             }
             Log.i(TAG, "Steam Cloud upload committed: " + remotePath);
+            recordDiagnosticEvent("commit_http_upload committed remotePath=" + remotePath);
             return new UploadedFile(remotePath, fileSizeLong, sha1Hex);
         } catch (Exception error) {
+            recordDiagnosticEvent(
+                "upload_file failed remotePath="
+                    + remotePath
+                    + " batchId="
+                    + uploadBatchId
+                    + " startedUpload="
+                    + startedUpload
+                    + " error="
+                    + describeThrowable(error)
+            );
             if (startedUpload) {
                 try {
                     commitHttpUpload(false, appId, sha1Hex, remotePath);
@@ -1127,6 +1171,19 @@ public final class SteamCloudClient implements AutoCloseable {
         return error.getClass().getName() + ": " + message;
     }
 
+    private static String describeAuthenticationResult(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof AuthenticationException) {
+                AuthenticationException authError = (AuthenticationException) current;
+                EResult result = authError.getResult();
+                return "authResult=" + (result == null ? "<none>" : result);
+            }
+            current = current.getCause();
+        }
+        return "authResult=<none>";
+    }
+
     private static List<String> buildStackTraceLines(Throwable error, int limit) {
         List<String> lines = new ArrayList<>();
         if (error == null || limit <= 0) {
@@ -1312,6 +1369,16 @@ public final class SteamCloudClient implements AutoCloseable {
                 "BeginHTTPUpload"
             );
             EResult result = response.getResult();
+            recordDiagnosticEvent(
+                "begin_http_upload result remotePath="
+                    + remotePath
+                    + " attempt="
+                    + attempt
+                    + "/"
+                    + BEGIN_HTTP_UPLOAD_MAX_ATTEMPTS
+                    + " result="
+                    + result
+            );
             if (result == EResult.OK) {
                 return response;
             }
@@ -1657,6 +1724,64 @@ public final class SteamCloudClient implements AutoCloseable {
 
     private static boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    private static String buildCredentialsInputDiagnostics(String username, String password, String guardData) {
+        return "usernamePresent="
+            + (username != null)
+            + " usernameLength="
+            + safeLength(username)
+            + " usernameTrimmedChanged="
+            + trimmedChanged(username)
+            + " usernameLeadingWhitespace="
+            + hasLeadingWhitespace(username)
+            + " usernameTrailingWhitespace="
+            + hasTrailingWhitespace(username)
+            + " usernameNonAsciiCount="
+            + countNonAscii(username)
+            + " passwordPresent="
+            + (password != null)
+            + " passwordLength="
+            + safeLength(password)
+            + " passwordLeadingWhitespace="
+            + hasLeadingWhitespace(password)
+            + " passwordTrailingWhitespace="
+            + hasTrailingWhitespace(password)
+            + " passwordNonAsciiCount="
+            + countNonAscii(password)
+            + " guardDataConfigured="
+            + !isBlank(guardData)
+            + " guardDataLength="
+            + safeLength(guardData);
+    }
+
+    private static int safeLength(String value) {
+        return value == null ? 0 : value.length();
+    }
+
+    private static boolean trimmedChanged(String value) {
+        return value != null && !value.equals(value.trim());
+    }
+
+    private static boolean hasLeadingWhitespace(String value) {
+        return value != null && !value.isEmpty() && Character.isWhitespace(value.charAt(0));
+    }
+
+    private static boolean hasTrailingWhitespace(String value) {
+        return value != null && !value.isEmpty() && Character.isWhitespace(value.charAt(value.length() - 1));
+    }
+
+    private static int countNonAscii(String value) {
+        if (value == null) {
+            return 0;
+        }
+        int count = 0;
+        for (int index = 0; index < value.length(); index++) {
+            if (value.charAt(index) > 0x7F) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private static <T> T requireNonNull(T value, String label) {

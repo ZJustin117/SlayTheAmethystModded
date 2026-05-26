@@ -265,7 +265,7 @@ internal object SteamCloudPushCoordinator {
                     )
                 } catch (error: Throwable) {
                     throw IllegalStateException(
-                        "Steam Cloud upload failed for ${candidate.remotePath} (${candidate.localRelativePath}, localSha1=${candidate.sha1.ifBlank { "<none>" }}, size=${candidate.fileSize}): ${summarizeError(error)}",
+                        "Steam Cloud upload failed for ${candidate.remotePath} (${candidate.localRelativePath}, localSha1=${candidate.sha1.ifBlank { "<none>" }}, size=${candidate.fileSize}, batchId=${requireNotNull(uploadBatch).batchId}): ${summarizeErrorWithCauses(error)}",
                         error,
                     )
                 }
@@ -538,7 +538,7 @@ internal object SteamCloudPushCoordinator {
                     )
                 } catch (error: Throwable) {
                     throw IllegalStateException(
-                        "Steam Cloud upload failed for ${candidate.remotePath} (${candidate.localRelativePath}, localSha1=${candidate.sha1.ifBlank { "<none>" }}, size=${candidate.fileSize}): ${summarizeError(error)}",
+                        "Steam Cloud upload failed for ${candidate.remotePath} (${candidate.localRelativePath}, localSha1=${candidate.sha1.ifBlank { "<none>" }}, size=${candidate.fileSize}, batchId=${requireNotNull(uploadBatch).batchId}): ${summarizeErrorWithCauses(error)}",
                         error,
                     )
                 }
@@ -799,6 +799,19 @@ internal object SteamCloudPushCoordinator {
         } else {
             error.javaClass.simpleName
         }
+    }
+
+    private fun summarizeErrorWithCauses(error: Throwable): String {
+        return generateSequence(error) { current -> current.cause?.takeUnless { it === current } }
+            .take(8)
+            .joinToString(" <- ") { current ->
+                val message = current.message?.trim().orEmpty()
+                if (message.isNotEmpty()) {
+                    "${current.javaClass.simpleName}: $message"
+                } else {
+                    current.javaClass.simpleName
+                }
+            }
     }
 
     private fun isReconnectRetryCandidate(

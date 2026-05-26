@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -68,6 +69,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
@@ -986,7 +988,13 @@ private fun WorkshopItemCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                WorkshopRatingIndicator(rating = item.rating)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    WorkshopRatingIndicator(rating = item.rating)
+                    WorkshopDownloadCountIndicator(downloadCount = item.downloadCount)
+                }
             }
             WorkshopDownloadActionButton(
                 state = downloadState,
@@ -994,6 +1002,45 @@ private fun WorkshopItemCard(
                 iconOnly = true,
             )
         }
+    }
+}
+
+@Composable
+private fun WorkshopDownloadCountIndicator(
+    downloadCount: Long,
+    modifier: Modifier = Modifier,
+) {
+    val countText = formatWorkshopCount(downloadCount)
+    val countDescription = stringResource(R.string.workshop_download_count_content_description, countText)
+    Row(
+        modifier = modifier.semantics {
+            contentDescription = countDescription
+        },
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.ic_workshop_download),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(17.dp),
+        )
+        Text(
+            text = countText,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun formatWorkshopCount(value: Long): String {
+    if (value <= 0L) return stringResource(R.string.workshop_unknown_value)
+    return when {
+        value >= 100_000_000L -> stringResource(R.string.workshop_count_hundred_million, value / 100_000_000.0)
+        value >= 10_000L -> stringResource(R.string.workshop_count_ten_thousand, value / 10_000.0)
+        else -> value.toString()
     }
 }
 
@@ -1021,12 +1068,9 @@ private fun WorkshopRatingIndicator(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        CircularProgressIndicator(
-            progress = { progress },
+        WorkshopRatingStar(
+            progress = progress,
             modifier = Modifier.size(18.dp),
-            color = MaterialTheme.colorScheme.primary,
-            trackColor = MaterialTheme.colorScheme.surfaceVariant,
-            strokeWidth = 2.dp,
         )
         Text(
             text = scoreText,
@@ -1034,6 +1078,35 @@ private fun WorkshopRatingIndicator(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
         )
+    }
+}
+
+@Composable
+private fun WorkshopRatingStar(
+    progress: Float,
+    modifier: Modifier = Modifier,
+) {
+    val iconSize = 18.dp
+    Box(modifier = modifier.size(iconSize)) {
+        Icon(
+            painter = painterResource(R.drawable.ic_workshop_rating_star),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.surfaceVariant,
+            modifier = Modifier.size(iconSize),
+        )
+        Box(
+            modifier = Modifier
+                .width(iconSize * progress.coerceIn(0f, 1f))
+                .size(iconSize)
+                .clipToBounds(),
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_workshop_rating_star),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(iconSize),
+            )
+        }
     }
 }
 

@@ -9,8 +9,12 @@ internal object SteamCloudNetworkEnvironment {
     private const val LAST_CM_ENDPOINT_FILE_NAME = "last-websocket-cm-endpoint.txt"
     private const val CM_SERVER_LIST_FILE_NAME = "steam-cm-server-list.bin"
     private const val DIRECT_MODE_SWITCH_MARKER_FILE_NAME = "direct-mode-switch-confirmed-at.txt"
+    private const val PROXY_DETECTION_ENABLED = false
 
     fun shouldPromptForDirectMode(context: Context): Boolean {
+        if (!PROXY_DETECTION_ENABLED) {
+            return false
+        }
         if (LauncherConfig.isSteamCloudWattAccelerationEnabled(context)) {
             return true
         }
@@ -76,6 +80,9 @@ internal object SteamCloudNetworkEnvironment {
 
     @JvmStatic
     fun isProxyOrAcceleratorEndpoint(value: String?): Boolean {
+        if (!PROXY_DETECTION_ENABLED) {
+            return false
+        }
         val normalized = value.orEmpty().trim().lowercase(Locale.US)
         if (normalized.isEmpty()) {
             return false

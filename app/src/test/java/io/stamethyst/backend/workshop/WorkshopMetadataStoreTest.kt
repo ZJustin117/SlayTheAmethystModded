@@ -43,6 +43,28 @@ class WorkshopMetadataStoreTest {
     }
 
     @Test
+    fun removeByLocalJarPathsRemovesOnlyMatchingWorkshopRecords() {
+        val roots = TestRoots.create("workshop-metadata-store-remove-paths")
+        val store = WorkshopMetadataStore(roots.context)
+        val replacedPath = File(roots.rootDir, "optional/Old Workshop.jar").absolutePath
+        store.save(
+            listOf(
+                record(title = "Old Workshop", publishedFileId = 1u, updatedAtMillis = 100L).copy(
+                    localJarPath = replacedPath.replace('\\', '/')
+                ),
+                record(title = "Other Workshop", publishedFileId = 2u, updatedAtMillis = 200L).copy(
+                    localJarPath = File(roots.rootDir, "optional/Other.jar").absolutePath
+                ),
+            )
+        )
+
+        val removedCount = store.removeByLocalJarPaths(listOf(replacedPath))
+
+        assertEquals(1, removedCount)
+        assertEquals(listOf("Other Workshop"), store.list().map { it.title })
+    }
+
+    @Test
     fun recoverFinishedTransferRestoresDownloadedJarAsUnpatched() {
         val roots = TestRoots.create("workshop-metadata-store-recover-complete")
         val metadataStore = WorkshopMetadataStore(roots.context)

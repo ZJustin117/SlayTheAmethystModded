@@ -65,6 +65,20 @@ internal class WorkshopMetadataStore(context: Context) {
         saveUnlocked(loadUnlocked().filterNot { it.appId == appId && it.publishedFileId == publishedFileId })
     }
 
+    fun removeByLocalJarPaths(localJarPaths: Collection<String>): Int = withStoreLock {
+        val normalizedPaths = localJarPaths
+            .mapNotNull { it.normalizedLocalJarPath().takeIf(String::isNotEmpty) }
+            .toSet()
+        if (normalizedPaths.isEmpty()) return@withStoreLock 0
+        val current = loadUnlocked()
+        val remaining = current.filterNot { record ->
+            record.localJarPath.normalizedLocalJarPath() in normalizedPaths
+        }
+        val removedCount = current.size - remaining.size
+        if (removedCount > 0) saveUnlocked(remaining)
+        removedCount
+    }
+
     fun markPatched(appId: UInt, publishedFileId: ULong, localJarPath: String, statusText: String) = withStoreLock {
         val records = loadUnlocked().map { record ->
             if (record.appId == appId && record.publishedFileId == publishedFileId) {
@@ -146,6 +160,8 @@ private fun WorkshopInstalledModRecord.preserveLocalPreviewImage(existing: Works
     if (localPreviewImagePath.isNotBlank()) return this
     return copy(localPreviewImagePath = existing.localPreviewImagePath)
 }
+
+private fun String.normalizedLocalJarPath(): String = trim().replace('\\', '/')
 
 private fun WorkshopInstalledModRecord.restoredImportedState(): WorkshopModCardState {
     if (contentKind == WorkshopInstalledContentKind.TexturePack) return WorkshopModCardState.TexturePackInstalled

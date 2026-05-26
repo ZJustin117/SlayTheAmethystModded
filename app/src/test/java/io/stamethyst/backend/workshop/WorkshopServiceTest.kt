@@ -67,7 +67,7 @@ class WorkshopServiceTest {
                     {
                       "response": {
                         "publishedfiledetails": [
-                          { "publishedfileid": "123456", "file_size": 1234 }
+                          { "publishedfileid": "123456", "file_size": 1234, "subscriptions": 42 }
                         ]
                       }
                     }
@@ -91,6 +91,7 @@ class WorkshopServiceTest {
         assertEquals("Test Mod", result.items.single().title)
         assertEquals(123456uL, result.items.single().publishedFileId)
         assertEquals(1234L, result.items.single().fileSizeBytes)
+        assertEquals(42L, result.items.single().downloadCount)
         assertTrue(!result.hasNextPage)
         assertEquals(1, browseServer.requestCount)
         val browseRequest = browseServer.takeRequest()

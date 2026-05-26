@@ -20,6 +20,7 @@ import io.stamethyst.backend.mods.importing.patches.ImportPatchRegistry
 import io.stamethyst.backend.mods.importing.patches.JacketNoAnoKoImportPatchModule
 import io.stamethyst.backend.mods.importing.patches.ManifestRootPatchModule
 import io.stamethyst.backend.mods.importing.patches.VupShionImportPatchModule
+import io.stamethyst.backend.workshop.WorkshopMetadataStore
 import io.stamethyst.ui.main.MainFolderAssignmentHandoffStore
 import io.stamethyst.ui.main.MainFolderStateStore
 import io.stamethyst.ui.main.ModAliasStore
@@ -352,6 +353,7 @@ internal object ModImportExecutor {
                     launchModId = finalLaunchModId,
                     excludedPath = target.absolutePath
                 )
+                WorkshopMetadataStore(context).removeByLocalJarPaths(reuse.sourceStoragePaths)
                 applyDuplicateFileNameAlias(
                     context = context,
                     targetPath = targetPath,

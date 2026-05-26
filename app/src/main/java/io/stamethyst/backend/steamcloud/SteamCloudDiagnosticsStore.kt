@@ -3,6 +3,8 @@ package io.stamethyst.backend.steamcloud
 import android.content.Context
 import java.io.File
 import java.io.IOException
+import java.io.PrintWriter
+import java.io.StringWriter
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -74,6 +76,10 @@ internal object SteamCloudDiagnosticsStore {
                     diagnostics?.currentStage?.trim()?.takeIf { it.isNotEmpty() } ?: "<unknown>"
                 }"
             )
+            error?.let { failure ->
+                add("Error Type: ${unwrapAsyncThrowable(failure).javaClass.name}")
+                add("Error Cause Chain: ${formatExceptionCauseChain(failure)}")
+            }
             add(
                 "Connected Callback: ${
                     if (diagnostics?.connectedCallbackReceived == true) "received" else "not received"
@@ -151,6 +157,8 @@ internal object SteamCloudDiagnosticsStore {
             error?.let { failure ->
                 add("")
                 appendExceptionChain(this, failure)
+                add("")
+                appendExceptionStack(this, failure)
             }
 
             diagnostics?.let { snapshot ->
@@ -273,6 +281,13 @@ internal object SteamCloudDiagnosticsStore {
         }
     }
 
+    private fun appendExceptionStack(lines: MutableList<String>, error: Throwable) {
+        lines += "Full Exception Stack:"
+        stackTraceText(error).lineSequence()
+            .filter { it.isNotBlank() }
+            .forEach { line -> lines += "  $line" }
+    }
+
     private fun isProxyOrAcceleratorDetected(diagnostics: SteamCloudClient.DiagnosticsSnapshot?): Boolean {
         if (diagnostics == null) {
             return false
@@ -297,6 +312,25 @@ internal object SteamCloudDiagnosticsStore {
         } else {
             root.javaClass.name
         }
+    }
+
+    private fun formatExceptionCauseChain(error: Throwable): String {
+        return generateSequence(unwrapAsyncThrowable(error)) { current ->
+            current.cause?.takeUnless { it === current }
+        }.take(8).joinToString(" <- ") { current ->
+            val message = current.message?.trim().takeUnless { it.isNullOrEmpty() }
+            if (message == null) {
+                current.javaClass.name
+            } else {
+                "${current.javaClass.name}: $message"
+            }
+        }.ifBlank { "<none>" }
+    }
+
+    private fun stackTraceText(error: Throwable): String {
+        val writer = StringWriter()
+        error.printStackTrace(PrintWriter(writer))
+        return writer.toString()
     }
 
     private fun unwrapAsyncThrowable(error: Throwable): Throwable {

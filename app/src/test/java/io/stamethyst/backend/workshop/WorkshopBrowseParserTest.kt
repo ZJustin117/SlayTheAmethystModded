@@ -133,6 +133,7 @@ class WorkshopBrowseParserTest {
                           "title": "Skip The Spire",
                           "short_description": "A fun mod",
                           "file_size": "123456",
+                          "subscriptions": "98765",
                           "vote_data": { "score": 0.72 }
                         }
                       ]
@@ -161,6 +162,7 @@ class WorkshopBrowseParserTest {
         assertEquals("apricity", page.items.single().authorName)
         assertEquals("A fun mod", page.items.single().description)
         assertEquals(123456L, page.items.single().fileSizeBytes)
+        assertEquals(98765L, page.items.single().downloadCount)
         assertEquals(4, page.items.single().rating?.score)
         assertEquals(5, page.items.single().rating?.maxScore)
     }

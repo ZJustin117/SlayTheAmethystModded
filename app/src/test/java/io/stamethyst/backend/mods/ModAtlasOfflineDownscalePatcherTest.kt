@@ -162,6 +162,43 @@ class ModAtlasOfflineDownscalePatcherTest {
     }
 
     @Test
+    fun collectAtlasPageContentBounds_usesLargestRegionContentSizePerPage() {
+        val atlasText = """
+            hero.png
+            size: 4096, 4096
+            format: RGBA8888
+            filter: Linear, Linear
+            repeat: none
+            body
+              rotate: false
+              xy: 3000, 3000
+              size: 900, 1200
+              orig: 900, 1200
+            shadow
+              rotate: false
+              bounds: 0, 0, 1300, 256
+
+            hero_2.png
+            size: 4096, 4096
+            format: RGBA8888
+            filter: Linear, Linear
+            repeat: none
+            head
+              rotate: false
+              xy: 2, 2
+              size: 512, 512
+        """.trimIndent()
+
+        val bounds = ModAtlasOfflineDownscalePatcher.collectAtlasPageContentBounds(
+            atlasEntryName = "characters/hero.atlas",
+            atlasText = atlasText
+        )
+
+        assertEquals(1300 to 1200, bounds["characters/hero.png"])
+        assertEquals(512 to 512, bounds["characters/hero_2.png"])
+    }
+
+    @Test
     fun inspectOversizedAtlasPages_returnsNoCandidatesWhenAllMaterialTypesDisabled() {
         val tempDir = Files.createTempDirectory("atlas-downscale-policy-disabled")
         val modJar = tempDir.resolve("policy-disabled.jar").toFile()
