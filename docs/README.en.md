@@ -162,5 +162,6 @@ This repository reuses and adapts parts of the `Amethyst-Android` / `PojavLaunch
 
 Special thanks:
 - [AngelAuraMC/Amethyst-Android](https://github.com/AngelAuraMC/Amethyst-Android) for foundational Android JavaSE launcher bridging ideas and prior engineering work.
+- [Alchyr/sts-ram-saver](https://github.com/Alchyr/sts-ram-saver) for major guidance on launcher memory optimization, making more mods usable in the launcher.
 - [bwwq/ModTheSpire](https://github.com/bwwq/ModTheSpire) for the ModTheSpire variant currently used by this project.
 - The wider Slay the Spire modding and launcher community for issue reports, experiments, and tooling that helped make this practical.

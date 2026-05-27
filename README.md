@@ -176,5 +176,6 @@ APK 输出目录：
 
 - [AngelAuraMC/Amethyst-Android](https://github.com/AngelAuraMC/Amethyst-Android) 提供了 Android
   JavaSE 启动器桥接方向上的重要工程基础和参考实现。
+- [Alchyr/sts-ram-saver](https://github.com/Alchyr/sts-ram-saver) 为启动器内存优化提供了极大的指导，使得更多模组可以在启动器上使用。
 - [bwwq/ModTheSpire](https://github.com/bwwq/ModTheSpire) 提供了本项目当前使用的 ModTheSpire 变体。
 - 所有为 Slay the Spire 模组生态、启动器工具链、问题排查和公开讨论做出贡献的开发者与社区成员。

@@ -40,6 +40,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
@@ -85,6 +86,8 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -607,11 +610,11 @@ private fun LauncherSettingsScreenContent(
         }
         item {
             SettingsCategoryCard(
-                iconResId = R.drawable.ic_settings_native_library,
-                title = stringResource(R.string.settings_native_library_market_title),
-                subtitle = stringResource(R.string.settings_native_library_market_desc),
+                iconResId = R.drawable.ic_feedback_updates,
+                title = stringResource(R.string.settings_feedback_logs_title),
+                subtitle = stringResource(R.string.settings_feedback_logs_subtitle),
                 enabled = !blockingInteractionLocked,
-                onClick = onOpenNativeLibraryMarket,
+                onClick = onOpenFeedbackSettings,
             )
         }
         item {
@@ -625,11 +628,11 @@ private fun LauncherSettingsScreenContent(
         }
         item {
             SettingsCategoryCard(
-                iconResId = R.drawable.ic_feedback_updates,
-                title = stringResource(R.string.settings_feedback_logs_title),
-                subtitle = stringResource(R.string.settings_feedback_logs_subtitle),
+                iconResId = R.drawable.ic_settings_native_library,
+                title = stringResource(R.string.settings_native_library_market_title),
+                subtitle = stringResource(R.string.settings_native_library_market_desc),
                 enabled = !blockingInteractionLocked,
-                onClick = onOpenFeedbackSettings,
+                onClick = onOpenNativeLibraryMarket,
             )
         }
         item {
@@ -3922,17 +3925,27 @@ private fun SettingsAuthorInfoSection() {
             url = stringResource(R.string.settings_author_friend_links_wsdx233_url),
         )
         SettingsAuthorSectionTitle(text = stringResource(R.string.settings_author_special_thanks_label))
-        Text(
-            text = stringResource(R.string.settings_author_special_thanks_item_1),
-            style = MaterialTheme.typography.bodySmall
+        SettingsInlineLinkSentence(
+            prefix = stringResource(R.string.settings_author_special_thanks_amethyst_prefix),
+            linkText = stringResource(R.string.settings_author_special_thanks_amethyst_name),
+            suffix = stringResource(R.string.settings_author_special_thanks_amethyst_suffix),
+            url = stringResource(R.string.settings_author_special_thanks_amethyst_url),
         )
         Text(
             text = stringResource(R.string.settings_author_special_thanks_item_2),
             style = MaterialTheme.typography.bodySmall
         )
-        Text(
-            text = stringResource(R.string.settings_author_special_thanks_item_3),
-            style = MaterialTheme.typography.bodySmall
+        SettingsInlineLinkSentence(
+            prefix = stringResource(R.string.settings_author_special_thanks_butterfly_prefix),
+            linkText = stringResource(R.string.settings_author_special_thanks_butterfly_name),
+            suffix = stringResource(R.string.settings_author_special_thanks_butterfly_suffix),
+            url = stringResource(R.string.settings_author_special_thanks_butterfly_url),
+        )
+        SettingsInlineLinkSentence(
+            prefix = stringResource(R.string.settings_author_special_thanks_ram_saver_prefix),
+            linkText = stringResource(R.string.settings_author_special_thanks_ram_saver_name),
+            suffix = stringResource(R.string.settings_author_special_thanks_ram_saver_suffix),
+            url = stringResource(R.string.settings_author_special_thanks_ram_saver_url),
         )
         Text(
             text = stringResource(R.string.settings_author_special_thanks_footer),
@@ -3960,6 +3973,40 @@ private fun SettingsAuthorSectionTitle(text: String) {
     Text(
         text = text,
         style = MaterialTheme.typography.bodyMedium
+    )
+}
+
+@Composable
+private fun SettingsInlineLinkSentence(
+    prefix: String,
+    linkText: String,
+    suffix: String,
+    url: String,
+) {
+    val uriHandler = LocalUriHandler.current
+    val linkTag = "url"
+    val linkStyle = SpanStyle(
+        color = MaterialTheme.colorScheme.primary,
+        textDecoration = TextDecoration.Underline,
+    )
+    val text = buildAnnotatedString {
+        append(prefix)
+        val linkStart = length
+        append(linkText)
+        addStyle(linkStyle, linkStart, length)
+        addStringAnnotation(linkTag, url, linkStart, length)
+        append(suffix)
+    }
+    ClickableText(
+        text = text,
+        style = MaterialTheme.typography.bodySmall.copy(
+            color = MaterialTheme.colorScheme.onSurface
+        ),
+        onClick = { offset ->
+            text.getStringAnnotations(linkTag, offset, offset)
+                .firstOrNull()
+                ?.let { annotation -> uriHandler.openUri(annotation.item) }
+        }
     )
 }
 
