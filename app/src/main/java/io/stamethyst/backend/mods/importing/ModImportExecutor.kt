@@ -258,7 +258,7 @@ internal object ModImportExecutor {
                             displayName = patchPlan.displayName,
                             applied = false,
                             summary = context.importString(R.string.mod_import_patch_failed_skipped),
-                            details = listOf(error.message ?: error.javaClass.simpleName)
+                            details = error.patchFailureDetailsForResult()
                         )
                     )
                 }
@@ -278,13 +278,16 @@ internal object ModImportExecutor {
             }
             val targetName = item.source.displayName.ifBlank { "${item.normalizedModId}.jar" }
             val target = ModManager.resolveStorageFileForImportedMod(context, targetName)
-            commitMarker = importCommitMarker(target)
-            writeImportCommitMarker(commitMarker, target)
             progress.step(
                 item = item,
                 message = context.importString(R.string.mod_import_progress_write_file, target.name)
             )
-            moveFileReplacing(activeWorkingJar, target)
+            OptionalModStorageCoordinator.withImportArtifactLock {
+                val marker = importCommitMarker(target)
+                commitMarker = marker
+                writeImportCommitMarker(marker, target)
+                moveFileReplacing(activeWorkingJar, target)
+            }
             committedTarget = target
             activeWorkingJar = target
             val targetPath = target.absolutePath
@@ -339,7 +342,7 @@ internal object ModImportExecutor {
                 storagePath = targetPath,
                 patchInfo = buildLegacyPatchInfo(item, patchResults)
             )
-            commitMarker.delete()
+            commitMarker?.delete()
             commitMarker = null
             if (replaceExisting) {
                 progress.step(
@@ -391,7 +394,8 @@ internal object ModImportExecutor {
                 modId = item.normalizedModId,
                 modName = item.displayModName,
                 failed = true,
-                message = error.message ?: error.javaClass.simpleName
+                message = error.message ?: error.javaClass.simpleName,
+                failureDetails = error.importFailureDetails()
             )
         }
     }
@@ -636,34 +640,78 @@ internal object ModImportExecutor {
 
     private fun moveFileReplacing(source: File, target: File) {
         val parent = target.parentFile
-        if (parent != null && !parent.exists() && !parent.mkdirs()) {
-            throw IOException("Failed to create directory: ${parent.absolutePath}")
+            ?: throw ImportFileCommitException(
+                message = "Target has no parent: ${target.absolutePath}",
+                diagnosticDetails = listOf(fileDiagnostics("commit.source", source), fileDiagnostics("commit.target", target))
+            )
+        val diagnosticDetails = ArrayList<String>()
+        diagnosticDetails.add(fileDiagnostics("commit.before.source", source))
+        diagnosticDetails.add(fileDiagnostics("commit.before.target", target))
+        diagnosticDetails.add(directoryDiagnostics("commit.before.parent", parent))
+        if (!parent.exists() && !parent.mkdirs()) {
+            throw ImportFileCommitException(
+                message = "Failed to create directory: ${parent.absolutePath}",
+                diagnosticDetails = diagnosticDetails + directoryDiagnostics("commit.mkdir.parent", parent)
+            )
         }
+        diagnosticDetails.add(directoryDiagnostics("commit.ready.parent", parent))
         if (!source.exists()) {
-            throw IOException("Source file not found: ${source.absolutePath}")
+            throw ImportFileCommitException(
+                message = "Source file not found: ${source.absolutePath}",
+                diagnosticDetails = diagnosticDetails + fileDiagnostics("commit.missing.source", source)
+            )
         }
-        if (renameFile(source, target)) {
+        val directRename = renameFile(source, target)
+        diagnosticDetails.add("commit.directRename=${directRename.toLogText()}")
+        if (directRename.success) {
             return
         }
         val temp = File(
-            parent ?: throw IOException("Target has no parent: ${target.absolutePath}"),
+            parent,
             ".${target.name}.${System.nanoTime()}.importing"
         )
         if (temp.exists() && !temp.delete()) {
-            throw IOException("Failed to clear stale temporary import file: ${temp.absolutePath}")
+            throw ImportFileCommitException(
+                message = "Failed to clear stale temporary import file: ${temp.absolutePath}",
+                diagnosticDetails = diagnosticDetails + fileDiagnostics("commit.staleTemp", temp)
+            )
         }
         var committed = false
         try {
-            FileInputStream(source).use { input ->
-                FileOutputStream(temp, false).use { output ->
-                    input.copyTo(output)
-                    output.fd.sync()
+            try {
+                FileInputStream(source).use { input ->
+                    FileOutputStream(temp, false).use { output ->
+                        input.copyTo(output)
+                        output.fd.sync()
+                    }
                 }
+            } catch (error: Throwable) {
+                throw ImportFileCommitException(
+                    message = "Failed to copy imported mod file to temporary file: ${temp.absolutePath}",
+                    cause = error,
+                    diagnosticDetails = diagnosticDetails + listOf(
+                        fileDiagnostics("commit.copyFailed.source", source),
+                        fileDiagnostics("commit.copyFailed.temp", temp),
+                        directoryDiagnostics("commit.copyFailed.parent", parent)
+                    )
+                )
             }
-            if (renameFile(temp, target)) {
+            diagnosticDetails.add(fileDiagnostics("commit.afterCopy.temp", temp))
+            diagnosticDetails.add(directoryDiagnostics("commit.afterCopy.parent", parent))
+            val tempRename = renameFile(temp, target)
+            diagnosticDetails.add("commit.tempRename=${tempRename.toLogText()}")
+            if (tempRename.success) {
                 committed = true
             } else {
-                throw IOException("Failed to commit imported mod file: ${target.absolutePath}")
+                throw ImportFileCommitException(
+                    message = "Failed to commit imported mod file: ${target.absolutePath}",
+                    diagnosticDetails = diagnosticDetails + listOf(
+                        fileDiagnostics("commit.failed.source", source),
+                        fileDiagnostics("commit.failed.temp", temp),
+                        fileDiagnostics("commit.failed.target", target),
+                        directoryDiagnostics("commit.failed.parent", parent)
+                    )
+                )
             }
         } finally {
             if (!committed) {
@@ -673,16 +721,92 @@ internal object ModImportExecutor {
         source.delete()
     }
 
-    private fun renameFile(source: File, target: File): Boolean {
-        if (source.renameTo(target)) {
-            return true
+    private fun renameFile(source: File, target: File): RenameFileResult {
+        val attempts = ArrayList<RenameFileAttempt>()
+        try {
+            if (source.renameTo(target)) {
+                attempts.add(RenameFileAttempt(method = "File.renameTo", success = true, detail = "ok"))
+                return RenameFileResult(success = true, attempts = attempts)
+            }
+            attempts.add(RenameFileAttempt(method = "File.renameTo", success = false, detail = "returned false"))
+        } catch (error: Throwable) {
+            attempts.add(RenameFileAttempt(method = "File.renameTo", success = false, detail = error.summaryForDiagnostics()))
         }
-        return try {
+        try {
             Os.rename(source.absolutePath, target.absolutePath)
-            true
-        } catch (_: ErrnoException) {
-            false
+            attempts.add(RenameFileAttempt(method = "Os.rename", success = true, detail = "ok"))
+            return RenameFileResult(success = true, attempts = attempts)
+        } catch (error: Throwable) {
+            attempts.add(RenameFileAttempt(method = "Os.rename", success = false, detail = error.summaryForDiagnostics()))
         }
+        return RenameFileResult(success = false, attempts = attempts)
+    }
+
+    private class ImportFileCommitException(
+        message: String,
+        cause: Throwable? = null,
+        val diagnosticDetails: List<String> = emptyList()
+    ) : IOException(message, cause)
+
+    private data class RenameFileResult(
+        val success: Boolean,
+        val attempts: List<RenameFileAttempt>
+    )
+
+    private data class RenameFileAttempt(
+        val method: String,
+        val success: Boolean,
+        val detail: String
+    )
+
+    private fun RenameFileResult.toLogText(): String {
+        return attempts.joinToString("; ") { attempt ->
+            "${attempt.method}:${if (attempt.success) "success" else "failed"}:${attempt.detail}"
+        }.ifBlank { "no attempts" }
+    }
+
+    private fun Throwable.patchFailureDetailsForResult(): List<String> {
+        val details = ArrayList<String>()
+        details.add(summaryForDiagnostics())
+        cause?.let { details.add("cause=${it.summaryForDiagnostics()}") }
+        return details
+    }
+
+    private fun Throwable.importFailureDetails(): List<String> {
+        val details = ArrayList<String>()
+        details.add("error=${summaryForDiagnostics()}")
+        cause?.let { details.add("cause=${it.summaryForDiagnostics()}") }
+        if (this is ImportFileCommitException) {
+            details.addAll(diagnosticDetails)
+        }
+        stackTrace.take(8).forEach { frame ->
+            details.add("stack=$frame")
+        }
+        return details
+    }
+
+    private fun Throwable.summaryForDiagnostics(): String {
+        val base = javaClass.name + (message?.trim()?.takeIf { it.isNotEmpty() }?.let { ": $it" } ?: "")
+        return if (this is ErrnoException) {
+            "$base errno=$errno"
+        } else {
+            base
+        }
+    }
+
+    private fun fileDiagnostics(label: String, file: File): String {
+        return "$label path=${file.absolutePath} exists=${file.exists()} isFile=${file.isFile} isDirectory=${file.isDirectory} length=${safeLength(file)} canRead=${file.canRead()} canWrite=${file.canWrite()} usableSpace=${file.usableSpace} freeSpace=${file.freeSpace} totalSpace=${file.totalSpace}"
+    }
+
+    private fun directoryDiagnostics(label: String, directory: File): String {
+        val importArtifacts = directory.listFiles()
+            ?.count { file -> file.name.endsWith(".importing") || file.name.endsWith(".importing.marker") }
+            ?: -1
+        return "$label path=${directory.absolutePath} exists=${directory.exists()} isFile=${directory.isFile} isDirectory=${directory.isDirectory} canRead=${directory.canRead()} canWrite=${directory.canWrite()} usableSpace=${directory.usableSpace} freeSpace=${directory.freeSpace} totalSpace=${directory.totalSpace} importArtifacts=$importArtifacts"
+    }
+
+    private fun safeLength(file: File): Long {
+        return if (file.exists()) file.length() else 0L
     }
 
     private fun importCommitMarker(target: File): File {

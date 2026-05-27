@@ -40,6 +40,6 @@ data class ImportDownscaleMaterialPolicy(
 )
 
 val DEFAULT_IMPORT_DOWNSCALE_MATERIAL_POLICY = ImportDownscaleMaterialPolicy(
-    spineAtlasPages = true,
+    spineAtlasPages = false,
     ordinaryAtlasPages = false
 )

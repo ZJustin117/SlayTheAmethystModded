@@ -88,6 +88,8 @@ object LauncherPreferences {
         get() = LauncherConfig.DEFAULT_AVOID_DISPLAY_CUTOUT
     val DEFAULT_CROP_SCREEN_BOTTOM: Boolean
         get() = LauncherConfig.DEFAULT_CROP_SCREEN_BOTTOM
+    val DEFAULT_RAM_SAVER_ENABLED: Boolean
+        get() = LauncherConfig.DEFAULT_RAM_SAVER_ENABLED
     val DEFAULT_SHOW_GAME_PERFORMANCE_OVERLAY: Boolean
         get() = LauncherConfig.DEFAULT_SHOW_GAME_PERFORMANCE_OVERLAY
     val DEFAULT_SUSTAINED_PERFORMANCE_MODE_ENABLED: Boolean
@@ -344,6 +346,14 @@ object LauncherPreferences {
 
     fun setScreenBottomCropEnabled(context: Context, enabled: Boolean) {
         LauncherConfig.setScreenBottomCropEnabled(context, enabled)
+    }
+
+    fun isRamSaverEnabled(context: Context): Boolean {
+        return LauncherConfig.isRamSaverEnabled(context)
+    }
+
+    fun setRamSaverEnabled(context: Context, enabled: Boolean) {
+        LauncherConfig.setRamSaverEnabled(context, enabled)
     }
 
     fun isGamePerformanceOverlayEnabled(context: Context): Boolean {

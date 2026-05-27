@@ -16,12 +16,18 @@ import java.util.LinkedHashSet
 import java.util.Locale
 
 internal object OptionalModStorageCoordinator {
+    private const val INTERRUPTED_IMPORT_CLEANUP_GRACE_MS = 60L * 60L * 1000L
+
+    private val importArtifactLock = Any()
+
     @JvmStatic
     @Throws(IOException::class)
     fun ensureOptionalModLibraryReady(context: Context) {
         val libraryDir = RuntimePaths.optionalModsLibraryDir(context)
         ensureDirectory(libraryDir)
-        cleanupInterruptedImports(libraryDir)
+        withImportArtifactLock {
+            cleanupInterruptedImports(libraryDir)
+        }
         val migrationMarker = RuntimePaths.optionalModsLibraryMigrationMarker(context)
         if (migrationMarker.isFile) {
             return
@@ -121,6 +127,12 @@ internal object OptionalModStorageCoordinator {
         }
     }
 
+    internal fun <T> withImportArtifactLock(block: () -> T): T {
+        return synchronized(importArtifactLock) {
+            block()
+        }
+    }
+
     private fun rewriteSelectionConfig(
         configFile: File,
         movedPaths: Map<String, String>,
@@ -198,16 +210,26 @@ internal object OptionalModStorageCoordinator {
 
     private fun cleanupInterruptedImports(libraryDir: File) {
         val files = libraryDir.listFiles() ?: return
+        val nowMs = System.currentTimeMillis()
         files.forEach { file ->
             if (!file.isFile) {
                 return@forEach
             }
             val name = file.name
-            when {
-                name.endsWith(".importing.marker") -> file.delete()
-                name.contains(".importing") && name.startsWith(".") -> file.delete()
+            if (isInterruptedImportArtifact(name) && isStaleInterruptedImportArtifact(file, nowMs)) {
+                file.delete()
             }
         }
+    }
+
+    private fun isInterruptedImportArtifact(name: String): Boolean {
+        return name.endsWith(".importing.marker") ||
+            (name.contains(".importing") && name.startsWith("."))
+    }
+
+    private fun isStaleInterruptedImportArtifact(file: File, nowMs: Long): Boolean {
+        val lastModified = file.lastModified()
+        return lastModified <= 0L || nowMs - lastModified >= INTERRUPTED_IMPORT_CLEANUP_GRACE_MS
     }
 
     @Throws(IOException::class)

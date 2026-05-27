@@ -179,7 +179,7 @@
     <string name="compat_runtime_downscale_fbo_desc">允许运行时 FBO 压力路径生效时降低大型离屏 FrameBuffer 的实际分配分辨率。可能让离屏特效变糊，但不会改写模组 jar。</string>
     <string name="compat_downscale_material_import_group_title">导入时降采样</string>
     <string name="compat_import_downscale_spine_atlas_title">Spine atlas 页</string>
-    <string name="compat_import_downscale_spine_atlas_desc">允许导入时离线降采样疑似属于 Spine 或骨骼动画的 atlas 页。这是默认导入处理目标。</string>
+    <string name="compat_import_downscale_spine_atlas_desc">允许导入时离线降采样疑似属于 Spine 或骨骼动画的 atlas 页。默认关闭；仅在需要导入时改写时开启。</string>
     <string name="compat_import_downscale_ordinary_atlas_title">普通 atlas 页</string>
     <string name="compat_import_downscale_ordinary_atlas_desc">允许导入时离线降采样未识别为 Spine 或骨骼动画的 atlas 页。默认关闭，因为通用 atlas region 经常按像素尺寸绘制。</string>
     <string name="touch_mouse_mode_left">左键</string>
@@ -958,8 +958,15 @@
     <string name="settings_first_run_action_back">上一步</string>
     <string name="settings_first_run_action_next">下一步</string>
     <string name="settings_first_run_action_finish">完成</string>
+    <string name="settings_launcher_other_section_title">其他</string>
     <string name="settings_first_run_reopen_action">重新打开引导</string>
     <string name="settings_first_run_reopen_desc">重新进入首次启动时的基础设置引导，再走一遍推荐的启动器基础配置。</string>
+    <string name="settings_mod_alias_apply_file_names_action">用文件名重命名模组</string>
+    <string name="settings_mod_alias_apply_file_names_desc">给每个模组使用实际文件名重命名模组卡片。</string>
+    <string name="settings_mod_alias_apply_file_names_confirm_title">要用文件名重命名模组吗？</string>
+    <string name="settings_mod_alias_apply_file_names_confirm_message">这会用模组的实际文件名覆盖模组卡片上显示的名字，适用于从老版本升级上来，开启显示文件名并改名过的玩家，该选项无法撤销，如果你不清楚该选项是什么意思，请勿点击。</string>
+    <string name="settings_mod_alias_apply_file_names_confirm_action">重命名</string>
+    <string name="settings_mod_alias_apply_file_names_done">已将 %1$d 个模组重命名为文件名。</string>
     <string name="settings_first_run_step_appearance_title">启动器外观</string>
     <string name="settings_first_run_step_appearance_desc">先为 %1$s 选择主题模式和主色，后续页面会实时套用新的外观。</string>
     <string name="settings_first_run_step_render_title">调整渲染与可读性</string>
@@ -1659,6 +1666,9 @@
     <string name="settings_crop_screen_bottom_enabled">裁掉屏幕底边：开启</string>
     <string name="settings_crop_screen_bottom_disabled">裁掉屏幕底边：关闭</string>
     <string name="settings_crop_screen_bottom_desc">开启后，横屏右侧会预留一条黑边，用于提升全面屏设备靠边区域的点击体验。</string>
+    <string name="settings_ram_saver_title">启用内存优化</string>
+    <string name="settings_ram_saver_desc">启用后，可以大幅降低内存，但是会小幅增加功耗，建议打开，如果遇到卡顿、发热严重等问题，可以关闭。</string>
+    <string name="settings_ram_saver_experimental_chip">实验性</string>
     <string name="settings_performance_overlay_enabled">性能叠层：开启</string>
     <string name="settings_performance_overlay_disabled">性能叠层：关闭</string>
     <string name="settings_performance_overlay_desc">控制是否在游戏右上角显示实时 FPS / 内存叠层。</string>

@@ -40,6 +40,7 @@ import io.stamethyst.backend.workshop.mapLocaleLanguageToBaiduLanguage
 import java.io.File
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -59,13 +60,14 @@ internal class WorkshopViewModel : ViewModel() {
     private var activeTimeFilter: WorkshopBrowseTimeFilter = WorkshopBrowseTimeFilter.OneWeek
     private var activeCategory: WorkshopModCategory = WorkshopModCategory.All
     private var browseRequestGeneration = 0
+    private var refreshDownloadStateJob: Job? = null
     private val detailsCache = mutableMapOf<String, WorkshopItemDetails>()
     private val translationClient = BaiduAiTextTranslationClient()
 
     fun load(context: Context, initialListMode: WorkshopListMode = WorkshopListMode.Browse) {
         WorkshopDownloadCenterStore.initialize(context)
         if (loaded) {
-            refreshLocalDownloadState()
+            refreshDownloadState(context)
             if (uiState.listMode != initialListMode) {
                 when (initialListMode) {
                     WorkshopListMode.Browse -> showWorkshopBrowse(context)
@@ -92,18 +94,6 @@ internal class WorkshopViewModel : ViewModel() {
         }
     }
 
-    private fun refreshLocalDownloadState() {
-        metadataStore?.markMissingFiles()
-        WorkshopDownloadCenterStore.refresh()
-        val steamLoggedIn = service?.hasSteamAuth() == true
-        uiState = uiState.copy(
-            steamLoggedIn = steamLoggedIn,
-            listMode = activeListMode,
-            installedMods = metadataStore?.list().orEmpty(),
-            downloadInProgress = WorkshopDownloadCenterStore.tasks.any { it.status.isActiveDownload() },
-        )
-    }
-
     private fun findCachedDetails(appId: UInt, publishedFileId: ULong): WorkshopItemDetails? {
         return uiState.selected?.takeIf { selected ->
             selected.summary.appId == appId && selected.summary.publishedFileId == publishedFileId
@@ -112,7 +102,51 @@ internal class WorkshopViewModel : ViewModel() {
 
     fun refreshDownloadState(context: Context) {
         WorkshopDownloadCenterStore.initialize(context)
-        refreshLocalDownloadState()
+        if (refreshDownloadStateJob?.isActive == true) return
+        val currentMetadataStore = metadataStore
+        val currentService = service
+        refreshDownloadStateJob = viewModelScope.launch {
+            val (loadedTasks, installedMods, steamLoggedIn) = withContext(Dispatchers.IO) {
+                currentMetadataStore?.markMissingFiles()
+                Triple(
+                    WorkshopDownloadCenterStore.loadTasks(),
+                    currentMetadataStore?.list().orEmpty(),
+                    currentService?.hasSteamAuth() == true,
+                )
+            }
+            WorkshopDownloadCenterStore.replaceInMemory(loadedTasks)
+            uiState = uiState.copy(
+                steamLoggedIn = steamLoggedIn,
+                listMode = activeListMode,
+                installedMods = installedMods,
+                downloadInProgress = loadedTasks.any { it.status.isActiveDownload() },
+            )
+        }
+    }
+
+    fun refreshSteamAuth(context: Context) {
+        val currentService = service ?: return
+        val steamLoggedIn = currentService.hasSteamAuth()
+        if (!steamLoggedIn && activeListMode == WorkshopListMode.Subscriptions) {
+            uiState = uiState.copy(
+                browseLoading = false,
+                loadingMore = false,
+                listMode = WorkshopListMode.Subscriptions,
+                steamLoggedIn = false,
+                items = emptyList(),
+                nextPage = 1,
+                hasMorePages = false,
+                errorMessage = null,
+            )
+            return
+        }
+
+        if (uiState.steamLoggedIn != steamLoggedIn) {
+            uiState = uiState.copy(steamLoggedIn = steamLoggedIn)
+        }
+        if (steamLoggedIn && activeListMode == WorkshopListMode.Subscriptions && !uiState.browseLoading) {
+            loadSubscribedPage(context, page = 1, append = false)
+        }
     }
 
     fun search(

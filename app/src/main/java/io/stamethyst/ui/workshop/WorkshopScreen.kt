@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -137,14 +138,22 @@ internal fun WorkshopScreen(
     val density = LocalDensity.current
     val headerHazeState = rememberHazeState()
     var headerHeightPx by remember { mutableIntStateOf(0) }
-    val headerCollapsed = listState.firstVisibleItemIndex > 0 ||
-        listState.firstVisibleItemScrollOffset > with(density) { 24.dp.roundToPx() }
+    val headerCollapseOffsetPx = with(density) { 24.dp.roundToPx() }
+    val headerCollapsed by remember(listState, headerCollapseOffsetPx) {
+        derivedStateOf {
+            listState.firstVisibleItemIndex > 0 ||
+                listState.firstVisibleItemScrollOffset > headerCollapseOffsetPx
+        }
+    }
     val measuredHeaderHeight = with(density) { headerHeightPx.toDp() }
     val headerPlaceholderHeight = if (useFloatingHeader && state.listMode == WorkshopListMode.Browse) 250.dp else 102.dp
     val headerContentTopInset = (if (headerHeightPx == 0) headerPlaceholderHeight else measuredHeaderHeight) + 16.dp
     val refreshIndicatorTopInset = (if (headerHeightPx == 0) headerPlaceholderHeight else measuredHeaderHeight) + 8.dp
     val pullToRefreshState = rememberPullToRefreshState()
-    val activeDownloadTaskCount = WorkshopDownloadCenterStore.tasks.count { it.status.isActiveDownload() }
+    val downloadTaskStatuses = WorkshopDownloadCenterStore.taskStatuses
+    val activeDownloadTaskCount by remember {
+        derivedStateOf { downloadTaskStatuses.values.count { it.isActiveDownload() } }
+    }
     var query by rememberSaveable { mutableStateOf("") }
     var sort by rememberSaveable { mutableStateOf(WorkshopBrowseSort.MostPopular) }
     var timeFilter by rememberSaveable { mutableStateOf(WorkshopBrowseTimeFilter.OneWeek) }
@@ -327,7 +336,7 @@ internal fun WorkshopScreen(
                             val downloadState = resolveWorkshopModDownloadState(
                                 item = item,
                                 installedMods = state.installedMods,
-                                downloadTasks = WorkshopDownloadCenterStore.tasks,
+                                downloadTaskStatuses = downloadTaskStatuses,
                             )
                             WorkshopItemCard(
                                 modifier = Modifier.animateItem(),
@@ -499,7 +508,7 @@ private fun WorkshopHeaderPinnedContent(
             .fillMaxWidth()
             .statusBarsPadding()
             .padding(start = 16.dp, top = 18.dp, end = 16.dp, bottom = 12.dp),
-//        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Surface(
@@ -735,7 +744,7 @@ private fun SearchPanel(
     if (contained) {
         Card(modifier = modifier.fillMaxWidth()) {
             SearchPanelContent(
-                modifier = Modifier.padding(16.dp),
+                modifier = Modifier.padding(0.dp),
                 query = query,
                 loading = loading,
                 sort = sort,
@@ -996,8 +1005,14 @@ private fun WorkshopItemCard(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    WorkshopRatingIndicator(rating = item.rating)
-                    WorkshopDownloadCountIndicator(downloadCount = item.downloadCount)
+                    WorkshopRatingIndicator(
+                        rating = item.rating,
+                        modifier = Modifier.width(WorkshopRatingIndicatorWidth),
+                    )
+                    WorkshopDownloadCountIndicator(
+                        downloadCount = item.downloadCount,
+                        modifier = Modifier.width(WorkshopDownloadCountIndicatorWidth),
+                    )
                 }
             }
             WorkshopDownloadActionButton(
@@ -1034,6 +1049,7 @@ private fun WorkshopDownloadCountIndicator(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -1081,9 +1097,16 @@ private fun WorkshopRatingIndicator(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
+
+private val WorkshopRatingIndicatorWidth = 90.dp
+
+private val WorkshopDownloadCountIndicatorWidth = 84.dp
+
+private const val WorkshopRatingStarPartialFillScale = 0.9f
 
 @Composable
 private fun WorkshopRatingStar(
@@ -1091,10 +1114,16 @@ private fun WorkshopRatingStar(
     modifier: Modifier = Modifier,
 ) {
     val iconSize = 18.dp
-    val fillProgress = progress.coerceIn(0f, 1f)
+    val normalizedProgress = progress.coerceIn(0f, 1f)
+    val fillProgress = if (normalizedProgress >= 1f) {
+        1f
+    } else {
+        normalizedProgress * WorkshopRatingStarPartialFillScale
+    }
     val fillColor = MaterialTheme.colorScheme.primary
     val outlineColor = MaterialTheme.colorScheme.primary
     val starInteriorPath = remember { PathParser().parsePathString(WorkshopRatingStarInteriorPathData).toPath() }
+    val starInteriorBounds = remember { starInteriorPath.getBounds() }
     Box(modifier = modifier.size(iconSize)) {
         Canvas(modifier = Modifier.size(iconSize)) {
             val scaleX = size.width / WorkshopRatingStarViewportSize
@@ -1103,8 +1132,8 @@ private fun WorkshopRatingStar(
                 clipPath(starInteriorPath) {
                     drawRect(
                         color = fillColor,
-                        topLeft = Offset.Zero,
-                        size = Size(WorkshopRatingStarViewportSize * fillProgress, WorkshopRatingStarViewportSize),
+                        topLeft = Offset(starInteriorBounds.left, starInteriorBounds.top),
+                        size = Size(starInteriorBounds.width * fillProgress, starInteriorBounds.height),
                     )
                 }
             }

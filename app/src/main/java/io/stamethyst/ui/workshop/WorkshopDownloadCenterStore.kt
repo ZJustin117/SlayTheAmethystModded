@@ -1,6 +1,7 @@
 package io.stamethyst.ui.workshop
 
 import android.content.Context
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateListOf
 import io.stamethyst.R
 import io.stamethyst.backend.workshop.WorkshopDownloadProcessService
@@ -17,6 +18,7 @@ internal object WorkshopDownloadCenterStore {
     private const val ACTIVE_DOWNLOAD_RECOVERY_GRACE_MS = 30_000L
 
     val tasks = mutableStateListOf<WorkshopDownloadTaskUi>()
+    val taskStatuses = mutableStateMapOf<ULong, WorkshopDownloadTaskStatus>()
     private var store: WorkshopDownloadTaskStore? = null
     private var appContext: Context? = null
     private var loaded = false
@@ -27,15 +29,25 @@ internal object WorkshopDownloadCenterStore {
             loaded = true
             store = WorkshopDownloadTaskStore(context)
             recoverInterruptedDownloads(context)
+            refresh()
         }
-        refresh()
     }
 
     fun refresh() {
+        replaceInMemory(loadTasks())
+    }
+
+    fun loadTasks(): List<WorkshopDownloadTaskUi> {
         val records = store?.list().orEmpty()
         val context = appContext
+        return records.map { it.toUi(context) }
+    }
+
+    fun replaceInMemory(loadedTasks: List<WorkshopDownloadTaskUi>) {
+        replaceTaskStatuses(loadedTasks)
+        if (tasks == loadedTasks) return
         tasks.clear()
-        tasks.addAll(records.map { it.toUi(context) })
+        tasks.addAll(loadedTasks)
     }
 
     fun upsert(task: WorkshopDownloadTaskUi) {
@@ -48,8 +60,23 @@ internal object WorkshopDownloadCenterStore {
     }
 
     fun upsertInMemory(task: WorkshopDownloadTaskUi) {
+        taskStatuses[task.publishedFileId] = task.status
         val index = tasks.indexOfFirst { it.publishedFileId == task.publishedFileId }
         if (index >= 0) tasks[index] = task else tasks.add(0, task)
+    }
+
+    private fun replaceTaskStatuses(loadedTasks: List<WorkshopDownloadTaskUi>) {
+        val loadedStatuses = loadedTasks.associate { it.publishedFileId to it.status }
+        taskStatuses.keys.toList().forEach { publishedFileId ->
+            if (publishedFileId !in loadedStatuses) {
+                taskStatuses.remove(publishedFileId)
+            }
+        }
+        loadedStatuses.forEach { (publishedFileId, status) ->
+            if (taskStatuses[publishedFileId] != status) {
+                taskStatuses[publishedFileId] = status
+            }
+        }
     }
 
     fun update(publishedFileId: ULong, transform: (WorkshopDownloadTaskUi) -> WorkshopDownloadTaskUi) {

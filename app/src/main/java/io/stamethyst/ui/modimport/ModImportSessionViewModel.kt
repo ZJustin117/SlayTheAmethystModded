@@ -261,9 +261,7 @@ internal class ModImportSessionViewModel : ViewModel() {
         return ModImportDecisions(
             duplicateDecisions = duplicateDecisions,
             patchEnabledByKey = patchEnabled,
-            atlasDownscaleStrategy = AtlasOfflineDownscaleStrategy.maxEdge(
-                AtlasOfflineDownscaleStrategy.DEFAULT_MAX_EDGE_PX
-            ),
+            atlasDownscaleStrategy = null,
             targetFolderIdByItemId = emptyMap()
         )
     }

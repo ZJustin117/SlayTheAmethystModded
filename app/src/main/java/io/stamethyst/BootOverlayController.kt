@@ -3,9 +3,14 @@ package io.stamethyst
 import android.os.SystemClock
 import android.view.View
 import androidx.annotation.StringRes
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -17,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
@@ -47,7 +53,10 @@ import io.stamethyst.config.RuntimePaths
 import io.stamethyst.ui.theme.LauncherTheme
 import java.io.RandomAccessFile
 import java.nio.charset.StandardCharsets
+import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
+
+private const val JVM_LOG_ENTER_ANIMATION_MS = 360L
 
 /**
  * Manages the boot overlay UI: progress bar, status text, and dismiss button.
@@ -149,7 +158,6 @@ class BootOverlayController(
     private var surfaceViewLateDismissScheduled = false
     @Volatile
     private var manualEnterGameReady = false
-    private val jvmLogPlaceholderText = text(R.string.boot_overlay_logs_placeholder)
     private val surfaceViewLateDismissRunnable = Runnable {
         surfaceViewLateDismissScheduled = false
         if (bootOverlayDismissed || bootOverlay == null) {
@@ -167,7 +175,8 @@ class BootOverlayController(
             progress = 0,
             statusText = text(R.string.boot_overlay_status_starting_jvm),
             enterGameReady = false,
-            jvmLogText = jvmLogPlaceholderText
+            jvmLogText = "",
+            hasJvmLogOutput = false
         )
     )
 
@@ -244,7 +253,11 @@ class BootOverlayController(
         bootLogStage = BootLogStage.NONE
         surfaceViewLateDismissScheduled = false
         manualEnterGameReady = false
-        overlayUiState = overlayUiState.copy(enterGameReady = false)
+        overlayUiState = overlayUiState.copy(
+            enterGameReady = false,
+            jvmLogText = "",
+            hasJvmLogOutput = false
+        )
         bootOverlay?.removeCallbacks(surfaceViewLateDismissRunnable)
         scheduleJvmLogPolling(initial = true)
 
@@ -456,7 +469,8 @@ class BootOverlayController(
             return
         }
         overlayUiState = overlayUiState.copy(
-            jvmLogText = snapshot
+            jvmLogText = snapshot,
+            hasJvmLogOutput = snapshot.isNotBlank()
         )
     }
 
@@ -589,13 +603,13 @@ class BootOverlayController(
 
     private fun readTailLogText(file: java.io.File): String {
         if (!file.isFile) {
-            return jvmLogPlaceholderText
+            return ""
         }
         return try {
             RandomAccessFile(file, "r").use { raf ->
                 val fileLength = raf.length()
                 if (fileLength <= 0L) {
-                    return jvmLogPlaceholderText
+                    return ""
                 }
                 val bytesToRead = minOf(fileLength, JVM_LOG_MAX_TAIL_BYTES.toLong()).toInt()
                 val startOffset = fileLength - bytesToRead
@@ -605,12 +619,14 @@ class BootOverlayController(
                 val raw = String(buffer, StandardCharsets.UTF_8)
                 val lines = raw.lineSequence().toList()
                 if (lines.isEmpty()) {
-                    return jvmLogPlaceholderText
+                    return ""
                 }
-                lines.takeLast(JVM_LOG_MAX_LINES).joinToString("\n").ifBlank { jvmLogPlaceholderText }
+                lines.takeLast(JVM_LOG_MAX_LINES)
+                    .joinToString("\n")
+                    .let { text -> if (text.isBlank()) "" else text.trimEnd() }
             }
         } catch (_: Throwable) {
-            jvmLogPlaceholderText
+            ""
         }
     }
 }
@@ -620,7 +636,8 @@ private data class BootOverlayUiState(
     val progress: Int,
     val statusText: String,
     val enterGameReady: Boolean,
-    val jvmLogText: String
+    val jvmLogText: String,
+    val hasJvmLogOutput: Boolean
 )
 
 @Composable
@@ -637,6 +654,42 @@ private fun BootOverlayPanel(
             easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
         ),
         label = "boot_overlay_progress"
+    )
+
+    val hasJvmLogOutput = uiState.hasJvmLogOutput
+    var showJvmLogText by remember { mutableStateOf(false) }
+    LaunchedEffect(hasJvmLogOutput) {
+        if (hasJvmLogOutput) {
+            showJvmLogText = false
+            delay(JVM_LOG_ENTER_ANIMATION_MS)
+            showJvmLogText = true
+        } else {
+            showJvmLogText = false
+        }
+    }
+    val topSpacerWeight by animateFloatAsState(
+        targetValue = if (hasJvmLogOutput) 0f else 1f,
+        animationSpec = tween(
+            durationMillis = JVM_LOG_ENTER_ANIMATION_MS.toInt(),
+            easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
+        ),
+        label = "boot_overlay_top_spacer"
+    )
+    val bottomSpacerWeight by animateFloatAsState(
+        targetValue = if (hasJvmLogOutput) 0f else 1f,
+        animationSpec = tween(
+            durationMillis = JVM_LOG_ENTER_ANIMATION_MS.toInt(),
+            easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
+        ),
+        label = "boot_overlay_bottom_spacer"
+    )
+    val logAreaWeight by animateFloatAsState(
+        targetValue = if (hasJvmLogOutput) 1f else 0f,
+        animationSpec = tween(
+            durationMillis = JVM_LOG_ENTER_ANIMATION_MS.toInt(),
+            easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
+        ),
+        label = "boot_overlay_log_area"
     )
 
     val consumeBackgroundTapModifier = if (manualDismissBootOverlay) {
@@ -664,6 +717,9 @@ private fun BootOverlayPanel(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            if (topSpacerWeight > 0f) {
+                Spacer(modifier = Modifier.weight(topSpacerWeight))
+            }
             Text(
                 text = stringResource(R.string.boot_overlay_title_starting),
                 color = colorScheme.onSurface,
@@ -687,34 +743,63 @@ private fun BootOverlayPanel(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth()
             )
-            val logScrollState = rememberScrollState()
-            LaunchedEffect(uiState.jvmLogText) {
-                val target = logScrollState.maxValue
-                if (target != logScrollState.value) {
-                    logScrollState.animateScrollTo(
-                        value = target,
+            if (bottomSpacerWeight > 0f) {
+                Spacer(modifier = Modifier.weight(bottomSpacerWeight))
+            }
+            if (logAreaWeight > 0f) {
+                AnimatedVisibility(
+                    visible = hasJvmLogOutput,
+                    enter = fadeIn(
+                        animationSpec = tween(durationMillis = 220, delayMillis = 80)
+                    ) + expandVertically(
+                        animationSpec = tween(
+                            durationMillis = JVM_LOG_ENTER_ANIMATION_MS.toInt(),
+                            easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
+                        ),
+                        expandFrom = Alignment.Top
+                    ),
+                    exit = shrinkVertically(
                         animationSpec = tween(
                             durationMillis = 240,
                             easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
-                        )
-                    )
-                }
-            }
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .padding(top = 6.dp)
-            ) {
-                Text(
-                    text = uiState.jvmLogText,
-                    color = colorScheme.onSurfaceVariant.copy(alpha = 0.88f),
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
+                        ),
+                        shrinkTowards = Alignment.Top
+                    ) + fadeOut(animationSpec = tween(durationMillis = 160)),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .verticalScroll(logScrollState)
-                )
+                        .weight(logAreaWeight),
+                    label = "boot_overlay_jvm_log"
+                ) {
+                    val logScrollState = rememberScrollState()
+                    val visibleJvmLogText = if (showJvmLogText) uiState.jvmLogText else ""
+                    LaunchedEffect(visibleJvmLogText) {
+                        val target = logScrollState.maxValue
+                        if (target != logScrollState.value) {
+                            logScrollState.animateScrollTo(
+                                value = target,
+                                animationSpec = tween(
+                                    durationMillis = 240,
+                                    easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
+                                )
+                            )
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(top = 6.dp)
+                    ) {
+                        Text(
+                            text = visibleJvmLogText,
+                            color = colorScheme.onSurfaceVariant.copy(alpha = 0.88f),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .verticalScroll(logScrollState)
+                        )
+                    }
+                }
             }
         }
         if (manualDismissBootOverlay) {

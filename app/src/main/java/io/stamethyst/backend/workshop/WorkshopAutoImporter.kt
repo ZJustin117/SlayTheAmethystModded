@@ -128,8 +128,11 @@ internal object WorkshopAutoImporter {
         plan.importableItems.forEach { item ->
             item.patchPlans.forEach { patch ->
                 patchEnabled[ModImportDecisions.patchDecisionKey(item.id, patch.moduleId)] =
-                    patch.defaultEnabled &&
-                        (patch.moduleId != ATLAS_OFFLINE_DOWNSCALE_PATCH_ID || atlasDownscaleEnabled)
+                    if (patch.moduleId == ATLAS_OFFLINE_DOWNSCALE_PATCH_ID) {
+                        atlasDownscaleEnabled
+                    } else {
+                        patch.defaultEnabled
+                    }
             }
         }
         return ModImportDecisions(
@@ -218,8 +221,11 @@ internal object WorkshopAutoImporter {
         report.results.forEach { result ->
             log(
                 logFile,
-                "执行结果：item=${result.itemId} modId=${result.modId} modName=${result.modName} imported=${result.imported} skipped=${result.skipped} blocked=${result.blocked} failed=${result.failed} storagePath=${result.storagePath.orEmpty()} message=${result.message.ifBlank { "<empty>" }} patchResults=${result.patchResults.size}"
+                "执行结果：item=${result.itemId} modId=${result.modId} modName=${result.modName} imported=${result.imported} skipped=${result.skipped} blocked=${result.blocked} failed=${result.failed} storagePath=${result.storagePath.orEmpty()} message=${result.message.ifBlank { "<empty>" }} patchResults=${result.patchResults.size} failureDetails=${result.failureDetails.size}"
             )
+            result.failureDetails.forEach { detail ->
+                log(logFile, "执行失败详情：item=${result.itemId} $detail")
+            }
             result.patchResults.forEach { patchResult ->
                 log(logFile, "执行修补结果：item=${result.itemId} ${patchResult.toLogText()}")
             }

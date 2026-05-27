@@ -99,6 +99,8 @@ import io.stamethyst.config.TouchscreenInputMode
 import io.stamethyst.backend.mods.StsJarValidator
 import io.stamethyst.ui.LauncherTransientNoticeBus
 import io.stamethyst.ui.UiText
+import io.stamethyst.ui.main.ModAliasStore
+import io.stamethyst.ui.main.resolveModFileNameWithoutJar
 import io.stamethyst.ui.resolve
 import io.stamethyst.ui.UiBusyOperation
 import io.stamethyst.ui.preferences.LauncherPreferences
@@ -267,6 +269,7 @@ class SettingsScreenViewModel : ViewModel() {
             LauncherPreferences.DEFAULT_COMPENDIUM_UPGRADE_TOUCH_FIX_ENABLED,
         val avoidDisplayCutout: Boolean = LauncherPreferences.DEFAULT_AVOID_DISPLAY_CUTOUT,
         val cropScreenBottom: Boolean = LauncherPreferences.DEFAULT_CROP_SCREEN_BOTTOM,
+        val ramSaverEnabled: Boolean = LauncherPreferences.DEFAULT_RAM_SAVER_ENABLED,
         val showGamePerformanceOverlay: Boolean = LauncherPreferences.DEFAULT_SHOW_GAME_PERFORMANCE_OVERLAY,
         val sustainedPerformanceModeEnabled: Boolean =
             LauncherPreferences.DEFAULT_SUSTAINED_PERFORMANCE_MODE_ENABLED,
@@ -2513,6 +2516,28 @@ class SettingsScreenViewModel : ViewModel() {
         refreshStatus(host)
     }
 
+    fun onApplyModFileNameAliases(host: Activity) {
+        if (uiState.busy) {
+            return
+        }
+        val aliasesByPath = LinkedHashMap<String, String>()
+        ModManager.listInstalledMods(host).forEach { mod ->
+            if (mod.required || !mod.installed || !mod.jarFile.isFile) {
+                return@forEach
+            }
+            val alias = resolveModFileNameWithoutJar(mod.jarFile.absolutePath).orEmpty().trim()
+            if (alias.isNotEmpty()) {
+                aliasesByPath[mod.jarFile.absolutePath] = alias
+            }
+        }
+        ModAliasStore.setAliases(host, aliasesByPath)
+        showToast(
+            host,
+            UiText.StringResource(R.string.settings_mod_alias_apply_file_names_done, aliasesByPath.size),
+            Toast.LENGTH_SHORT
+        )
+    }
+
     fun onLwjglDebugChanged(host: Activity, enabled: Boolean) {
         if (uiState.busy) {
             return
@@ -2626,6 +2651,15 @@ class SettingsScreenViewModel : ViewModel() {
         }
         uiState = uiState.copy(cropScreenBottom = enabled)
         saveScreenBottomCropSelection(host, enabled)
+        refreshStatus(host)
+    }
+
+    fun onRamSaverEnabledChanged(host: Activity, enabled: Boolean) {
+        if (uiState.busy) {
+            return
+        }
+        uiState = uiState.copy(ramSaverEnabled = enabled)
+        saveRamSaverEnabledSelection(host, enabled)
         refreshStatus(host)
     }
 
@@ -3122,6 +3156,7 @@ class SettingsScreenViewModel : ViewModel() {
             compendiumUpgradeTouchFixEnabled = input.compendiumUpgradeTouchFixEnabled,
             avoidDisplayCutout = input.avoidDisplayCutout,
             cropScreenBottom = input.cropScreenBottom,
+            ramSaverEnabled = input.ramSaverEnabled,
             showGamePerformanceOverlay = diagnostics.showGamePerformanceOverlay,
             sustainedPerformanceModeEnabled = diagnostics.sustainedPerformanceModeEnabled,
             systemGameModeDisplayName = host.getString(diagnostics.systemGameMode.displayNameResId),
@@ -4252,6 +4287,10 @@ class SettingsScreenViewModel : ViewModel() {
 
     private fun saveScreenBottomCropSelection(host: Activity, enabled: Boolean) {
         LauncherPreferences.setScreenBottomCropEnabled(host, enabled)
+    }
+
+    private fun saveRamSaverEnabledSelection(host: Activity, enabled: Boolean) {
+        LauncherPreferences.setRamSaverEnabled(host, enabled)
     }
 
     private fun saveLwjglDebugSelection(host: Activity, enabled: Boolean) {

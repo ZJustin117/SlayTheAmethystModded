@@ -179,7 +179,7 @@
     <string name="compat_runtime_downscale_fbo_desc">Allow runtime pressure downscale for large offscreen FrameBuffers when the runtime FBO pressure path is active. This can blur offscreen effects but does not rewrite mod jars.</string>
     <string name="compat_downscale_material_import_group_title">Import-time downscale</string>
     <string name="compat_import_downscale_spine_atlas_title">Spine atlas pages</string>
-    <string name="compat_import_downscale_spine_atlas_desc">Allow import-time offline downscale for atlas pages whose atlas appears to belong to Spine or skeletal animation. This is the default import-time target.</string>
+    <string name="compat_import_downscale_spine_atlas_desc">Allow import-time offline downscale for atlas pages whose atlas appears to belong to Spine or skeletal animation. Disabled by default; enable only when you want import-time rewriting.</string>
     <string name="compat_import_downscale_ordinary_atlas_title">Ordinary atlas pages</string>
     <string name="compat_import_downscale_ordinary_atlas_desc">Allow import-time offline downscale for atlas pages whose atlas is not recognized as Spine or skeletal animation. Disabled by default because generic atlas regions are often drawn by pixel size.</string>
     <string name="touch_mouse_mode_left">Left</string>
@@ -958,8 +958,15 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="settings_first_run_action_back">Back</string>
     <string name="settings_first_run_action_next">Next</string>
     <string name="settings_first_run_action_finish">Finish</string>
+    <string name="settings_launcher_other_section_title">Other</string>
     <string name="settings_first_run_reopen_action">Open setup guide again</string>
     <string name="settings_first_run_reopen_desc">Re-enter the first-run setup flow and review the recommended basic launcher settings.</string>
+    <string name="settings_mod_alias_apply_file_names_action">Rename mods to file names</string>
+    <string name="settings_mod_alias_apply_file_names_desc">Rename every mod to its file name. Suitable for players upgrading from old versions to new versions who find their renamed mods disappeared after the rename system rewrite.</string>
+    <string name="settings_mod_alias_apply_file_names_confirm_title">Rename mods to file names?</string>
+    <string name="settings_mod_alias_apply_file_names_confirm_message">This will overwrite existing mod aliases with each mod jar file name. The jar files themselves will not be renamed.</string>
+    <string name="settings_mod_alias_apply_file_names_confirm_action">Rename</string>
+    <string name="settings_mod_alias_apply_file_names_done">Renamed %1$d mods to file names.</string>
     <string name="settings_first_run_step_appearance_title">Choose the launcher look</string>
     <string name="settings_first_run_step_appearance_desc">Start by choosing the theme mode and accent color for %1$s.</string>
     <string name="settings_first_run_step_render_title">Tune rendering and readability</string>
@@ -1382,6 +1389,9 @@ Patch rule: rewrite shader files in JacketNoAnoKo shader resource folders so des
     <string name="settings_crop_screen_bottom_enabled">Crop screen bottom: Enabled</string>
     <string name="settings_crop_screen_bottom_disabled">Crop screen bottom: Disabled</string>
     <string name="settings_crop_screen_bottom_desc">When enabled, a black margin is reserved on the right side in landscape to improve taps near the edge on full-screen displays.</string>
+    <string name="settings_ram_saver_title">启用内存优化</string>
+    <string name="settings_ram_saver_desc">启用后，可以大幅降低内存，但是会小幅增加功耗，建议打开，如果遇到卡顿、发热严重等问题，可以关闭。</string>
+    <string name="settings_ram_saver_experimental_chip">实验性</string>
     <string name="settings_performance_overlay_enabled">Performance overlay: Enabled</string>
     <string name="settings_performance_overlay_disabled">Performance overlay: Disabled</string>
     <string name="settings_performance_overlay_desc">Controls whether the real-time FPS / memory overlay in the top-right corner is shown in game.</string>

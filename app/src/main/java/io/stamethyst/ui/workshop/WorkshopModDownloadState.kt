@@ -29,15 +29,39 @@ internal fun resolveWorkshopModDownloadState(
     installedMods: List<WorkshopInstalledModRecord>,
     downloadTasks: List<WorkshopDownloadTaskUi>,
 ): WorkshopModDownloadState {
-    if (WorkshopDownloadBlocklist.isBlocked(item.publishedFileId)) return WorkshopModDownloadState.Unavailable
     val task = downloadTasks.firstOrNull { it.publishedFileId == item.publishedFileId }
+    return resolveWorkshopModDownloadState(
+        item = item,
+        installedMods = installedMods,
+        taskStatus = task?.status,
+        taskMessage = task?.message.orEmpty(),
+    )
+}
+
+internal fun resolveWorkshopModDownloadState(
+    item: WorkshopItemSummary,
+    installedMods: List<WorkshopInstalledModRecord>,
+    downloadTaskStatuses: Map<ULong, WorkshopDownloadTaskStatus>,
+): WorkshopModDownloadState = resolveWorkshopModDownloadState(
+    item = item,
+    installedMods = installedMods,
+    taskStatus = downloadTaskStatuses[item.publishedFileId],
+)
+
+private fun resolveWorkshopModDownloadState(
+    item: WorkshopItemSummary,
+    installedMods: List<WorkshopInstalledModRecord>,
+    taskStatus: WorkshopDownloadTaskStatus?,
+    taskMessage: String = "",
+): WorkshopModDownloadState {
+    if (WorkshopDownloadBlocklist.isBlocked(item.publishedFileId)) return WorkshopModDownloadState.Unavailable
     val installed = installedMods.firstOrNull {
         it.appId == item.appId && it.publishedFileId == item.publishedFileId
     }
     val resolved = WorkshopModStateResolver.resolve(
         record = installed,
-        taskStatus = task?.status,
-        taskMessage = task?.message.orEmpty(),
+        taskStatus = taskStatus,
+        taskMessage = taskMessage,
         remoteUpdatedAtMillis = item.updatedAtMillis,
     )
     return resolved.kind.toWorkshopModDownloadState()

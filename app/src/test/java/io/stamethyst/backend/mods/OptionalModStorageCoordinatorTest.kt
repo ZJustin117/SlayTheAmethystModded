@@ -113,12 +113,29 @@ class OptionalModStorageCoordinatorTest {
         val marker = libraryDir.toPath().resolve(".HalfImported.jar.importing.marker").toFile()
         marker.writeText(target.name, StandardCharsets.UTF_8)
         val scratch = Files.write(libraryDir.toPath().resolve(".HalfImported.jar.123.importing"), byteArrayOf(9)).toFile()
+        val staleTimestamp = System.currentTimeMillis() - 2L * 60L * 60L * 1000L
+        marker.setLastModified(staleTimestamp)
+        scratch.setLastModified(staleTimestamp)
 
         OptionalModStorageCoordinator.ensureOptionalModLibraryReady(roots.context)
 
         assertTrue(target.exists())
         assertFalse(marker.exists())
         assertFalse(scratch.exists())
+    }
+
+    @Test
+    fun ensureOptionalModLibraryReady_keepsFreshImportArtifacts() {
+        val roots = TestRoots.create("optional-mod-storage-active-import-test")
+        val libraryDir = RuntimePaths.optionalModsLibraryDir(roots.context).apply { mkdirs() }
+        val marker = libraryDir.toPath().resolve(".Active.jar.importing.marker").toFile()
+        marker.writeText("Active.jar", StandardCharsets.UTF_8)
+        val scratch = Files.write(libraryDir.toPath().resolve(".Active.jar.123.importing"), byteArrayOf(9)).toFile()
+
+        OptionalModStorageCoordinator.ensureOptionalModLibraryReady(roots.context)
+
+        assertTrue(marker.exists())
+        assertTrue(scratch.exists())
     }
 
     private class TestRoots private constructor(

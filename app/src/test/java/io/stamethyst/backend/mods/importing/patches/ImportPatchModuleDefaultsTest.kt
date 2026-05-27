@@ -9,7 +9,7 @@ class ImportPatchModuleDefaultsTest {
     @Test
     fun basePlan_usesModuleDefaultEnablement() {
         val atlasDownscalePlan = AtlasOfflineDownscalePatchModule.basePlan(applicable = true)
-        assertTrue(atlasDownscalePlan.defaultEnabled)
+        assertFalse(atlasDownscalePlan.defaultEnabled)
         assertTrue(atlasDownscalePlan.userConfigurable)
 
         val duplicateEntryPlan = DuplicateZipEntryPatchModule.basePlan(applicable = true)

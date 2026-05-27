@@ -1,6 +1,7 @@
 package io.stamethyst.backend.mods
 
 import android.content.Context
+import io.stamethyst.config.LauncherConfig
 import io.stamethyst.config.RuntimePaths
 import java.io.BufferedReader
 import java.io.BufferedWriter
@@ -565,6 +566,9 @@ object ModManager {
 
     @JvmStatic
     fun isRamSaverEnabled(context: Context): Boolean {
+        if (!LauncherConfig.isRamSaverEnabled(context)) {
+            return false
+        }
         if (RuntimePaths.importedRamSaverJar(context).isFile ||
             hasBundledRequiredModAsset(context, MOD_ID_RAM_SAVER)
         ) {
@@ -601,11 +605,15 @@ object ModManager {
             MOD_ID_AMETHYST_RUNTIME_COMPAT,
             "AmethystRuntimeCompat.jar"
         )
-        val ramSaverId = resolveRequiredLaunchModId(
-            RuntimePaths.importedRamSaverJar(context),
-            MOD_ID_RAM_SAVER,
-            "RamSaver.jar"
-        )
+        val ramSaverId = if (LauncherConfig.isRamSaverEnabled(context)) {
+            resolveRequiredLaunchModId(
+                RuntimePaths.importedRamSaverJar(context),
+                MOD_ID_RAM_SAVER,
+                "RamSaver.jar"
+            )
+        } else {
+            null
+        }
 
         val optionalModFiles = findOptionalModFiles(context)
         val rawSelection = readEnabledOptionalModKeys(context)
@@ -619,7 +627,7 @@ object ModManager {
         launchModIds.add(baseModId)
         launchModIds.add(stsLibId)
         launchModIds.add(runtimeCompatId)
-        launchModIds.add(ramSaverId)
+        ramSaverId?.let(launchModIds::add)
 
         val enabledOptionalEntries = ArrayList<OptionalModLaunchEntry>()
         optionalModFiles.forEachIndexed { index, entry ->
@@ -690,6 +698,11 @@ object ModManager {
         }
         val bundled = hasBundledRequiredModAsset(context, expectedModId)
         val available = installed || bundled
+        val enabled = if (expectedModId == MOD_ID_RAM_SAVER) {
+            available && LauncherConfig.isRamSaverEnabled(context)
+        } else {
+            available
+        }
         return InstalledMod(
             expectedModId,
             manifestModId,
@@ -700,7 +713,7 @@ object ModManager {
             jarFile,
             true,
             available,
-            available,
+            enabled,
             null,
             null
         )

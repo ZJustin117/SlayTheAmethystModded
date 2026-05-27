@@ -208,6 +208,7 @@ fun LauncherSettingsLauncherScreen(
         onOpenReleaseHistory = { viewModel.onOpenReleaseHistory(activity) },
         onDismissReleaseHistoryDialog = viewModel::dismissReleaseHistoryDialog,
         onOpenFirstRunSetup = { navigator.push(Route.FirstRunSetup) },
+        onApplyModFileNameAliases = { viewModel.onApplyModFileNameAliases(activity) },
     )
 }
 
@@ -238,6 +239,9 @@ fun LauncherSettingsGameScreen(
         },
         onScreenBottomCropChanged = { enabled ->
             viewModel.onScreenBottomCropChanged(activity, enabled)
+        },
+        onRamSaverEnabledChanged = { enabled ->
+            viewModel.onRamSaverEnabledChanged(activity, enabled)
         },
         onGameplayFontScaleChanged = { value ->
             viewModel.onGameplayFontScaleChanged(activity, value)
@@ -660,7 +664,10 @@ private fun LauncherSettingsLauncherScreenContent(
     onOpenReleaseHistory: () -> Unit = {},
     onDismissReleaseHistoryDialog: () -> Unit = {},
     onOpenFirstRunSetup: () -> Unit = {},
+    onApplyModFileNameAliases: () -> Unit = {},
 ) {
+    var showApplyModFileNameAliasesDialog by rememberSaveable { mutableStateOf(false) }
+
     SettingsRouteScaffold(
         modifier = modifier,
         uiState = uiState,
@@ -702,15 +709,47 @@ private fun LauncherSettingsLauncherScreenContent(
             }
         }
         item {
-            SettingsSectionCard(title = stringResource(R.string.settings_first_run_title)) {
+            SettingsSectionCard(title = stringResource(R.string.settings_launcher_other_section_title)) {
                 SettingsActionListItem(
                     title = stringResource(R.string.settings_first_run_reopen_action),
                     supportingText = stringResource(R.string.settings_first_run_reopen_desc),
                     enabled = !uiState.busy,
                     onClick = onOpenFirstRunSetup,
                 )
+                SettingsDangerActionListItem(
+                    title = stringResource(R.string.settings_mod_alias_apply_file_names_action),
+                    supportingText = stringResource(R.string.settings_mod_alias_apply_file_names_desc),
+                    enabled = !uiState.busy,
+                    onClick = { showApplyModFileNameAliasesDialog = true },
+                )
             }
         }
+    }
+
+    if (showApplyModFileNameAliasesDialog) {
+        AlertDialog(
+            onDismissRequest = { showApplyModFileNameAliasesDialog = false },
+            title = { Text(stringResource(R.string.settings_mod_alias_apply_file_names_confirm_title)) },
+            text = { Text(stringResource(R.string.settings_mod_alias_apply_file_names_confirm_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showApplyModFileNameAliasesDialog = false
+                        onApplyModFileNameAliases()
+                    }
+                ) {
+                    Text(
+                        text = stringResource(R.string.settings_mod_alias_apply_file_names_confirm_action),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showApplyModFileNameAliasesDialog = false }) {
+                    Text(stringResource(android.R.string.cancel))
+                }
+            }
+        )
     }
 }
 
@@ -724,6 +763,7 @@ private fun LauncherSettingsGameScreenContent(
     onVirtualResolutionModeChanged: (VirtualResolutionMode) -> Unit = {},
     onDisplayCutoutAvoidanceChanged: (Boolean) -> Unit = {},
     onScreenBottomCropChanged: (Boolean) -> Unit = {},
+    onRamSaverEnabledChanged: (Boolean) -> Unit = {},
     onGameplayFontScaleChanged: (Float) -> Unit = {},
     onGameplayLargerUiChanged: (Boolean) -> Unit = {},
     onPlayerNameChanged: (String) -> Boolean = { true },
@@ -755,6 +795,7 @@ private fun LauncherSettingsGameScreenContent(
                     onVirtualResolutionModeChanged = onVirtualResolutionModeChanged,
                     onDisplayCutoutAvoidanceChanged = onDisplayCutoutAvoidanceChanged,
                     onScreenBottomCropChanged = onScreenBottomCropChanged,
+                    onRamSaverEnabledChanged = onRamSaverEnabledChanged,
                     onGameplayFontScaleChanged = onGameplayFontScaleChanged,
                     onGameplayLargerUiChanged = onGameplayLargerUiChanged,
                 )
@@ -2710,6 +2751,7 @@ internal fun SettingsPerformanceSection(
     onVirtualResolutionModeChanged: (VirtualResolutionMode) -> Unit,
     onDisplayCutoutAvoidanceChanged: (Boolean) -> Unit,
     onScreenBottomCropChanged: (Boolean) -> Unit,
+    onRamSaverEnabledChanged: (Boolean) -> Unit,
     onGameplayFontScaleChanged: (Float) -> Unit,
     onGameplayLargerUiChanged: (Boolean) -> Unit,
 ) {
@@ -2728,6 +2770,16 @@ internal fun SettingsPerformanceSection(
     var lastGameplayFontScaleStep by remember(uiState.gameplayFontScale) {
         mutableIntStateOf(gameplayFontScaleToStep(uiState.gameplayFontScale))
     }
+
+    SwitchSettingRow(
+        checked = uiState.ramSaverEnabled,
+        enabled = !uiState.busy,
+        enabledText = stringResource(R.string.settings_ram_saver_title),
+        disabledText = stringResource(R.string.settings_ram_saver_title),
+        description = stringResource(R.string.settings_ram_saver_desc),
+        onCheckedChange = onRamSaverEnabledChanged,
+        chipText = stringResource(R.string.settings_ram_saver_experimental_chip),
+    )
 
     Text(
         text = stringResource(R.string.settings_render_scale_title),
@@ -3511,8 +3563,10 @@ internal fun SwitchSettingRow(
     disabledText: String,
     description: String,
     onCheckedChange: (Boolean) -> Unit,
+    chipText: String? = null,
 ) {
     val view = LocalView.current
+    val title = if (checked) enabledText else disabledText
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
@@ -3526,12 +3580,41 @@ internal fun SwitchSettingRow(
             }
         )
         Spacer(modifier = Modifier.width(10.dp))
-        Text(text = if (checked) enabledText else disabledText)
+        if (chipText == null) {
+            Text(text = title)
+        } else {
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = title,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                SettingsMetadataChip(text = chipText)
+            }
+        }
     }
     Text(
         text = description,
         style = MaterialTheme.typography.bodySmall
     )
+}
+
+@Composable
+private fun SettingsMetadataChip(text: String) {
+    Surface(
+        shape = RoundedCornerShape(percent = 50),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+        )
+    }
 }
 
 @Composable
@@ -3574,6 +3657,49 @@ internal fun SettingsActionListItem(
         },
         colors = ListItemDefaults.colors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .hapticClickable(
+                enabled = enabled,
+                onClick = onClick
+            )
+    )
+}
+
+@Composable
+private fun SettingsDangerActionListItem(
+    title: String,
+    supportingText: String? = null,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    ListItem(
+        headlineContent = {
+            Text(
+                text = title,
+                color = MaterialTheme.colorScheme.error,
+            )
+        },
+        supportingContent = supportingText?.let { value ->
+            {
+                Text(
+                    text = value,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        },
+        trailingContent = {
+            Text(
+                text = ">",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.error,
+            )
+        },
+        colors = ListItemDefaults.colors(
+            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.22f)
         ),
         modifier = Modifier
             .fillMaxWidth()

@@ -163,7 +163,8 @@ internal data class ModImportExecutionItemResult(
     val blocked: Boolean = false,
     val failed: Boolean = false,
     val message: String = "",
-    val patchResults: List<ImportPatchResult> = emptyList()
+    val patchResults: List<ImportPatchResult> = emptyList(),
+    val failureDetails: List<String> = emptyList()
 )
 
 internal data class ModImportExecutionReport(

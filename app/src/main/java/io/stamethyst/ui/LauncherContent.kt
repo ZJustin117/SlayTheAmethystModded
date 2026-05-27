@@ -231,6 +231,24 @@ fun LauncherContent(
         }
     }
 
+    fun refreshWorkshopSteamAuth() {
+        val appContext = activity.applicationContext
+        workshopViewModel.refreshSteamAuth(appContext)
+        workshopSubscriptionsViewModel.refreshSteamAuth(appContext)
+    }
+
+    fun handleSteamCloudLoginCompleted() {
+        refreshWorkshopSteamAuth()
+        if (!navigator.popTo(Route.WorkshopSubscriptions) &&
+            !navigator.popTo(Route.Workshop) &&
+            !navigator.popTo(Route.SettingsMarketCloud) &&
+            !navigator.popTo(Route.Settings) &&
+            !navigator.popTo(Route.FirstRunSetup)
+        ) {
+            navigator.goBack()
+        }
+    }
+
     fun openFeedbackUpdates() {
         val unreadIssues = feedbackInboxState.subscriptions.filter { it.unread }
         when {
@@ -256,6 +274,14 @@ fun LauncherContent(
         if (currentRoute == Route.Mods) {
             mainViewModel.refresh(activity)
         }
+    }
+
+    LaunchedEffect(
+        settingsUiState.steamCloudAccountName,
+        settingsUiState.steamCloudRefreshTokenConfigured,
+        activity,
+    ) {
+        refreshWorkshopSteamAuth()
     }
 
     LaunchedEffect(currentRoute) {
@@ -663,6 +689,7 @@ fun LauncherContent(
                             LauncherSteamCloudLoginScreen(
                                 viewModel = settingsViewModel,
                                 modifier = Modifier.fillMaxSize(),
+                                onLoginCompleted = ::handleSteamCloudLoginCompleted,
                             )
                         }
 
@@ -681,6 +708,7 @@ fun LauncherContent(
                             LauncherSteamCloudGuardScreen(
                                 viewModel = settingsViewModel,
                                 modifier = Modifier.fillMaxSize(),
+                                onLoginCompleted = ::handleSteamCloudLoginCompleted,
                             )
                         }
 

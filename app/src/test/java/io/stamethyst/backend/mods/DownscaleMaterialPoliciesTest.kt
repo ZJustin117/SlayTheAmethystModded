@@ -19,8 +19,11 @@ class DownscaleMaterialPoliciesTest {
     }
 
     @Test
-    fun importMaterialPolicy_defaultsOnlyAllowSpineAtlasPages() {
-        assertTrue(LauncherConfig.DEFAULT_IMPORT_DOWNSCALE_SPINE_ATLAS_PAGES_ENABLED)
+    fun importOfflineDownscale_defaultsDisabled() {
+        assertFalse(LauncherConfig.DEFAULT_WORKSHOP_AUTO_IMPORT_ATLAS_DOWNSCALE_ENABLED)
+        assertFalse(LauncherConfig.DEFAULT_IMPORT_DOWNSCALE_SPINE_ATLAS_PAGES_ENABLED)
         assertFalse(LauncherConfig.DEFAULT_IMPORT_DOWNSCALE_ORDINARY_ATLAS_PAGES_ENABLED)
+        assertFalse(DEFAULT_IMPORT_DOWNSCALE_MATERIAL_POLICY.spineAtlasPages)
+        assertFalse(DEFAULT_IMPORT_DOWNSCALE_MATERIAL_POLICY.ordinaryAtlasPages)
     }
 }

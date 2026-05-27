@@ -78,6 +78,7 @@ internal object SettingsRepository {
         val compendiumUpgradeTouchFixEnabled: Boolean,
         val avoidDisplayCutout: Boolean,
         val cropScreenBottom: Boolean,
+        val ramSaverEnabled: Boolean,
         val touchscreenEnabled: Boolean,
         val touchIndicatorEnabled: Boolean,
         val fontScale: Float,
@@ -187,6 +188,7 @@ internal object SettingsRepository {
                     LauncherPreferences.readCompendiumUpgradeTouchFixEnabled(context),
                 avoidDisplayCutout = LauncherPreferences.isDisplayCutoutAvoidanceEnabled(context),
                 cropScreenBottom = LauncherPreferences.isScreenBottomCropEnabled(context),
+                ramSaverEnabled = LauncherPreferences.isRamSaverEnabled(context),
                 touchscreenEnabled = GameplaySettingsService.readTouchscreenEnabled(context),
                 touchIndicatorEnabled = GameplaySettingsService.readTouchIndicatorEnabled(context),
                 fontScale = GameplaySettingsService.readFontScale(context),
@@ -323,6 +325,10 @@ internal object SettingsRepository {
         LauncherPreferences.setScreenBottomCropEnabled(
             context,
             LauncherPreferences.DEFAULT_CROP_SCREEN_BOTTOM
+        )
+        LauncherPreferences.setRamSaverEnabled(
+            context,
+            LauncherPreferences.DEFAULT_RAM_SAVER_ENABLED
         )
         LauncherPreferences.setGamePerformanceOverlayEnabled(
             context,
